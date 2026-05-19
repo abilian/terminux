@@ -1,6 +1,6 @@
 [project]
 name = "terminux"
-version = "0.1.0"
+version = "0.5.0"
 description = "A cross-platform desktop terminal with workspaces and tabs"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -25,18 +25,24 @@ packages = ["src/terminux"]
 
 [dependency-groups]
 dev = [
-    "mypy>=2.1.0",
-    "nox>=2026.4.10",
-    "pre-commit>=4.6.0",
+    # Build
     "pyinstaller>=6.0",
-    "pyrefly>=1.0.0",
+    # Tests
     "pytest>=9.0.3",
     "pytest-cov>=7.1.0",
     "pytest-playwright>=0.8.0",
+    "nox>=2026.4.10",
+    # Lint / typecheck
     "ruff>=0.15.13",
+    "mypy>=2.1.0",
+    "pre-commit>=4.6.0",
+    "pyrefly>=1.0.0",
     "ty>=0.0.37",
 ]
 
+#
+# pytest
+#
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
@@ -49,13 +55,6 @@ filterwarnings = [
     # uses pty.fork, then execs immediately); safe here, not actionable.
     "ignore:This process .* is multi-threaded, use of forkpty.*:DeprecationWarning",
 ]
-
-[tool.mypy]
-strict = true
-
-[[tool.mypy.overrides]]
-module = ["ptyprocess", "webview", "webview.*"]
-ignore_missing_imports = true
 
 [tool.coverage.run]
 branch = true
@@ -71,6 +70,19 @@ exclude_lines = [
     "\\.\\.\\.",
 ]
 
+#
+# mypy
+#
+[tool.mypy]
+strict = true
+
+[[tool.mypy.overrides]]
+module = ["ptyprocess", "webview", "webview.*"]
+ignore_missing_imports = true
+
+#
+# pyrefly
+#
 [tool.pyrefly]
 preset = "legacy"
 ignore-missing-imports = [
