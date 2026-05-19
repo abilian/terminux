@@ -16,6 +16,7 @@ tasks:
       uv sync
   - test: |
       cd terminux
+      uv run playwright install
       uv run pytest -q --tb=short
   - lint: |
       cd terminux

@@ -24,9 +24,9 @@ tasks:
       sudo pip install --break-system-packages -U uv nox
       cd terminux
       uv sync
-
   - test: |
       cd terminux
+      uv run playwright install
       uv run pytest -q --tb=short
   - lint: |
       cd terminux
