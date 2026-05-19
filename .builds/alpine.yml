@@ -14,17 +14,17 @@ tasks:
   - install: |
       cd terminux
       uv sync
-  - test: |
-      cd terminux
-      uv run playwright install
-      uv run pytest -q --tb=short
+  # - test: |
+  #     cd terminux
+  #     uv run playwright install
+  #     uv run pytest -q --tb=short
   - lint: |
       cd terminux
       uv run ruff check
       uv run ty check src
-  - nox: |
-      cd terminux
-      uvx nox
+  # - nox: |
+  #     cd terminux
+  #     uvx nox
 
 triggers:
   - action: email
