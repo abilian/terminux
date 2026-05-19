@@ -17,11 +17,8 @@ dependencies = [
 terminux = "terminux.app:main"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/terminux"]
+requires = ["uv_build >= 0.11.7, <0.12.0"]
+build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
@@ -38,7 +35,16 @@ dev = [
     "pre-commit>=4.6.0",
     "pyrefly>=1.0.0",
     "ty>=0.0.37",
+    "zensical>=0.0.43",
 ]
+
+[project.urls]
+Homepage = "https://github.com/abilian/terminux"
+Documentation = "https://github.com/abilian/py-capnweb#readme"
+Repository = "https://github.com/abilian/terminux.git"
+Issues = "https://github.com/abilian/terminux/issues"
+Changelog = "https://github.com/abilian/terminux/blob/main/CHANGES.md"
+
 
 #
 # pytest

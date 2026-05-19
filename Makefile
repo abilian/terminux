@@ -1,5 +1,5 @@
 .PHONY: all test build format check lint clean frontend frontend-dev \
-	frontend-test app linux docker-run
+	frontend-test app linux docker-run docs docs-serve
 
 all: frontend test lint
 
@@ -32,6 +32,14 @@ linux:
 docker-run:
 	docker build --target bundle -t terminux:bundle .
 	docker run --rm -p 8000:8000 terminux:bundle
+
+# Build the documentation site (Zensical) -> site/.
+docs:
+	uv run zensical build
+
+# Live docs preview with rebuild-on-save (http://127.0.0.1:8000).
+docs-serve:
+	uv run zensical serve
 
 check: lint
 

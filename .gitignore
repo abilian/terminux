@@ -15,6 +15,9 @@ wheels/
 node_modules/
 *.tsbuildinfo
 
+# Docs (Zensical build output)
+/site/
+
 # Local / secrets / tmp
 .envrc
 /sandbox/
