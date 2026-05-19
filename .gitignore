@@ -1,0 +1,20 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.coverage
+
+# Virtual environments
+.venv
+.python-version
+
+# Node / frontend (the built bundle in src/terminux/web/static is committed)
+node_modules/
+*.tsbuildinfo
+
+# Local / secrets / tmp
+.envrc
+/sandbox/

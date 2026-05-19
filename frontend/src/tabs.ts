@@ -1,0 +1,121 @@
+// Tab bar: tabs for the active workspace, inline rename, close, and nav.
+
+import { api } from "./api";
+import { makeRenameInput } from "./rename";
+import { makeDraggable, recentlyReordered } from "./reorder";
+import { activeWorkspace, getState, refresh } from "./store";
+import { disposeSession } from "./terminal";
+
+let editingTabId: string | null = null;
+
+export function closeTab(tid: string): void {
+  disposeSession(tid);
+  api(`/tabs/${tid}`, { method: "DELETE" }).then(refresh);
+}
+
+export function switchTab(delta: number): void {
+  const ws = activeWorkspace();
+  if (!ws || ws.tab_ids.length < 2 || !ws.active_tab_id) return;
+  const len = ws.tab_ids.length;
+  const i = ws.tab_ids.indexOf(ws.active_tab_id);
+  const next = ws.tab_ids[(i + delta + len) % len];
+  api(`/workspaces/${ws.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ active_tab_id: next }),
+  }).then(refresh);
+}
+
+export function renderTabs(): void {
+  const state = getState();
+  const bar = document.getElementById("tabbar");
+  if (!state || !bar) return;
+  bar.innerHTML = "";
+  const ws = activeWorkspace();
+  if (!ws) return;
+  for (const tid of ws.tab_ids) {
+    const t = state.tabs[tid];
+    if (!t) continue;
+    const el = document.createElement("div");
+    el.className = "tab" + (tid === ws.active_tab_id ? " active" : "");
+    if (t.needs_attention && tid !== ws.active_tab_id) {
+      const a = document.createElement("span");
+      a.className = "attn";
+      a.title = "Wants attention";
+      a.textContent = "🔔";
+      el.appendChild(a);
+    } else if (t.has_unseen_output && tid !== ws.active_tab_id) {
+      const a = document.createElement("span");
+      a.className = "activity";
+      el.appendChild(a);
+    }
+    if (editingTabId === tid) {
+      el.appendChild(
+        makeRenameInput(
+          t.title,
+          "name-input",
+          (title) => {
+            editingTabId = null;
+            api(`/tabs/${tid}`, {
+              method: "PATCH",
+              body: JSON.stringify({ title }),
+            }).then(refresh);
+          },
+          () => {
+            editingTabId = null;
+            renderTabs();
+          },
+        ),
+      );
+    } else {
+      const title = document.createElement("span");
+      title.className = "title";
+      title.textContent = t.title + (t.live ? "" : " (exited)");
+      title.ondblclick = (e: MouseEvent): void => {
+        e.stopPropagation();
+        editingTabId = tid;
+        renderTabs();
+      };
+      el.appendChild(title);
+
+      const close = document.createElement("span");
+      close.className = "x";
+      close.title = "Close";
+      close.textContent = "✕";
+      close.onclick = (e: MouseEvent): void => {
+        e.stopPropagation();
+        closeTab(tid);
+      };
+      el.appendChild(close);
+    }
+    el.onclick = (): void => {
+      if (recentlyReordered()) return; // ignore the click after a drag
+      if (tid === ws.active_tab_id) return; // already active; lets dblclick rename
+      api(`/workspaces/${ws.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ active_tab_id: tid }),
+      }).then(refresh);
+    };
+    if (editingTabId !== tid) {
+      makeDraggable(
+        el,
+        tid,
+        () => activeWorkspace()?.tab_ids.slice() ?? [],
+        (order) => {
+          api(`/workspaces/${ws.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ tab_order: order }),
+          }).then(refresh);
+        },
+      );
+    }
+    bar.appendChild(el);
+  }
+  const add = document.createElement("div");
+  add.id = "new-tab";
+  add.textContent = "+";
+  add.title = "New tab";
+  add.onclick = (): void => {
+    api(`/workspaces/${ws.id}/tabs`, { method: "POST" }).then(refresh);
+  };
+  bar.appendChild(add);
+}

@@ -1,0 +1,79 @@
+target-version = "py310"
+preview = true
+
+# Honour excludes even for files passed explicitly (e.g. by pre-commit).
+force-exclude = true
+# The PyInstaller spec uses injected globals (Analysis/BUNDLE/...) and the
+# packaging launcher is a trivial bootstrap — neither is a normal module.
+extend-exclude = [
+    "terminux.spec",
+    "packaging",
+]
+
+lint.select = [
+    "ALL",
+]
+
+include = [
+    "pyproject.toml",
+    "src/**/*.py",
+    "tests/**/*.py",
+]
+
+lint.extend-ignore = [
+    # Later (or never)
+    "CPY", # Copyright
+    "A",
+    "ERA",
+    "FBT",
+    "D",
+    "DOC",
+
+    # False positive (or not)
+    "S101", # Use of `assert` detected
+    "D203", # one-blank-line-before-class
+    "D213", # multi-line-summary-second-line
+    "COM812", # ...
+    "T201", # Print...
+    "PERF401", # list comprehension - explicit append loop is clearer
+
+    # Fix later (or not)
+    # ...
+]
+
+[lint.extend-per-file-ignores]
+"tests/**/*.py" = [
+    "BLE001", #  blind-except
+    "D",
+    "DOC",
+    "ANN",
+    "PLR2004",
+    "INP001",
+    "PLC0415", # runtime imports for optional dependencies
+    "E501", # line too long in test assertions
+    "N802", # naming
+    "SLF001", # tests legitimately probe private members
+    "PLC2701", # tests import private helpers under test
+    "ARG001", # unused fixture/argument in test doubles
+    "ARG002",
+    "ARG005", # unused lambda args in stubs
+    "ASYNC110", # polling with asyncio.sleep is fine in tests
+    "RUF029", # async test helpers without await
+    "S108", # hardcoded /tmp paths in fixtures
+    "S404", # subprocess import in tests
+    "S603",
+    "EM101", # inline exception messages in tests
+    "TRY003",
+    "PT017", # assert on exception in pytest.raises block
+    "PT018", # composite assertions
+    "PLR6301", # test-double methods that could be static
+    "PLW0108", # explicit lambda in stubs
+    "PLR6201",
+    "C901", # elaborate fakes/scenarios in tests
+    "PLR0915", # long scenario tests
+]
+
+[lint.isort]
+combine-as-imports = true
+required-imports = ["from __future__ import annotations"]
+known-first-party = ["terminux"]

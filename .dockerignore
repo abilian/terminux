@@ -1,0 +1,16 @@
+.git
+.venv
+sandbox/
+dist/
+build/
+**/__pycache__/
+*.egg-info
+.coverage
+htmlcov/
+frontend/node_modules
+src/terminux/web/static
+.mypy_cache
+.ruff_cache
+.pytest_cache
+notes/
+tests/
