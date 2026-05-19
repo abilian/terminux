@@ -1,91 +1,136 @@
-# terminux
+<div align="center">
 
-A cross-platform desktop terminal with a Workspaces sidebar and tabbed
-terminals. Workspaces and their tabs persist across restarts.
+# 🖥️ terminux
 
-Inspired by cmux (workspace UX) and terax (architecture), implemented in
-Python: a Vite/TypeScript xterm.js web UI hosted in a pywebview window,
-talking to a loopback Starlette/uvicorn backend that owns the PTYs. See
-`notes/` for the vision, functional spec, and technical spec.
+### A fast, reliable, cross-platform terminal — organized the way you actually work.
 
-The frontend lives in `frontend/` (TypeScript modules, Vite). Its build
-output is committed to `src/terminux/web/static/` so the Python package
-runs without a Node toolchain; rebuild it with `make frontend`.
+**Workspaces on the left. Tabbed terminals in the middle. Everything where you left it.**
 
-## Run
+[![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey.svg)](#-install--package)
+[![Status](https://img.shields.io/badge/status-v1%20preview-orange.svg)](#-status--v1-preview)
+[![License](https://img.shields.io/badge/license-see%20repo-green.svg)](https://github.com/abilian/terminux)
+
+<br/>
+
+<img src="docs/images/main-window.png" alt="terminux — workspaces sidebar and a tabbed terminal running a test suite" width="800"/>
+
+</div>
+
+---
+
+## Why terminux?
+
+You don't have one project. You have *six*. Each one is a different directory, a
+different mental context, a different set of running shells. terminux gives each
+of them a home — a **workspace** — and keeps them alive and arranged exactly how
+you left them, even across restarts.
+
+It's the workspace UX of [cmux](https://github.com/) on a clean, auditable
+two-process architecture inspired by terax — rebuilt in **Python** for
+**reliability over features**. No accounts. No telemetry. No AI. Just a terminal
+that respects your flow.
+
+```sh
+uv sync && make frontend
+uv run terminux
+```
+
+That's it. You're in.
+
+## ✨ What you get
+
+- **🗂️ Workspaces sidebar** — a persistent list of named workspaces. Names track
+  the active shell's working directory automatically (until you pin one).
+- **📑 Tabbed terminals** — every workspace has its own tabs, each a real PTY
+  shell. Switch freely; background tabs keep streaming, no jank.
+- **💾 Survives restarts** — workspaces, tabs, window geometry, font size, and
+  each shell's working directory all come back. Fresh shells, same layout.
+- **⌨️ Keyboard-first** — jump to a workspace with `Cmd/Ctrl+1..9`, fuzzy
+  quick-switcher on `Cmd/Ctrl+P`, find-in-terminal, font zoom, and more.
+- **🔔 Attention that finds you** — background activity indicators; BEL or
+  `OSC 9` on an off-screen tab raises a badge that bubbles up to its workspace.
+- **🖱️ Drag & drop** — reorder workspaces and tabs with live drop feedback
+  (works even in WKWebView, where HTML5 DnD doesn't). Drop a file to paste its
+  shell-quoted path.
+- **🔒 Local-first & hardened** — loopback-only by default, per-session auth
+  token, CSP and security headers, atomic versioned persistence.
+
+<div align="center">
+
+<img src="docs/images/quick-switcher.png" alt="The fuzzy quick switcher (Cmd/Ctrl+P) jumping between workspaces and tabs" width="800"/>
+
+<sub>The fuzzy quick switcher (<code>Cmd/Ctrl+P</code>) — jump to any workspace or tab.</sub>
+
+</div>
+
+## 🚀 Run
 
 ```sh
 uv sync
 make frontend                # build the web UI (needs Node; first run only)
 uv run terminux              # desktop window (pywebview)
-uv run terminux --no-window  # server only; open the printed URL in a browser
+uv run terminux --no-window  # server only — open the printed URL in a browser
 ```
 
-`--no-window` is the dev/test path and a preview of the future "web mode".
+`--no-window` is the dev/test path and a preview of the future **web mode**.
 
-## Package (macOS .app)
+## 📦 Install / package
+
+terminux ships as a self-contained desktop app — no Python or Node required to
+run the bundle.
 
 ```sh
-make app           # builds the frontend, then dist/terminux.app (PyInstaller)
-open dist/terminux.app
+make app          # macOS .app  → dist/terminux.app
+make linux        # Linux bundle (built in Docker) → dist/linux/terminux/terminux
+make docker-run   # run headless web mode on :8000
 ```
 
-The bundle embeds the Python backend, the built web UI, and pywebview's
-WKWebView backend — no Python/Node needed to run it. Notes:
+Full platform notes (signing, Gatekeeper, X11, architectures) live in the
+[**documentation**](#-documentation).
 
-- Built for the host architecture (arm64 here). A universal2 binary needs
-  a universal Python; not configured.
-- The app is **ad-hoc signed only**. On another Mac, Gatekeeper will block
-  it until right-click → Open (or it's signed with a Developer ID and
-  notarized — out of scope for the prototype).
-- `dist/` and `build/` are gitignored; the `.app` is a build artifact.
+## 📚 Documentation
 
-## Package (Linux, via Docker)
-
-PyInstaller can't cross-compile, so the Linux bundle is built in a
-container (Ubuntu 24.04 + GTK3/WebKit2GTK + Python 3.12):
+Docs are built with [Zensical](https://zensical.org/) and live in `docs/`.
 
 ```sh
-make linux         # -> dist/linux/terminux/terminux (PyInstaller onedir)
-make docker-run    # run the same image in web mode on :8000
+uv run zensical serve    # live preview at http://127.0.0.1:8000
+uv run zensical build    # static site → site/
 ```
 
-- **Web mode is the container-native use.** `make docker-run` serves the
-  UI headlessly; open the `http://127.0.0.1:8000/?t=<token>` URL from the
-  container log in a browser. The session token is the only auth when
-  bound beyond loopback (`--host 0.0.0.0`) — keep it private.
-- **The desktop GUI in a container needs a display.** Run the bundled
-  binary natively on a Linux desktop (needs `libgtk-3` + `libwebkit2gtk-4.1`),
-  or pass X11 through:
-  ```sh
-  docker run --rm -e DISPLAY=$DISPLAY \
-    -v /tmp/.X11-unix:/tmp/.X11-unix terminux:bundle \
-    /app/dist/terminux/terminux
-  ```
-- The bundle's architecture matches the Docker host (arm64 here). For
-  x86_64, build with `docker build --platform linux/amd64 …`.
-- Unsigned; `dist/`/`build/` are gitignored build artifacts.
+Start with [`docs/index.md`](docs/index.md). The original vision, functional
+spec, and technical spec are in [`notes/`](notes/).
 
-## Status — v1 prototype
-
-Works: workspaces sidebar (create/rename/reorder/close, auto status dot),
-tabs with multiple live terminals, real PTY shells over a per-terminal
-WebSocket, background tabs keep streaming, structure persisted to disk
-(fresh shells on restart), per-session loopback token.
-
-Not yet: split panes, client/server detach, packaging, Windows PTY,
-scrollback persistence — see `notes/technical-spec.md` §11–§14.
-
-## Develop
+## 🧪 Develop
 
 ```sh
 make frontend        # build TS/Vite UI → src/terminux/web/static
 make frontend-test   # vitest unit tests (pure TS logic)
-make test            # pytest: a_unit, b_integration, c_e2e (Playwright)
+make test            # pytest: unit, integration, e2e (Playwright)
 make lint            # ruff + ty + pyrefly + mypy
 make format
-cd frontend && npm run typecheck   # frontend type-check (tsc)
 ```
 
-The `c_e2e` tier drives the served UI with a real browser (no pywebview).
-It needs the Playwright browser once: `uv run playwright install chromium`.
+The e2e tier drives the served UI with a real browser (no pywebview); install
+it once with `uv run playwright install chromium`.
+
+## 🧭 Status — v1 preview
+
+**Works today:** workspaces sidebar (create / rename / reorder / close, auto
+status dot), tabs with multiple live terminals, real PTY shells over a
+per-terminal WebSocket, background streaming, structure persisted to disk
+(fresh shells on restart), per-session loopback token, macOS & Linux bundles.
+
+**Not yet:** split panes, client/server detach, Windows PTY, scrollback
+persistence — see `notes/technical-spec.md` §11–§14.
+
+## 🏗️ Architecture in one breath
+
+A Vite/TypeScript xterm.js web UI runs in a sandboxed pywebview window and talks
+to a loopback Starlette/uvicorn backend that owns the PTYs and streams raw bytes
+over per-terminal WebSockets. The frontend build output is committed to
+`src/terminux/web/static/`, so the Python package runs with no Node toolchain.
+
+<div align="center">
+<sub>Built for people who keep too many terminals open. — <a href="https://github.com/abilian/terminux">abilian/terminux</a></sub>
+</div>
