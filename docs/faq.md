@@ -25,6 +25,16 @@ curl -X PATCH "http://127.0.0.1:<port>/api/ui?t=<token>" \
 
 The pref is persisted server-side, so it sticks across restarts.
 
+## Why didn't my Claude Code / vim / less / tmux session come back?
+
+Full-screen TUIs draw into the terminal's **alternate screen buffer**, which
+the program owns and tears down when it exits. By the time terminux can save
+the tab, that buffer has been handed back and its contents are gone — there's
+nothing to capture. What you'll see on restart is the shell session *around*
+the TUI (commands, their non-fullscreen output, the prompt), not the TUI's
+own UI. iTerm2's session restoration has the same limit; it's a property of
+how alt-screen mode is specified, not a bug.
+
 ## What about split panes and Windows?
 
 Both are still on the roadmap, along with client/server detach.

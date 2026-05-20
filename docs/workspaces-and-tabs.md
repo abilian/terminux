@@ -71,6 +71,18 @@ above the separator are *not* still running.
     Split panes, client/server detach, and Windows PTY are still on the
     roadmap (see `notes/technical-spec.md` §11–§14).
 
+!!! info "Full-screen TUIs (Claude Code, vim, less, tmux, fzf…)"
+    Full-screen apps draw into the terminal's **alternate screen buffer**,
+    which they own and clean up when they exit. By the time terminux saves a
+    tab's view (and certainly by the time the app has been SIGHUP'd on quit),
+    that buffer is gone — the OS gave it back to the program and the program
+    gave it back to the system.
+
+    What you'll see restored is the **shell session around** the TUI — your
+    commands, their non-fullscreen output, and the shell prompt — not the
+    TUI's own UI. This is the same limit iTerm2's session restoration hits;
+    there's no faithful way around it.
+
 ## Input integrations
 
 - **Drag a file** onto the terminal to insert its full, shell-quoted path.

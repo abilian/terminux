@@ -97,18 +97,22 @@ async function openTerminal(tid: string, restore = true): Promise<void> {
   term.loadAddon(serialize);
   // URLs are highlighted on hover; require a modifier to open, matching
   // iTerm2 / Terminal.app conventions so a stray click can't navigate.
+  // Routed through the backend because pywebview's WKWebView ignores JS
+  // window.open() — the same handler then also works in --no-window mode.
   term.loadAddon(
     new WebLinksAddon((event, uri) => {
-      if (event.metaKey || event.ctrlKey)
-        window.open(uri, "_blank", "noopener,noreferrer");
+      if (!(event.metaKey || event.ctrlKey)) return;
+      void api("/open-url", {
+        method: "POST",
+        body: JSON.stringify({ url: uri }),
+      });
     }),
   );
-  term.open(host);
-  fit.fit();
 
-  // Replay the captured buffer from the previous session, then mark the
-  // boundary so it's clear the shell below is fresh (history was preserved,
-  // but no command from above is still running).
+  // Per the SerializeAddon docs, replay BEFORE term.open: the parser fills
+  // the buffer first, then rendering starts on a settled state — and the
+  // separator lands on the shell's main buffer, not whatever alt-screen
+  // mode the previous session might have been carrying.
   if (restore) {
     const saved = await fetchScrollback(tid);
     if (saved) {
@@ -116,6 +120,9 @@ async function openTerminal(tid: string, restore = true): Promise<void> {
       term.write(resumedSeparator());
     }
   }
+
+  term.open(host);
+  fit.fit();
 
   const r = await api(`/tabs/${tid}/spawn`, {
     method: "POST",
@@ -247,7 +254,18 @@ function flushScrollback(force = false): void {
   if (!force && !getState()?.ui.scrollback_persist) return;
   for (const [tid, s] of sessions) {
     if (!force && !s.dirty) continue;
-    const content = s.serialize.serialize({ scrollback: SCROLLBACK_LINES });
+    // excludeAltBuffer: full-screen TUIs (Claude Code, vim, less, fzf, tmux)
+    // own the alt buffer; the moment they exit the contents are gone, so
+    // capturing them produces a replay that flips the next session into
+    // alt-screen mode and dumps stale content on top of the new shell.
+    // excludeModes: don't replay terminal modes (application keypad,
+    // bracketed paste, etc.) that the previous session left set — the
+    // fresh shell will reassert whatever it needs.
+    const content = s.serialize.serialize({
+      scrollback: SCROLLBACK_LINES,
+      excludeAltBuffer: true,
+      excludeModes: true,
+    });
     persistScrollback(tid, content);
     s.dirty = false;
   }

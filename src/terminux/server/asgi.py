@@ -5,8 +5,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import shutil
+import subprocess  # noqa: S404 — argv form only, no shell, opener path resolved via shutil.which
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -230,6 +234,51 @@ def _deny(request: Request) -> Response | None:
     return None
 
 
+# Only schemes safe to hand to the OS opener — `file://`, `javascript:`,
+# `data:` and friends are deliberately omitted.
+_OPENABLE_SCHEMES = frozenset({"http", "https", "mailto"})
+
+
+def _open_url_in_default_app(url: str) -> bool:
+    """Open ``url`` in the OS's default application, never via the shell.
+
+    pywebview's WKWebView ignores JavaScript ``window.open()``, so the
+    Cmd/Ctrl+click web-links handler routes the URL here. Returns True if
+    a real opener was dispatched; False if the URL was rejected or no
+    opener exists on the platform.
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    if parsed.scheme.lower() not in _OPENABLE_SCHEMES:
+        return False
+
+    if sys.platform == "darwin":
+        opener = "open"
+    elif sys.platform.startswith("linux"):
+        opener = "xdg-open"
+    else:
+        return False  # Windows path is unreachable in v1 (no PTY support).
+
+    if shutil.which(opener) is None:
+        return False
+
+    try:
+        # No shell, no env munging — argv only, so the URL is opaque.
+        subprocess.Popen(  # noqa: S603 — argv form, opener is a literal
+            [opener, url],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            close_fds=True,
+        )
+    except OSError:
+        log.exception("failed to spawn %s for url", opener)
+        return False
+    return True
+
+
 class Api:
     """HTTP/WebSocket handlers bound to a single controller."""
 
@@ -419,6 +468,20 @@ class Api:
         self.ctl.delete_scrollback(request.path_params["tab_id"])
         return JSONResponse({"ok": True})
 
+    async def open_url(  # noqa: PLR6301 — uniform Route handler shape across Api
+        self,
+        request: Request,
+    ) -> Response:
+        if (deny := _deny(request)) is not None:
+            return deny
+        body: dict[str, Any] = await request.json()
+        url = str(body.get("url", "")).strip()
+        if not url:
+            return JSONResponse({"error": "missing url"}, status_code=400)
+        if not _open_url_in_default_app(url):
+            return JSONResponse({"error": "rejected"}, status_code=400)
+        return JSONResponse({"ok": True})
+
     async def spawn(self, request: Request) -> Response:
         if (deny := _deny(request)) is not None:
             return deny
@@ -530,6 +593,7 @@ def build_app(*, persist: bool = True) -> Starlette:
             methods=["DELETE"],
         ),
         Route("/api/ui", api.patch_ui, methods=["PATCH"]),
+        Route("/api/open-url", api.open_url, methods=["POST"]),
         WebSocketRoute("/pty/{terminal_id}", api.pty_ws),
     ]
     app = Starlette(

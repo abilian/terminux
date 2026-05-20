@@ -305,6 +305,46 @@ def test_scrollback_endpoints(server: LiveServer) -> None:
         ctl._persist = False
 
 
+def test_open_url_validates_scheme_and_requires_token(server: LiveServer) -> None:
+    base = server.url
+
+    # Token guard.
+    req = urllib.request.Request(  # noqa: S310
+        f"{base}/api/open-url",
+        method="POST",
+        data=json.dumps({"url": "https://example.com"}).encode(),
+    )
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        urllib.request.urlopen(req)  # noqa: S310
+    assert exc.value.code == 403
+
+    # Reject dangerous schemes (file://, javascript:, data:…).
+    for bad in ("file:///etc/passwd", "javascript:alert(1)", "data:text/html,x", ""):
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _req(
+                f"{base}/api/open-url?t={T}",
+                "POST",
+                json.dumps({"url": bad}).encode(),
+            )
+        assert exc.value.code == 400
+
+    # Patch the opener so the test never actually spawns `open`.
+    from terminux.server import asgi
+
+    calls: list[str] = []
+    monkey = asgi._open_url_in_default_app
+    asgi._open_url_in_default_app = lambda u: (calls.append(u), True)[1]  # type: ignore[assignment]
+    try:
+        _req(
+            f"{base}/api/open-url?t={T}",
+            "POST",
+            json.dumps({"url": "https://example.com/path?x=1"}).encode(),
+        )
+        assert calls == ["https://example.com/path?x=1"]
+    finally:
+        asgi._open_url_in_default_app = monkey  # type: ignore[assignment]
+
+
 def test_tab_order_reorders_and_sanitizes(server: LiveServer) -> None:
     base = server.url
     st = _req(f"{base}/api/state?t={T}")
