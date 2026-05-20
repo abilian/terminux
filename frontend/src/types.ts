@@ -14,7 +14,7 @@ export interface WorkspaceView {
   name: string;
   tab_ids: string[];
   active_tab_id: string | null;
-  status: "active" | "running" | "idle" | "exited";
+  status: "active" | "unseen" | "idle" | "exited";
   attention: boolean;
 }
 

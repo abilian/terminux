@@ -137,7 +137,7 @@ body {
 .dot.active {
   background: var(--accent);
 }
-.dot.running {
+.dot.unseen {
   background: var(--running);
 }
 .dot.idle {

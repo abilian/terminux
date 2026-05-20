@@ -15,6 +15,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import time
 import uuid
 from typing import TYPE_CHECKING
 
@@ -29,6 +30,88 @@ BACKLOG_CAP = 512 * 1024  # bytes retained for replay on (re)connect
 OUTBOUND_CAP = 4 * 1024 * 1024  # per-subscriber pending cap before drop
 FLUSH_INTERVAL = 0.008  # seconds to coalesce a burst into one WS frame
 READ_CHUNK = 65536
+
+# An OSC 133;D close is only treated as a "ready" attention signal when the
+# command between the matching ;C and ;D took at least this long — otherwise
+# every `cd` in a background tab would ring the sidebar.
+OSC133_MIN_COMMAND_SECONDS = 2.0
+
+# Single-byte control codes the attention scanner inspects.
+_BEL = 0x07
+_ESC_BYTE = 0x1B
+_OSC_INTRO = 0x5D  # ']' — second byte of the ESC ] (OSC) introducer
+_OSC_HEAD_MAX = 16  # how much of an OSC's params we capture for matching
+
+
+class _AttentionScanner:
+    """Stateful per-Terminal scanner for the three real "attention" signals.
+
+    A naive ``b"\\x07" in data`` check trips on every OSC string terminator
+    (the BEL byte also ends ``OSC 0/2;<title>\\x07`` title updates that tools
+    like Claude Code emit constantly), so we walk the stream and only count
+    a BEL that occurs *outside* an OSC. We also pick out:
+
+    - ``OSC 9;<msg>`` — the iTerm2 desktop-notification convention.
+    - ``OSC 133;D[;exit]`` — shell-integration "command finished", gated by
+      a minimum command duration via the prior matching ``OSC 133;C``.
+
+    The state survives across reads, so an OSC spanning a chunk boundary
+    is still parsed correctly.
+    """
+
+    _GROUND = 0
+    _ESC = 1
+    _OSC = 2
+
+    def __init__(self) -> None:
+        self._state = self._GROUND
+        # First ~16 bytes of the current OSC's parameters — enough to tell
+        # ``9;``, ``133;C`` and ``133;D[;…]`` apart.
+        self._osc_head = bytearray()
+        self._command_start: float | None = None
+
+    def feed(self, data: bytes, now: float) -> bool:
+        """Scan ``data``; return True iff an attention signal fired."""
+        state = self._state
+        head = self._osc_head
+        fired = False
+        for b in data:
+            if state == self._GROUND:
+                if b == _ESC_BYTE:
+                    state = self._ESC
+                elif b == _BEL:  # standalone BEL → real "ding"
+                    fired = True
+            elif state == self._ESC:
+                if b == _OSC_INTRO:
+                    state = self._OSC
+                    head.clear()
+                else:
+                    # Any other byte ends the ESC sequence (the trailing
+                    # '\\' of a String Terminator falls here too).
+                    state = self._GROUND
+            elif b in {_BEL, _ESC_BYTE}:  # _OSC terminator (BEL or ST start)
+                if self._osc_should_fire(now):
+                    fired = True
+                head.clear()
+                state = self._ESC if b == _ESC_BYTE else self._GROUND
+            elif len(head) < _OSC_HEAD_MAX:
+                head.append(b)
+        self._state = state
+        return fired
+
+    def _osc_should_fire(self, now: float) -> bool:
+        head = bytes(self._osc_head)
+        if head.startswith(b"9;"):
+            return True
+        if head.startswith(b"133;C"):
+            # Mark the start of a command; never fires by itself.
+            self._command_start = now
+            return False
+        if head.startswith(b"133;D"):
+            start = self._command_start
+            self._command_start = None
+            return start is not None and (now - start) >= OSC133_MIN_COMMAND_SECONDS
+        return False
 
 
 class Subscriber:
@@ -85,6 +168,7 @@ class Terminal:
         self.on_activity: Callable[[], None] | None = None
         self.on_attention: Callable[[], None] | None = None
         self.on_exit: Callable[[int | None], None] | None = None
+        self._attention = _AttentionScanner()
         self._loop.add_reader(self._pty.fd, self._on_readable)
 
     # ----- reading ------------------------------------------------------
@@ -104,8 +188,12 @@ class Terminal:
             sub.feed(data)
         if self.on_activity is not None:
             self.on_activity()
-        # BEL or an OSC 9 desktop notification → the task wants attention.
-        if self.on_attention is not None and (b"\x07" in data or b"\x1b]9;" in data):
+        # OSC-aware: only a real BEL (outside any OSC), OSC 9, or a long-
+        # enough OSC 133;D counts as attention — title-bar updates carry a
+        # trailing BEL we deliberately ignore.
+        if self.on_attention is not None and self._attention.feed(
+            data, time.monotonic()
+        ):
             self.on_attention()
 
     def _handle_eof(self) -> None:

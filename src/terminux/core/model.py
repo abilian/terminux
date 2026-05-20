@@ -17,10 +17,15 @@ def _new_id() -> str:
 
 
 class WorkspaceStatus(str, Enum):
-    """Auto-derived sidebar status (functional spec §4.4)."""
+    """Auto-derived sidebar status (functional spec §4.4).
+
+    ``UNSEEN`` is "this workspace produced output since you last viewed
+    it" — *not* "a process is currently running" (we don't track live
+    activity). It clears the moment you switch to the workspace.
+    """
 
     ACTIVE = "active"
-    RUNNING = "running"
+    UNSEEN = "unseen"
     IDLE = "idle"
     EXITED = "exited"
 
@@ -261,7 +266,7 @@ class AppState:
         if not has_live and ws.tab_ids:
             return WorkspaceStatus.EXITED
         if ws.has_unseen_output:
-            return WorkspaceStatus.RUNNING
+            return WorkspaceStatus.UNSEEN
         return WorkspaceStatus.IDLE
 
     # ----- serialization ------------------------------------------------

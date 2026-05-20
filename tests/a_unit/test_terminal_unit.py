@@ -42,6 +42,7 @@ def _bare_terminal(loop: _FakeLoop, pty: _FakePty) -> Terminal:
     t.on_activity = None
     t.on_attention = None
     t.on_exit = None
+    t._attention = term_mod._AttentionScanner()
     return t
 
 
@@ -120,6 +121,72 @@ def test_on_readable_detects_bell_and_osc9(monkeypatch) -> None:
     monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"\x1b]9;ready\x07")
     t._on_readable()
     assert hits == [1, 1]  # BEL and OSC 9 each fire it
+
+
+def test_osc_title_bel_does_not_trigger_attention(monkeypatch) -> None:
+    """The BEL that terminates an OSC 0/2 title isn't a real bell — Claude
+    Code (and friends) update the title constantly while working, and that
+    used to spam the sidebar."""
+    t = _bare_terminal(_FakeLoop(), _FakePty())
+    t.subscribe()
+    hits = []
+    t.on_attention = lambda: hits.append(1)
+
+    # OSC 0;<title>BEL repeated — common for tools showing live state.
+    monkeypatch.setattr(
+        term_mod.os,
+        "read",
+        lambda *_a: b"\x1b]0;thinking\x07\x1b]0;tool: read\x07",
+    )
+    t._on_readable()
+    # And an OSC terminated by the two-byte ST (ESC '\\') instead of BEL.
+    monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"\x1b]2;done\x1b\\")
+    t._on_readable()
+    assert hits == []
+
+
+def test_osc_split_across_reads_does_not_fire(monkeypatch) -> None:
+    """An OSC sequence spanning a chunk boundary must still suppress its
+    terminating BEL."""
+    t = _bare_terminal(_FakeLoop(), _FakePty())
+    t.subscribe()
+    hits = []
+    t.on_attention = lambda: hits.append(1)
+
+    monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"\x1b]0;par")
+    t._on_readable()
+    monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"tial\x07")
+    t._on_readable()
+    assert hits == []
+
+
+def test_osc133_fires_only_for_long_commands(monkeypatch) -> None:
+    """OSC 133;D ("command finished") fires attention only if the matching
+    OSC 133;C happened long enough ago — a snappy `cd` shouldn't ring it."""
+    t = _bare_terminal(_FakeLoop(), _FakePty())
+    t.subscribe()
+    hits = []
+    t.on_attention = lambda: hits.append(1)
+
+    # Pretend the scanner sees time advance between reads.
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(term_mod.time, "monotonic", lambda: clock["t"])
+
+    # Short command (< 2 s): C, then D ≈ 100 ms later → no fire.
+    monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"\x1b]133;C\x07")
+    t._on_readable()
+    clock["t"] += 0.1
+    monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"\x1b]133;D;0\x07")
+    t._on_readable()
+    assert hits == []
+
+    # Long command: C, then D 5 s later → fires.
+    monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"\x1b]133;C\x07")
+    t._on_readable()
+    clock["t"] += 5.0
+    monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"\x1b]133;D;0\x07")
+    t._on_readable()
+    assert hits == [1]
 
 
 def test_on_readable_oserror_triggers_eof() -> None:

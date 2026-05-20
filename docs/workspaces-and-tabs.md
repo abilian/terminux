@@ -35,9 +35,12 @@ Each tab is an interactive terminal backed by its own real PTY shell.
 ## Attention & activity
 
 - Background tabs that produce output show an **activity indicator**.
-- A tab that emits **BEL** or an **`OSC 9`** notification while not in view
-  raises an **attention badge** that propagates up to its workspace, so you can
-  see which project wants you even when you're elsewhere.
+- A tab that emits **BEL**, an **`OSC 9`** notification, or completes a
+  long-running command (**`OSC 133;D`** — see [Shell
+  integration](shell-integration.md)) while not in view raises an
+  **attention badge** that propagates up to its workspace.
+- The BEL byte that terminates an `OSC 0/2` *title* update doesn't count —
+  tools like Claude Code change their title constantly while working.
 
 ## Persistence
 

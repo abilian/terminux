@@ -141,7 +141,7 @@ def test_workspace_status_active() -> None:
     assert s.workspace_status(s.workspaces[0].id) == WorkspaceStatus.ACTIVE
 
 
-def test_workspace_status_exited_running_idle() -> None:
+def test_workspace_status_exited_unseen_idle() -> None:
     s = AppState.default()
     other = s.add_workspace()
     s.add_tab(other.id)
@@ -151,7 +151,7 @@ def test_workspace_status_exited_running_idle() -> None:
     # Mark a live terminal -> not exited; unseen -> RUNNING
     s.tabs[other.tab_ids[0]].terminal_id = "term-1"
     other.has_unseen_output = True
-    assert s.workspace_status(other.id) == WorkspaceStatus.RUNNING
+    assert s.workspace_status(other.id) == WorkspaceStatus.UNSEEN
     other.has_unseen_output = False
     assert s.workspace_status(other.id) == WorkspaceStatus.IDLE
 

@@ -18,6 +18,7 @@ nav = [
   { "Getting started" = "getting-started.md" },
   { "Workspaces & tabs" = "workspaces-and-tabs.md" },
   { "Keyboard shortcuts" = "keyboard-shortcuts.md" },
+  { "Shell integration" = "shell-integration.md" },
   { "Packaging & distribution" = "packaging.md" },
   { "Architecture" = "architecture.md" },
   { "Developing" = "developing.md" },

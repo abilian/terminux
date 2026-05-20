@@ -45,6 +45,10 @@ class UnixPty:
         env = dict(os.environ)
         env.setdefault("TERM", "xterm-256color")
         env["TERMINUX"] = "1"
+        # Lets shell-init snippets (OSC 133 integration, etc.) guard their
+        # setup on the host terminal — matches the iTerm2/Ghostty/wezterm
+        # convention.
+        env["TERM_PROGRAM"] = "terminux"
         self._proc = PtyProcess.spawn(
             argv,
             cwd=cwd,
