@@ -83,7 +83,7 @@ exclude_lines = [
 strict = true
 
 [[tool.mypy.overrides]]
-module = ["ptyprocess", "webview", "webview.*"]
+module = ["ptyprocess", "webview", "webview.*", "Foundation"]
 ignore_missing_imports = true
 
 #
@@ -95,4 +95,5 @@ ignore-missing-imports = [
     "ptyprocess",
     "webview",
     "webview.*",
+    "Foundation",
 ]

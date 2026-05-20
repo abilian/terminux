@@ -10,6 +10,7 @@ import argparse
 import contextlib
 import logging
 import socket
+import sys
 import threading
 import time
 from typing import cast
@@ -100,7 +101,35 @@ def _drop_paths(event: dict[str, object]) -> list[str]:
     return paths
 
 
+def _disable_macos_press_and_hold() -> None:
+    """Turn off macOS's accent-picker popup so vim's hjkl key-repeat works.
+
+    Without this, holding `j` or `k` for ~0.5 s pops up the accent
+    selector instead of repeating the key — the WKWebView text-input
+    layer hooks the same press-and-hold path Cocoa uses for regular text
+    fields. Every native terminal app (iTerm2, Alacritty, kitty, Ghostty)
+    flips this same default. The value persists for the host process's
+    bundle identifier; the packaged .app keeps its own preferences and
+    dev mode (`uv run terminux`) inherits Python's.
+    """
+    if sys.platform != "darwin":
+        return
+    try:
+        # Foundation ships with PyObjC on macOS (pulled in by pywebview);
+        # it's a dynamic Cocoa bridge that static checkers can't introspect.
+        from Foundation import (  # noqa: PLC0415
+            NSUserDefaults,  # ty: ignore[unresolved-import]  # pyrefly: ignore[missing-module-attribute]
+        )
+    except ImportError:
+        log.warning("pyobjc Foundation not available; press-and-hold left enabled")
+        return
+    NSUserDefaults.standardUserDefaults().setBool_forKey_(
+        False, "ApplePressAndHoldEnabled"
+    )
+
+
 def _run_windowed(url: str, ctl: AppController, server: uvicorn.Server) -> None:
+    _disable_macos_press_and_hold()
     import webview  # noqa: PLC0415  (heavy GUI import; only when windowing)
     from webview.dom import DOMEventHandler  # noqa: PLC0415
 
