@@ -109,6 +109,9 @@ class UiPrefs:
     font_size: int = 13
     # iTerm2-style: copy the selection to the clipboard as soon as it's made.
     copy_on_select: bool = False
+    # Persist each tab's xterm buffer on shutdown and replay it on restart
+    # (display-only — the shell itself is always fresh).
+    scrollback_persist: bool = True
     # Window geometry; None position means "let the OS place it".
     win_w: int = 1100
     win_h: int = 720
@@ -122,6 +125,7 @@ class UiPrefs:
             "sidebar_collapsed": self.sidebar_collapsed,
             "font_size": self.font_size,
             "copy_on_select": self.copy_on_select,
+            "scrollback_persist": self.scrollback_persist,
             "win_w": self.win_w,
             "win_h": self.win_h,
             "win_x": self.win_x,
@@ -140,6 +144,7 @@ class UiPrefs:
             sidebar_collapsed=bool(data.get("sidebar_collapsed")),
             font_size=int(data.get("font_size", 13)),
             copy_on_select=bool(data.get("copy_on_select")),
+            scrollback_persist=bool(data.get("scrollback_persist", True)),
             win_w=int(data.get("win_w", 1100)),
             win_h=int(data.get("win_h", 720)),
             win_x=_opt_int("win_x"),

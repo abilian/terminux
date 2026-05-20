@@ -239,6 +239,72 @@ def test_patch_ui_clamps_and_persists(server: LiveServer) -> None:
     assert ui()["copy_on_select"] is True
 
 
+def test_scrollback_endpoints(server: LiveServer) -> None:
+    base = server.url
+    st = _req(f"{base}/api/state?t={T}")
+    tab_id = st["workspaces"][0]["tab_ids"][0]
+
+    # Wire up file-backed storage in a tmp dir so we can verify lifecycle.
+    from terminux.core import persistence
+
+    ctl = server.controller
+    ctl._persist = True  # test-only: enables save/load/delete
+
+    tmp_root = Path(tempfile.mkdtemp(prefix="terminux-scrollback-"))
+    orig = persistence.state_path
+    persistence.state_path = lambda: tmp_root / "state.json"  # type: ignore[assignment]
+    try:
+        url = f"{base}/api/tabs/{tab_id}/scrollback?t={T}"
+        # No file yet — GET returns 200 with empty body.
+        assert _get(url) == b""
+        # PUT then GET round-trip.
+        urllib.request.urlopen(  # noqa: S310
+            urllib.request.Request(  # noqa: S310
+                url,
+                method="PUT",
+                data=b"hello\x1b[1mworld\x1b[0m",
+            ),
+        ).read()
+        assert _get(url) == b"hello\x1b[1mworld\x1b[0m"
+        # DELETE then GET → empty again.
+        _req(url, "DELETE", b"")
+        assert _get(url) == b""
+        # Deleting the tab purges its scrollback.
+        urllib.request.urlopen(  # noqa: S310
+            urllib.request.Request(url, method="PUT", data=b"more"),  # noqa: S310
+        ).read()
+        _req(f"{base}/api/tabs/{tab_id}?t={T}", "DELETE")
+        # GET on a gone tab is 404.
+        try:
+            _get(url)
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 404
+        # No scrollback files left behind.
+        sb = tmp_root / "scrollback"
+        assert not sb.exists() or not list(sb.glob("*.ansi"))
+
+        # Opt-out: with scrollback_persist disabled, PUT is a silent no-op.
+        ws_id = _req(f"{base}/api/state?t={T}")["workspaces"][0]["id"]
+        new_tab = _req(
+            f"{base}/api/workspaces/{ws_id}/tabs?t={T}",
+            "POST",
+            b"{}",
+        )["id"]
+        _req(
+            f"{base}/api/ui?t={T}",
+            "PATCH",
+            json.dumps({"scrollback_persist": False}).encode(),
+        )
+        new_url = f"{base}/api/tabs/{new_tab}/scrollback?t={T}"
+        urllib.request.urlopen(  # noqa: S310
+            urllib.request.Request(new_url, method="PUT", data=b"silenced"),  # noqa: S310
+        ).read()
+        assert _get(new_url) == b""
+    finally:
+        persistence.state_path = orig  # type: ignore[assignment]
+        ctl._persist = False
+
+
 def test_tab_order_reorders_and_sanitizes(server: LiveServer) -> None:
     base = server.url
     st = _req(f"{base}/api/state?t={T}")

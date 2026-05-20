@@ -2,18 +2,32 @@
 
 ## What state survives a restart?
 
-The **layout**: workspaces, tabs, window geometry, sidebar width/collapsed
-state, terminal font size, and each shell's last working directory. On restart
-every tab respawns a **fresh shell** in that directory (falling back to the
-default if it no longer exists).
+- The **layout**: workspaces, tabs, window geometry, sidebar width/collapsed
+  state, terminal font size, and each shell's last working directory.
+- Each tab's **scrollback** (last ~5000 lines), replayed into a fresh terminal
+  on restart with a dim `──── session resumed @ <time> ────` separator so the
+  boundary between old output and the new shell is obvious.
 
-Running processes and scrollback are **not** restored — terminux persists
-structure, not live processes.
+Every tab respawns a **fresh shell** in the saved directory — running
+processes are *not* restored. terminux persists what was on screen, not what
+was running.
 
-## Is scrollback persistence planned?
+## Can I turn scrollback persistence off?
 
-Yes, it's a known roadmap item, along with split panes, client/server detach,
-and a Windows PTY backend.
+Yes. It defaults to **on**, capped at 2 MB per tab, and the files are deleted
+when the tab or workspace is closed. To disable it entirely:
+
+```sh
+curl -X PATCH "http://127.0.0.1:<port>/api/ui?t=<token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"scrollback_persist": false}'
+```
+
+The pref is persisted server-side, so it sticks across restarts.
+
+## What about split panes and Windows?
+
+Both are still on the roadmap, along with client/server detach.
 
 ## Does terminux work on Windows?
 

@@ -17,7 +17,14 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocketDisconnect
 
 from terminux.core.model import AppState, Workspace
-from terminux.core.persistence import load_state, save_state
+from terminux.core.persistence import (
+    SCROLLBACK_MAX_BYTES,
+    delete_scrollback,
+    load_scrollback,
+    load_state,
+    save_scrollback,
+    save_state,
+)
 from terminux.core.shellprobe import default_cwd, default_shell
 from terminux.core.terminal import Subscriber, Terminal, TerminalRegistry
 from terminux.server.auth import SESSION_TOKEN, token_ok
@@ -65,6 +72,22 @@ class AppController:
             return
         self._snapshot_cwds()
         save_state(self.state)
+
+    def save_scrollback(self, tab_id: str, content: str) -> None:
+        if not self._persist or not self.state.ui.scrollback_persist:
+            return
+        save_scrollback(tab_id, content)
+
+    def load_scrollback(self, tab_id: str) -> str | None:
+        if not self._persist or not self.state.ui.scrollback_persist:
+            return None
+        return load_scrollback(tab_id)
+
+    def delete_scrollback(self, tab_id: str) -> None:
+        # Always best-effort delete (even with persist=False, in case the
+        # pref was toggled mid-run and a stale file lingers).
+        if self._persist:
+            delete_scrollback(tab_id)
 
     def _snapshot_cwds(self) -> None:
         """Capture each live shell's cwd so a restart can respawn there."""
@@ -273,23 +296,22 @@ class Api:
         if (deny := _deny(request)) is not None:
             return deny
         ws_id = request.path_params["ws_id"]
-        # Collect terminal ids BEFORE removal — remove_workspace drops the
-        # tabs from state, so their terminal ids must be read first or the
-        # shell processes leak.
+        # Collect terminal ids and tab ids BEFORE removal — remove_workspace
+        # drops the tabs from state, so we need the references first (and a
+        # deliberate close also drops the saved scrollback for each tab).
         ws = self.ctl.state.get_workspace(ws_id)
-        term_ids = (
-            [
-                tab.terminal_id
-                for tid in ws.tab_ids
-                if (tab := self.ctl.state.tabs.get(tid)) is not None
-                and tab.terminal_id is not None
-            ]
-            if ws is not None
-            else []
-        )
+        tab_ids: list[str] = list(ws.tab_ids) if ws is not None else []
+        term_ids = [
+            tab.terminal_id
+            for tid in tab_ids
+            if (tab := self.ctl.state.tabs.get(tid)) is not None
+            and tab.terminal_id is not None
+        ]
         self.ctl.state.remove_workspace(ws_id)
         for term_id in term_ids:
             self.ctl.terminals.close(term_id)
+        for tid in tab_ids:
+            self.ctl.delete_scrollback(tid)
         if not self.ctl.state.workspaces:
             ws = self.ctl.state.add_workspace(name="workspace 1")
             self.ctl.state.add_tab(ws.id)
@@ -334,7 +356,12 @@ class Api:
             ui.sidebar_width = max(120, min(600, int(body["sidebar_width"])))
         if "font_size" in body:
             ui.font_size = max(6, min(32, int(body["font_size"])))
-        for k in ("sidebar_collapsed", "copy_on_select", "win_maximized"):
+        for k in (
+            "sidebar_collapsed",
+            "copy_on_select",
+            "scrollback_persist",
+            "win_maximized",
+        ):
             if k in body:
                 setattr(ui, k, bool(body[k]))
         for k in ("win_w", "win_h"):
@@ -354,7 +381,42 @@ class Api:
         if tab is not None and tab.terminal_id is not None:
             self.ctl.terminals.close(tab.terminal_id)
         self.ctl.state.remove_tab(tab_id)
+        # Deliberate close drops the captured scrollback too; restart-in-place
+        # uses the dedicated DELETE /scrollback endpoint.
+        self.ctl.delete_scrollback(tab_id)
         self.ctl.save()
+        return JSONResponse({"ok": True})
+
+    async def get_scrollback(self, request: Request) -> Response:
+        if (deny := _deny(request)) is not None:
+            return deny
+        tab_id = request.path_params["tab_id"]
+        if self.ctl.state.tabs.get(tab_id) is None:
+            return PlainTextResponse("", status_code=404)
+        content = self.ctl.load_scrollback(tab_id) or ""
+        return PlainTextResponse(content)
+
+    async def put_scrollback(self, request: Request) -> Response:
+        if (deny := _deny(request)) is not None:
+            return deny
+        tab_id = request.path_params["tab_id"]
+        if self.ctl.state.tabs.get(tab_id) is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        if not self.ctl.state.ui.scrollback_persist:
+            # Pref disabled: accept silently so the client doesn't retry.
+            return JSONResponse({"ok": True})
+        body = await request.body()
+        if len(body) > SCROLLBACK_MAX_BYTES * 2:
+            # Reject obviously-oversized payloads up front; the helper still
+            # tail-trims to the on-disk cap.
+            return JSONResponse({"error": "too large"}, status_code=413)
+        self.ctl.save_scrollback(tab_id, body.decode("utf-8", errors="replace"))
+        return JSONResponse({"ok": True})
+
+    async def delete_scrollback(self, request: Request) -> Response:
+        if (deny := _deny(request)) is not None:
+            return deny
+        self.ctl.delete_scrollback(request.path_params["tab_id"])
         return JSONResponse({"ok": True})
 
     async def spawn(self, request: Request) -> Response:
@@ -452,6 +514,21 @@ def build_app(*, persist: bool = True) -> Starlette:
         Route("/api/tabs/{tab_id}", api.patch_tab, methods=["PATCH"]),
         Route("/api/tabs/{tab_id}", api.delete_tab, methods=["DELETE"]),
         Route("/api/tabs/{tab_id}/spawn", api.spawn, methods=["POST"]),
+        Route(
+            "/api/tabs/{tab_id}/scrollback",
+            api.get_scrollback,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/tabs/{tab_id}/scrollback",
+            api.put_scrollback,
+            methods=["PUT"],
+        ),
+        Route(
+            "/api/tabs/{tab_id}/scrollback",
+            api.delete_scrollback,
+            methods=["DELETE"],
+        ),
         Route("/api/ui", api.patch_ui, methods=["PATCH"]),
         WebSocketRoute("/pty/{terminal_id}", api.pty_ws),
     ]

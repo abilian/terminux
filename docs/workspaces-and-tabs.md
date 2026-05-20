@@ -41,7 +41,8 @@ Each tab is an interactive terminal backed by its own real PTY shell.
 
 ## Persistence
 
-terminux saves **structure**, not live processes.
+terminux saves **structure** and the **visible buffer** — never live
+processes.
 
 What persists across restarts:
 
@@ -49,14 +50,26 @@ What persists across restarts:
 - Window geometry, sidebar width and collapsed state, terminal font size —
   stored server-side so they survive the loopback port changing each run.
 - Each shell's last working directory.
+- **Each tab's scrollback** (last ~5000 lines), captured periodically and on
+  shutdown. On restart it's replayed into a fresh terminal followed by a dim
+  `──── session resumed @ <time> ────` separator, then the new shell starts
+  underneath.
 
 On restart, every tab respawns a **fresh shell** in the directory it was in at
-exit. If that directory no longer exists, it falls back to the default.
+exit. If that directory no longer exists, it falls back to the default. The
+restored scrollback is **display-only** — it's text, not state: commands shown
+above the separator are *not* still running.
+
+!!! note "Privacy"
+    Scrollback can contain secrets (tokens echoed by a CLI, `cat secret.env`,
+    etc.). Files are stored locally only, capped at 2 MB per tab, and
+    deleted when the tab or workspace is closed. To disable persistence
+    entirely, set `scrollback_persist` to false via `PATCH /api/ui`.
 
 !!! warning "Not persisted"
-    Running processes and terminal scrollback are **not** saved. State is
-    written atomically and versioned. Scrollback persistence is on the roadmap —
-    see the [FAQ](faq.md).
+    Running processes are **not** restored — only their visible output.
+    Split panes, client/server detach, and Windows PTY are still on the
+    roadmap (see `notes/technical-spec.md` §11–§14).
 
 ## Input integrations
 

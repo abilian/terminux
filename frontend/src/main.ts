@@ -13,7 +13,7 @@ import { isReordering } from "./reorder";
 import { applyLayout, installSidebarResizer } from "./layout";
 import { renderSidebar } from "./sidebar";
 import { activeWorkspace, configure, poll, refresh, sessions } from "./store";
-import { ensureActiveTerminal } from "./terminal";
+import { ensureActiveTerminal, installScrollbackAutosave } from "./terminal";
 import { renderTabs } from "./tabs";
 
 configure({
@@ -44,6 +44,7 @@ installFind();
 installPalette();
 installShortcuts();
 installDragAndDrop();
+installScrollbackAutosave();
 
 // Light status polling so sidebar dots reflect background activity.
 setInterval(() => {

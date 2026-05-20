@@ -27,6 +27,7 @@ export interface StateView {
     sidebar_collapsed: boolean;
     font_size: number;
     copy_on_select: boolean;
+    scrollback_persist: boolean;
   };
 }
 

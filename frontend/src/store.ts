@@ -3,6 +3,7 @@
 
 import type { FitAddon } from "@xterm/addon-fit";
 import type { SearchAddon } from "@xterm/addon-search";
+import type { SerializeAddon } from "@xterm/addon-serialize";
 import type { Terminal } from "@xterm/xterm";
 
 import { api } from "./api";
@@ -12,9 +13,13 @@ export interface Session {
   term: Terminal;
   fit: FitAddon;
   search: SearchAddon;
+  serialize: SerializeAddon;
   ws: WebSocket;
   host: HTMLDivElement;
   exited: boolean;
+  // Marked when PTY output arrives; the periodic save loop clears it after
+  // persisting the buffer.
+  dirty: boolean;
 }
 
 // One live xterm per tab, kept alive while hidden (dormant streaming).

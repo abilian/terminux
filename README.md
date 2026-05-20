@@ -44,8 +44,9 @@ That's it. You're in.
   the active shell's working directory automatically (until you pin one).
 - **Tabbed terminals** — every workspace has its own tabs, each a real PTY
   shell. Switch freely; background tabs keep streaming, no jank.
-- **Survives restarts** — workspaces, tabs, window geometry, font size, and
-  each shell's working directory all come back. Fresh shells, same layout.
+- **Survives restarts** — workspaces, tabs, window geometry, font size, each
+  shell's working directory, and *the visible scrollback of every tab* all
+  come back. Fresh shells, same layout, same view you left.
 - **Keyboard-first** — sidebar shows a keycap on each of the first nine
   workspaces; jump straight there with `Cmd/Ctrl+1..9`. Plus a fuzzy
   quick-switcher (`Cmd/Ctrl+P`), find-in-terminal, font zoom, and more.
@@ -125,8 +126,7 @@ status dot), tabs with multiple live terminals, real PTY shells over a
 per-terminal WebSocket, background streaming, structure persisted to disk
 (fresh shells on restart), per-session loopback token, macOS & Linux bundles.
 
-**Not yet:** split panes, client/server detach, Windows PTY, scrollback
-persistence.
+**Not yet:** split panes, client/server detach, Windows PTY.
 
 ## Architecture in one breath
 
