@@ -63,3 +63,9 @@ exit. If that directory no longer exists, it falls back to the default.
 - **Drag a file** onto the terminal to insert its full, shell-quoted path.
 - macOS line-editing chords and `Shift+Cmd`+arrow navigation are supported;
   `Shift+Enter` inserts a newline (works with Claude Code and similar tools).
+- **Clickable URLs.** URLs in the terminal are highlighted on hover and open
+  with `Cmd/Ctrl+click` — matching iTerm2 and Terminal.app, so a stray click
+  never navigates.
+- **Auto-copy on select** (iTerm2-style) is available as a persisted
+  preference; off by default. Toggle with `Cmd/Ctrl+Alt+C` (see
+  [Keyboard shortcuts](keyboard-shortcuts.md)).

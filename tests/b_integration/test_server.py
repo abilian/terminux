@@ -229,6 +229,14 @@ def test_patch_ui_clamps_and_persists(server: LiveServer) -> None:
         json.dumps({"sidebar_collapsed": True}).encode(),
     )
     assert ui()["sidebar_collapsed"] is True
+    # copy_on_select defaults off and round-trips.
+    assert ui()["copy_on_select"] is False
+    _req(
+        f"{base}/api/ui?t={T}",
+        "PATCH",
+        json.dumps({"copy_on_select": True}).encode(),
+    )
+    assert ui()["copy_on_select"] is True
 
 
 def test_tab_order_reorders_and_sanitizes(server: LiveServer) -> None:

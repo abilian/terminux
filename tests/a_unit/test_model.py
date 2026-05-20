@@ -190,16 +190,25 @@ def test_from_json_defaults_for_missing_fields() -> None:
     assert ui.win_w == 1100
     assert ui.win_x is None
     assert ui.win_maximized is False
+    assert ui.copy_on_select is False
 
 
 def test_uiprefs_window_round_trip() -> None:
     ui = UiPrefs.from_json(
-        {"sidebar_width": 300, "win_w": 1280, "win_h": 800, "win_x": 42, "win_y": 7},
+        {
+            "sidebar_width": 300,
+            "win_w": 1280,
+            "win_h": 800,
+            "win_x": 42,
+            "win_y": 7,
+            "copy_on_select": True,
+        },
     )
     again = UiPrefs.from_json(ui.to_json())
     assert again.sidebar_width == 300
     assert (again.win_w, again.win_h) == (1280, 800)
     assert (again.win_x, again.win_y) == (42, 7)
+    assert again.copy_on_select is True
 
 
 def test_repair_drops_dangling_and_guarantees_baseline() -> None:

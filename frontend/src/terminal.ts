@@ -3,6 +3,7 @@
 
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 
 import { api } from "./api";
@@ -11,6 +12,7 @@ import { getFontSize } from "./font";
 import { createKitty } from "./kitty";
 import {
   activeWorkspace,
+  getState,
   poll,
   refresh,
   type Session,
@@ -50,6 +52,14 @@ async function openTerminal(tid: string): Promise<void> {
   term.loadAddon(fit);
   const search = new SearchAddon();
   term.loadAddon(search);
+  // URLs are highlighted on hover; require a modifier to open, matching
+  // iTerm2 / Terminal.app conventions so a stray click can't navigate.
+  term.loadAddon(
+    new WebLinksAddon((event, uri) => {
+      if (event.metaKey || event.ctrlKey)
+        window.open(uri, "_blank", "noopener,noreferrer");
+    }),
+  );
   term.open(host);
   fit.fit();
 
@@ -71,6 +81,14 @@ async function openTerminal(tid: string): Promise<void> {
   };
   const sess: Session = { term, fit, search, ws, host, exited: false };
   sessions.set(tid, sess);
+
+  // Auto-copy on selection (iTerm2-style), gated by the persisted pref. We
+  // read the pref live each time so a toggle takes effect immediately.
+  term.onSelectionChange(() => {
+    if (!getState()?.ui.copy_on_select) return;
+    const sel = term.getSelection();
+    if (sel) void navigator.clipboard?.writeText(sel);
+  });
 
   // OSC 0/2 title from the shell tracks the tab name (unless pinned).
   let lastTitle = "";

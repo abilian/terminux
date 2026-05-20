@@ -46,8 +46,12 @@ That's it. You're in.
   shell. Switch freely; background tabs keep streaming, no jank.
 - **Survives restarts** — workspaces, tabs, window geometry, font size, and
   each shell's working directory all come back. Fresh shells, same layout.
-- **Keyboard-first** — jump to a workspace with `Cmd/Ctrl+1..9`, fuzzy
-  quick-switcher on `Cmd/Ctrl+P`, find-in-terminal, font zoom, and more.
+- **Keyboard-first** — sidebar shows a keycap on each of the first nine
+  workspaces; jump straight there with `Cmd/Ctrl+1..9`. Plus a fuzzy
+  quick-switcher (`Cmd/Ctrl+P`), find-in-terminal, font zoom, and more.
+- **Clickable URLs & iTerm2-style copy** — `Cmd/Ctrl+click` opens links;
+  optional auto-copy on selection (`Cmd/Ctrl+Alt+C` toggle, persisted, off by
+  default).
 - **Attention that finds you** — background activity indicators; BEL or
   `OSC 9` on an off-screen tab raises a badge that bubbles up to its workspace.
 - **Drag & drop** — reorder workspaces and tabs with live drop feedback

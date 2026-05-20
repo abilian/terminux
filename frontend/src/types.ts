@@ -22,7 +22,12 @@ export interface StateView {
   workspaces: WorkspaceView[];
   tabs: Record<string, TabView>;
   active_workspace_id: string | null;
-  ui: { sidebar_width: number; sidebar_collapsed: boolean; font_size: number };
+  ui: {
+    sidebar_width: number;
+    sidebar_collapsed: boolean;
+    font_size: number;
+    copy_on_select: boolean;
+  };
 }
 
 declare global {

@@ -332,18 +332,17 @@ class Api:
         ui = self.ctl.state.ui
         if "sidebar_width" in body:
             ui.sidebar_width = max(120, min(600, int(body["sidebar_width"])))
-        if "sidebar_collapsed" in body:
-            ui.sidebar_collapsed = bool(body["sidebar_collapsed"])
         if "font_size" in body:
             ui.font_size = max(6, min(32, int(body["font_size"])))
+        for k in ("sidebar_collapsed", "copy_on_select", "win_maximized"):
+            if k in body:
+                setattr(ui, k, bool(body[k]))
         for k in ("win_w", "win_h"):
             if k in body:
                 setattr(ui, k, max(200, int(body[k])))
         for k in ("win_x", "win_y"):
             if k in body:
                 setattr(ui, k, None if body[k] is None else int(body[k]))
-        if "win_maximized" in body:
-            ui.win_maximized = bool(body["win_maximized"])
         self.ctl.save()
         return JSONResponse({"ok": True})
 

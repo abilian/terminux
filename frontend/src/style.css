@@ -68,6 +68,27 @@ body {
 .ws-row.active {
   background: rgba(122, 162, 247, 0.16);
 }
+.ws-row .slot {
+  flex: 0 0 auto;
+  width: 18px;
+  text-align: center;
+  font: 10px/1 ui-monospace, Menlo, Consolas, monospace;
+}
+.ws-row .slot.keycap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 16px;
+  color: var(--dim);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.25);
+}
+.ws-row.active .slot.keycap {
+  color: var(--fg);
+  border-color: var(--accent);
+}
 .ws-row .name {
   flex: 1 1 auto;
   overflow: hidden;

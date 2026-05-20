@@ -39,3 +39,13 @@ one rather than quitting the app.
 - macOS line-editing chords are supported.
 - `Shift+Cmd` + arrow keys for navigation.
 - ++shift+enter++ inserts a newline (works with Claude Code and similar tools).
+
+## Selection & links
+
+| Action | macOS | Linux |
+| --- | --- | --- |
+| Toggle auto-copy on select (iTerm2-style) | ++cmd+alt+c++ | ++ctrl+alt+c++ |
+| Open URL under cursor | ++cmd+click++ | ++ctrl+click++ |
+
+Auto-copy is **off by default**; toggling persists the preference across
+restarts. Linux users who rely on middle-click paste can leave it off.

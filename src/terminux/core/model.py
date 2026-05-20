@@ -107,6 +107,8 @@ class UiPrefs:
     sidebar_width: int = 220
     sidebar_collapsed: bool = False
     font_size: int = 13
+    # iTerm2-style: copy the selection to the clipboard as soon as it's made.
+    copy_on_select: bool = False
     # Window geometry; None position means "let the OS place it".
     win_w: int = 1100
     win_h: int = 720
@@ -119,6 +121,7 @@ class UiPrefs:
             "sidebar_width": self.sidebar_width,
             "sidebar_collapsed": self.sidebar_collapsed,
             "font_size": self.font_size,
+            "copy_on_select": self.copy_on_select,
             "win_w": self.win_w,
             "win_h": self.win_h,
             "win_x": self.win_x,
@@ -136,6 +139,7 @@ class UiPrefs:
             sidebar_width=int(data.get("sidebar_width", 220)),
             sidebar_collapsed=bool(data.get("sidebar_collapsed")),
             font_size=int(data.get("font_size", 13)),
+            copy_on_select=bool(data.get("copy_on_select")),
             win_w=int(data.get("win_w", 1100)),
             win_h=int(data.get("win_h", 720)),
             win_x=_opt_int("win_x"),

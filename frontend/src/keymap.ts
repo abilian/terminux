@@ -19,7 +19,15 @@ export function installShortcuts(): void {
       if (!mod) return;
       const ws = activeWorkspace();
       const state = getState();
-      if (e.key === "=" || e.key === "+") {
+      if (e.altKey && (e.key === "c" || e.key === "C" || e.code === "KeyC")) {
+        // Cmd/Ctrl+Alt+C — toggle iTerm2-style auto-copy on selection.
+        e.preventDefault();
+        const next = !state?.ui.copy_on_select;
+        api("/ui", {
+          method: "PATCH",
+          body: JSON.stringify({ copy_on_select: next }),
+        }).then(refresh);
+      } else if (e.key === "=" || e.key === "+") {
         e.preventDefault();
         applyFontSize(getFontSize() + 1);
       } else if (e.key === "-" || e.key === "_") {

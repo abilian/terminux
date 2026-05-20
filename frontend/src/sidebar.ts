@@ -13,10 +13,20 @@ export function renderSidebar(): void {
   const list = document.getElementById("ws-list");
   if (!state || !list) return;
   list.innerHTML = "";
-  for (const w of state.workspaces) {
+  state.workspaces.forEach((w, idx) => {
     const row = document.createElement("div");
     row.className =
       "ws-row" + (w.id === state.active_workspace_id ? " active" : "");
+
+    // Slot 1-9 surfaces the Cmd/Ctrl+<N> shortcut; later slots get a blank
+    // spacer so the names still line up.
+    const slot = document.createElement("span");
+    slot.className = "slot";
+    if (idx < 9) {
+      slot.classList.add("keycap");
+      slot.textContent = String(idx + 1);
+    }
+    row.appendChild(slot);
 
     const dot = document.createElement("span");
     if (w.attention && w.id !== state.active_workspace_id) {
@@ -97,7 +107,7 @@ export function renderSidebar(): void {
       );
     }
     list.appendChild(row);
-  }
+  });
 }
 
 // cmux parity: closing the last tab closes the workspace; the backend then
