@@ -42,13 +42,55 @@ function resumedSeparator(): string {
   return `\r\n\x1b[2m──── session resumed @ ${ts} ────\x1b[0m\r\n`;
 }
 
-async function fetchScrollback(tid: string): Promise<string> {
+interface SavedScrollback {
+  content: string;
+  // Dimensions the buffer was captured at — used to construct the fresh
+  // xterm at the same size so the post-write fit() reflows cleanly.
+  // Missing for legacy (pre-v2) saves; the caller falls back to defaults.
+  cols?: number;
+  rows?: number;
+}
+
+async function fetchScrollback(tid: string): Promise<SavedScrollback | null> {
   try {
     const r = await api(`/tabs/${tid}/scrollback`);
-    if (!r.ok) return "";
-    return await r.text();
+    if (!r.ok) return null;
+    const body = await r.text();
+    if (!body) return null;
+    // v2 format: a one-line JSON header ({"v":2,"cols":…,"rows":…}\n) then
+    // the raw ANSI. v1 saves had no header — fall through to legacy.
+    if (body.charCodeAt(0) === 0x7b /* '{' */) {
+      const nl = body.indexOf("\n");
+      if (nl > 0) {
+        try {
+          const head = JSON.parse(body.slice(0, nl)) as {
+            v?: number;
+            cols?: number;
+            rows?: number;
+          };
+          if (
+            head.v === 2 &&
+            typeof head.cols === "number" &&
+            typeof head.rows === "number"
+          ) {
+            return {
+              content: body.slice(nl + 1),
+              cols: head.cols,
+              rows: head.rows,
+            };
+          }
+        } catch {
+          /* malformed header — fall through */
+        }
+      }
+    }
+    // Pre-v2 (no header) or unrecognized: drop it. Replaying raw v1 bytes
+    // into a default-sized xterm was the garble bug; the next save will
+    // overwrite with a clean v2 envelope.
+    discardScrollback(tid);
+    return null;
   } catch {
-    return "";
+    return null;
   }
 }
 
@@ -83,10 +125,18 @@ async function openTerminal(tid: string, restore = true): Promise<void> {
   host.className = "term-host";
   document.getElementById("terminals")?.appendChild(host);
 
+  // Fetch first so we can size the buffer to match the captured session.
+  // Per SerializeAddon: write into a terminal of the same size and resize
+  // after — otherwise the post-fit reflow garbles the layout (lines wrap
+  // at xterm's default 80 cols then never un-wrap correctly).
+  const saved = restore ? await fetchScrollback(tid) : null;
+
   const term = new Terminal({
     fontFamily: "Menlo, Consolas, monospace",
     fontSize: getFontSize(),
     cursorBlink: true,
+    cols: saved?.cols,
+    rows: saved?.rows,
     theme: { background: "#1a1b26", foreground: "#c0caf5" },
   });
   const fit = new FitAddon();
@@ -113,12 +163,9 @@ async function openTerminal(tid: string, restore = true): Promise<void> {
   // the buffer first, then rendering starts on a settled state — and the
   // separator lands on the shell's main buffer, not whatever alt-screen
   // mode the previous session might have been carrying.
-  if (restore) {
-    const saved = await fetchScrollback(tid);
-    if (saved) {
-      term.write(saved);
-      term.write(resumedSeparator());
-    }
+  if (saved) {
+    term.write(saved.content);
+    term.write(resumedSeparator());
   }
 
   term.open(host);
@@ -266,7 +313,15 @@ function flushScrollback(force = false): void {
       excludeAltBuffer: true,
       excludeModes: true,
     });
-    persistScrollback(tid, content);
+    // v2 envelope: a single JSON header line carrying the buffer's cols/rows
+    // so the next launch can construct xterm at the original size and let
+    // fit() reflow cleanly toward the new viewport.
+    const header = JSON.stringify({
+      v: 2,
+      cols: s.term.cols,
+      rows: s.term.rows,
+    });
+    persistScrollback(tid, `${header}\n${content}`);
     s.dirty = false;
   }
 }
