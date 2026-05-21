@@ -98,6 +98,9 @@ function ensure(): void {
 
   card = document.createElement("div");
   card.id = "stats-card";
+  // Focusable so Escape lands on the overlay, not on the still-focused
+  // xterm textarea (which would otherwise eat ESC and feed it to the shell).
+  card.tabIndex = -1;
   headerEl = document.createElement("div");
   headerEl.className = "stats-header";
   bodyEl = document.createElement("div");
@@ -106,13 +109,21 @@ function ensure(): void {
   overlay.appendChild(card);
   document.body.appendChild(overlay);
 
-  document.addEventListener("keydown", (e) => {
-    if (overlay?.hidden) return;
-    if (e.key === "Escape") {
-      e.stopPropagation();
-      closeStatsPanel();
-    }
-  });
+  // Capture phase: xterm's textarea consumes Escape in its own keydown,
+  // so we have to run before it bubbles. The keymap module uses the same
+  // capture-phase pattern for the global app shortcuts.
+  window.addEventListener(
+    "keydown",
+    (e: KeyboardEvent) => {
+      if (overlay?.hidden) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        closeStatsPanel();
+      }
+    },
+    true,
+  );
 }
 
 export function installStatsPanel(): void {
@@ -121,9 +132,10 @@ export function installStatsPanel(): void {
 
 export function openStatsPanel(): void {
   ensure();
-  if (!overlay) return;
+  if (!overlay || !card) return;
   render();
   overlay.hidden = false;
+  card.focus();
 }
 
 export function closeStatsPanel(): void {
