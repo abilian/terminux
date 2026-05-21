@@ -14,7 +14,10 @@ export interface WorkspaceView {
   name: string;
   tab_ids: string[];
   active_tab_id: string | null;
-  status: "active" | "unseen" | "idle" | "exited";
+  // "busy" is the working state — promoted into the idle slot when a
+  // foreground task is running and nothing more urgent (unseen/exited)
+  // applies. Priority: active > exited > unseen > busy > idle.
+  status: "active" | "unseen" | "busy" | "idle" | "exited";
   attention: boolean;
 }
 

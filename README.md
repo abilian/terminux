@@ -53,6 +53,9 @@ That's it. You're in.
 - **Clickable URLs & iTerm2-style copy** — `Cmd/Ctrl+click` opens links;
   optional auto-copy on selection (`Cmd/Ctrl+Alt+C` toggle, persisted, off by
   default).
+- **Working vs ready** — sidebar status dot turns amber while a
+  workspace is running a foreground task; green wins for unseen output;
+  reads at a glance like a CI traffic light.
 - **Attention that finds you** — background activity indicators; BEL or
   `OSC 9` on an off-screen tab raises a badge that bubbles up to its workspace.
 - **Drag & drop** — reorder workspaces and tabs with live drop feedback

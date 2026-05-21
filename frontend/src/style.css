@@ -7,6 +7,7 @@
   --dim: #565f89;
   --accent: #7aa2f7;
   --running: #9ece6a;
+  --busy: #e0af68;
   --border: #2a2b3d;
 }
 * {
@@ -139,6 +140,9 @@ body {
 }
 .dot.unseen {
   background: var(--running);
+}
+.dot.busy {
+  background: var(--busy);
 }
 .dot.idle {
   background: transparent;

@@ -32,6 +32,25 @@ Each tab is an interactive terminal backed by its own real PTY shell.
 - **Background tabs keep streaming.** Switching workspaces or tabs preserves all
   running sessions; output continues with no switch jank.
 
+## Working vs ready
+
+The sidebar status dot turns **amber** when a workspace has a foreground
+task running and nothing more urgent applies — same color language as CI
+dashboards (green = result for you, amber = wait, empty = nothing here).
+Priority is **active > exited > unseen > busy > idle**: `unseen` (green)
+already says "go check this," so it wins over `busy` (amber). The signal
+sources, in order of preference:
+
+1. **`OSC 133;C` / `;D`** when [shell integration](shell-integration.md) is
+   set up — the shell itself tells terminux when a command begins and ends.
+2. **`tcgetpgrp` on the PTY**, comparing the foreground process group to the
+   shell's pid — works with no setup. Interactive TUIs (vim, less, fzf, …)
+   register as "working" while focused; OSC 133 gives the more precise
+   behavior if you want it.
+
+State is recomputed each time the frontend polls `/api/state` (~every 2 s);
+no separate poll task.
+
 ## Attention & activity
 
 - Background tabs that produce output show an **activity indicator**.

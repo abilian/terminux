@@ -22,6 +22,7 @@ class _FakeLoop:
 
 class _FakePty:
     fd = 7
+    pid = 4242
 
     def __init__(self, code: int | None = 3) -> None:
         self._code = code
@@ -158,6 +159,50 @@ def test_osc_split_across_reads_does_not_fire(monkeypatch) -> None:
     monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"tial\x07")
     t._on_readable()
     assert hits == []
+
+
+def test_is_busy_uses_tcgetpgrp_when_no_osc133(monkeypatch) -> None:
+    """Without shell integration, is_busy() compares the foreground process
+    group to the shell's pid: same → ready (at the prompt); different →
+    busy (a child is foregrounded)."""
+    t = _bare_terminal(_FakeLoop(), _FakePty())
+
+    monkeypatch.setattr(term_mod.os, "tcgetpgrp", lambda _fd: t._pty.pid)
+    assert t.is_busy() is False  # fg pgrp == shell pid → ready
+
+    monkeypatch.setattr(term_mod.os, "tcgetpgrp", lambda _fd: 9999)
+    assert t.is_busy() is True  # something else is foregrounded → busy
+
+    # tcgetpgrp raising → defensively False, never busy on a broken fd.
+    def boom(_fd: int) -> int:
+        raise OSError
+
+    monkeypatch.setattr(term_mod.os, "tcgetpgrp", boom)
+    assert t.is_busy() is False
+
+    # An exited terminal is never busy regardless of fg pgrp.
+    t._exited = True
+    monkeypatch.setattr(term_mod.os, "tcgetpgrp", lambda _fd: 9999)
+    assert t.is_busy() is False
+
+
+def test_is_busy_trusts_osc133_once_seen(monkeypatch) -> None:
+    """Once any OSC 133 sequence has come through, the OSC state takes
+    precedence over tcgetpgrp — the shell is the authoritative source."""
+    t = _bare_terminal(_FakeLoop(), _FakePty())
+    # tcgetpgrp would say "busy", but we'll override via OSC 133.
+    monkeypatch.setattr(term_mod.os, "tcgetpgrp", lambda _fd: 9999)
+
+    # OSC 133;C → inside a command → busy, regardless of tcgetpgrp.
+    monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"\x1b]133;C\x07")
+    t.subscribe()
+    t._on_readable()
+    assert t.is_busy() is True
+
+    # OSC 133;D → back at the prompt → ready, even though tcgetpgrp lies.
+    monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"\x1b]133;D;0\x07")
+    t._on_readable()
+    assert t.is_busy() is False
 
 
 def test_osc133_fires_only_for_long_commands(monkeypatch) -> None:

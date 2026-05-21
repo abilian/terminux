@@ -32,6 +32,9 @@ flow.
   and per-shell working directories survive restarts.
 - **Keyboard-first** — workspace jumps, fuzzy quick-switcher, find-in-terminal,
   font zoom. See [Keyboard shortcuts](keyboard-shortcuts.md).
+- **Working vs ready** — the sidebar status dot turns amber while a
+  workspace has a foreground task running (green wins when there's unseen
+  output to look at, so the dot reads like a CI traffic light).
 - **Attention routing** — background activity indicators; BEL / `OSC 9` on an
   off-screen tab raises a badge that bubbles up to its workspace.
 - **Local-first & hardened** — loopback-only by default, per-session auth token,

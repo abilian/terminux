@@ -23,6 +23,10 @@ finishes. Set it up once and:
   per-tab visibility).
 - Quick commands (`cd`, `ls` — anything under ~2 seconds) stay silent;
   only commands worth waiting for raise the badge.
+- The sidebar's amber **busy** dot (see
+  [Working vs ready](workspaces-and-tabs.md#working-vs-ready)) becomes
+  precise: it lights only between the shell's `;C` and `;D` markers,
+  instead of flagging every interactive TUI as "running."
 
 You need a small snippet in your shell init file. Pick yours:
 

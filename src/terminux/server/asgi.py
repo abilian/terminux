@@ -173,13 +173,29 @@ class AppController:
         return path.name or ws.name
 
     def state_view(self) -> dict[str, Any]:
-        """`AppState.view_json` with cwd-derived workspace display names."""
+        """`AppState.view_json` with cwd-derived workspace display names and
+        a ``"busy"`` status promotion when a workspace has a foreground task
+        running and nothing more urgent to signal (priority: active > exited
+        > unseen > busy > idle). Computed on demand at view time so we never
+        pay the ``tcgetpgrp`` syscall outside the ~2 Hz frontend poll.
+        """
         view = self.state.view_json()
         by_id = {w.id: w for w in self.state.workspaces}
         for wv in view["workspaces"]:
             ws = by_id.get(wv["id"])
-            if ws is not None:
-                wv["name"] = self._workspace_label(ws)
+            if ws is None:
+                continue
+            wv["name"] = self._workspace_label(ws)
+            # Only the "idle" slot is overridable — active/unseen/exited
+            # all carry more urgent information that wins over "busy".
+            if wv["status"] == "idle" and any(
+                (tab := self.state.tabs.get(tid)) is not None
+                and tab.terminal_id is not None
+                and (term := self.terminals.get(tab.terminal_id)) is not None
+                and term.is_busy()
+                for tid in ws.tab_ids
+            ):
+                wv["status"] = "busy"
         return view
 
     def paste_paths(self, paths: list[str]) -> None:

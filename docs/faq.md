@@ -35,6 +35,21 @@ the TUI (commands, their non-fullscreen output, the prompt), not the TUI's
 own UI. iTerm2's session restoration has the same limit; it's a property of
 how alt-screen mode is specified, not a bug.
 
+## What do the colored dots in the sidebar mean?
+
+It's a small traffic-light:
+
+- **Blue** — this workspace is the one you're currently looking at.
+- **Green** — produced output since you last viewed it (go check).
+- **Amber** — a foreground task is running and there's nothing else more
+  urgent to signal. See [Working vs ready](workspaces-and-tabs.md#working-vs-ready).
+- **Empty outline** — shell is at a prompt with nothing new.
+- **Gray** — all shells in the workspace have exited.
+- **🔔** — a tab signaled it wants attention (BEL, `OSC 9`, or a long
+  `OSC 133;D`). Overrides everything else.
+
+Hover any dot for a tooltip with the same explanation.
+
 ## What about split panes and Windows?
 
 Both are still on the roadmap, along with client/server detach.

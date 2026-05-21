@@ -23,6 +23,9 @@ class PtyBackend(Protocol):
     @property
     def fd(self) -> int: ...
 
+    @property
+    def pid(self) -> int: ...
+
     def write(self, data: bytes) -> None: ...
 
     def resize(self, cols: int, rows: int) -> None: ...
@@ -59,6 +62,10 @@ class UnixPty:
     @property
     def fd(self) -> int:
         return int(self._proc.fd)
+
+    @property
+    def pid(self) -> int:
+        return int(self._proc.pid)
 
     def write(self, data: bytes) -> None:
         with contextlib.suppress(OSError):

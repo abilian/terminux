@@ -69,6 +69,12 @@ class _AttentionScanner:
         # ``9;``, ``133;C`` and ``133;D[;…]`` apart.
         self._osc_head = bytearray()
         self._command_start: float | None = None
+        # Once we've seen *any* OSC 133 sequence we trust the shell's
+        # own command boundaries over the os.tcgetpgrp() heuristic.
+        self._osc133_seen = False
+        # True between a matching OSC 133;C and 133;D, used for the
+        # sidebar "working/ready" cue.
+        self._in_command = False
 
     def feed(self, data: bytes, now: float) -> bool:
         """Scan ``data``; return True iff an attention signal fired."""
@@ -103,15 +109,33 @@ class _AttentionScanner:
         head = bytes(self._osc_head)
         if head.startswith(b"9;"):
             return True
-        if head.startswith(b"133;C"):
-            # Mark the start of a command; never fires by itself.
-            self._command_start = now
-            return False
-        if head.startswith(b"133;D"):
-            start = self._command_start
-            self._command_start = None
-            return start is not None and (now - start) >= OSC133_MIN_COMMAND_SECONDS
+        if head.startswith(b"133;"):
+            self._osc133_seen = True
+            if head.startswith(b"133;C"):
+                # Mark the start of a command; never fires by itself.
+                self._command_start = now
+                self._in_command = True
+                return False
+            if head.startswith(b"133;D"):
+                self._in_command = False
+                start = self._command_start
+                self._command_start = None
+                return start is not None and (now - start) >= OSC133_MIN_COMMAND_SECONDS
+            # OSC 133;A (prompt start) / 133;B (prompt end) — both mean
+            # "shell is back at a prompt", definitely not in a command.
+            self._in_command = False
         return False
+
+    @property
+    def osc133_seen(self) -> bool:
+        """True once the shell has emitted any OSC 133 sequence."""
+        return self._osc133_seen
+
+    @property
+    def in_command(self) -> bool:
+        """True between a matching OSC 133;C and 133;D (or until the next
+        OSC 133;A / ;B). Only meaningful when ``osc133_seen`` is true."""
+        return self._in_command
 
 
 class Subscriber:
@@ -190,10 +214,11 @@ class Terminal:
             self.on_activity()
         # OSC-aware: only a real BEL (outside any OSC), OSC 9, or a long-
         # enough OSC 133;D counts as attention — title-bar updates carry a
-        # trailing BEL we deliberately ignore.
-        if self.on_attention is not None and self._attention.feed(
-            data, time.monotonic()
-        ):
+        # trailing BEL we deliberately ignore. The scanner is always fed
+        # (regardless of on_attention) so its OSC 133 state stays current
+        # for is_busy() / the sidebar working/ready cue.
+        fired = self._attention.feed(data, time.monotonic())
+        if fired and self.on_attention is not None:
             self.on_attention()
 
     def _handle_eof(self) -> None:
@@ -236,6 +261,27 @@ class Terminal:
     def cwd(self) -> str | None:
         """Best-effort working directory of this terminal's shell."""
         return self._pty.cwd()
+
+    def is_busy(self) -> bool:
+        """True if a foreground task is running in this terminal right now.
+
+        Prefers OSC 133 (shell integration) — between ``;C`` and ``;D`` the
+        shell *is* running a command. With no shell integration, falls back
+        to comparing ``tcgetpgrp(fd)`` with the shell's own pid: if some
+        other process group is foregrounded, the shell has spawned a child
+        that is currently in the foreground. Defensive against closed fds
+        and exited shells.
+        """
+        if self._exited:
+            return False
+        scanner = self._attention
+        if scanner.osc133_seen:
+            return scanner.in_command
+        try:
+            fg = os.tcgetpgrp(self._pty.fd)
+        except OSError:
+            return False
+        return fg > 0 and fg != self._pty.pid
 
     @property
     def exited(self) -> bool:

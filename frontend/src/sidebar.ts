@@ -11,6 +11,7 @@ let editingWsId: string | null = null;
 const DOT_TOOLTIP: Record<string, string> = {
   active: "This workspace is the one in view",
   unseen: "New output since you last viewed this workspace",
+  busy: "A foreground task is running",
   idle: "No new output",
   exited: "All shells in this workspace have exited",
 };
