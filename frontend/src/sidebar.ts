@@ -1,6 +1,7 @@
 // Workspaces sidebar: list rows, inline rename, close, and prev/next nav.
 
 import { api } from "./api";
+import { formatDuration } from "./duration";
 import { makeRenameInput } from "./rename";
 import { makeDraggable, recentlyReordered } from "./reorder";
 import { getState, refresh } from "./store";
@@ -74,9 +75,21 @@ export function renderSidebar(): void {
     } else {
       const name = document.createElement("span");
       name.className = "name";
+      name.title = `Active time: ${formatDuration(w.active_seconds)}`;
       name.textContent = w.name;
       name.ondblclick = beginRename;
       row.appendChild(name);
+
+      // Inline at-a-glance active time. Suppressed at 0 so fresh
+      // workspaces don't carry a "0s" tag; appears the first second
+      // you've actually typed in.
+      if (w.active_seconds > 0) {
+        const time = document.createElement("span");
+        time.className = "active-time";
+        time.textContent = formatDuration(w.active_seconds);
+        time.title = name.title;
+        row.appendChild(time);
+      }
 
       const edit = document.createElement("span");
       edit.className = "edit";

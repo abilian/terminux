@@ -1,6 +1,7 @@
 // Global keyboard shortcuts (functional spec §8).
 
 import { api } from "./api";
+import { openCmdPalette } from "./cmdpalette";
 import { openFind } from "./find";
 import { applyFontSize, getFontSize, resetFontSize } from "./font";
 import { openPalette } from "./palette";
@@ -42,6 +43,9 @@ export function installShortcuts(): void {
       } else if (e.key === "f" || e.key === "F") {
         e.preventDefault(); // Cmd/Ctrl+F — find in terminal
         openFind();
+      } else if ((e.key === "p" || e.key === "P") && e.shiftKey) {
+        e.preventDefault(); // Cmd/Ctrl+Shift+P — command palette
+        openCmdPalette();
       } else if (e.key === "p" || e.key === "P") {
         e.preventDefault(); // Cmd/Ctrl+P — quick switch (also blocks print)
         openPalette();

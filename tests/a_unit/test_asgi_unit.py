@@ -219,3 +219,80 @@ def test_pump_out_emits_dropped_then_exit(monkeypatch) -> None:
         assert b"".join(ws.bytes) == b"6789"
 
     asyncio.run(go())
+
+
+# ----- activity tracker ---------------------------------------------
+
+
+def test_activity_tracker_credits_active_workspace_only_while_recent() -> None:
+    """Ticks credit the active workspace iff the user has typed in the
+    last ACTIVITY_IDLE_THRESHOLD seconds; otherwise nothing accrues."""
+    ctl = AppController(persist=False)
+    ws_id = ctl.state.workspaces[0].id
+
+    # No input yet → never accrues, even with an active workspace.
+    ctl.tick(1.0, now=100.0)
+    assert ctl.active_seconds(ws_id) == 0
+
+    # User just typed at t=100; ticks at t=100, 105 both credit (< 30 s).
+    ctl._last_input_at = 100.0
+    ctl.tick(1.0, now=100.0)
+    ctl.tick(1.0, now=105.0)
+    assert ctl.active_seconds(ws_id) == 2
+
+    # Ticks past the 30 s idle threshold stop crediting.
+    ctl.tick(1.0, now=200.0)
+    assert ctl.active_seconds(ws_id) == 2
+
+
+def test_activity_tracker_follows_active_workspace_change() -> None:
+    """Switching workspaces credits the new one going forward; the old
+    one keeps its accumulated seconds (no double-counting)."""
+    ctl = AppController(persist=False)
+    ws_a = ctl.state.workspaces[0].id
+    ws_b = ctl.state.add_workspace(name="b").id
+
+    ctl._last_input_at = 100.0
+    ctl.state.set_active_workspace(ws_a)
+    ctl.tick(1.0, now=100.0)
+    ctl.tick(1.0, now=101.0)
+    ctl.state.set_active_workspace(ws_b)
+    ctl.tick(1.0, now=102.0)
+    ctl.tick(1.0, now=103.0)
+
+    assert ctl.active_seconds(ws_a) == 2
+    assert ctl.active_seconds(ws_b) == 2
+
+
+def test_reset_activity_clears_counters_and_advances_session_start() -> None:
+    """The palette's "Reset session activity counters" wipes per-workspace
+    accruals AND resets ``session_started_at`` so the stats overlay's "X
+    ago" header restarts at 0."""
+    ctl = AppController(persist=False)
+    ws_id = ctl.state.workspaces[0].id
+    ctl._last_input_at = 100.0
+    ctl.tick(5.0, now=100.0)
+    assert ctl.active_seconds(ws_id) == 5
+
+    before = ctl.session_started_at
+    ctl.reset_activity()
+    assert ctl.active_seconds(ws_id) == 0
+    assert ctl._last_input_at is None
+    assert ctl.session_started_at >= before  # never goes backwards
+
+
+def test_note_input_sets_last_input() -> None:
+    """note_input refreshes the idle window — keystrokes resume crediting
+    after a long idle period."""
+    ctl = AppController(persist=False)
+    ws_id = ctl.state.workspaces[0].id
+
+    ctl._last_input_at = 100.0
+    ctl.tick(1.0, now=200.0)  # 100 s idle → no credit
+    assert ctl.active_seconds(ws_id) == 0
+
+    ctl.note_input()
+    # note_input uses time.monotonic() so re-check the post-condition via
+    # a tick at the same instant.
+    ctl.tick(1.0, now=ctl._last_input_at)
+    assert ctl.active_seconds(ws_id) == 1

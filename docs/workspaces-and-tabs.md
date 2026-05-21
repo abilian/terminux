@@ -32,6 +32,33 @@ Each tab is an interactive terminal backed by its own real PTY shell.
 - **Background tabs keep streaming.** Switching workspaces or tabs preserves all
   running sessions; output continues with no switch jank.
 
+## Session activity
+
+terminux tracks per-workspace **active time** for the current session — the
+seconds you've actually been typing into one of its tabs. Counting rules:
+
+- Credit goes to the **currently active workspace** at the moment of each
+  1 Hz tick.
+- A tick credits a second only if you've typed something in the last
+  **30 seconds**. AFK time, long-running silent commands, and time spent
+  in another app don't count.
+- Counters are **in-memory only** — they reset when terminus exits.
+
+Each workspace's accumulated time shows inline in the sidebar (small, dim,
+right-aligned next to the name). Hover for the same value as a tooltip.
+
+The **command palette** (`Cmd/Ctrl+Shift+P`) is a launcher — verbs only,
+fuzzy-filtered. Commands relevant to activity stats:
+
+- **Display usage stats** — opens a focused overlay listing every
+  workspace ranked by active time, with a bar showing each one's share of
+  the busiest. Escape or click outside to dismiss.
+- **Reorder sidebar by activity (most used first)** — one-shot
+  rearrangement of the sidebar; nothing keeps reordering automatically
+  after that.
+- **Reset session activity counters** — wipes all per-workspace
+  accruals and restarts the session clock.
+
 ## Working vs ready
 
 The sidebar status dot turns **amber** when a workspace has a foreground

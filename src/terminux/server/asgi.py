@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import shutil
 import subprocess  # noqa: S404 — argv form only, no shell, opener path resolved via shutil.which
 import sys
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
@@ -34,7 +36,7 @@ from terminux.core.terminal import Subscriber, Terminal, TerminalRegistry
 from terminux.server.auth import SESSION_TOKEN, token_ok
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import AsyncIterator, Awaitable, Callable
 
     from starlette.requests import Request
     from starlette.websockets import WebSocket
@@ -62,6 +64,13 @@ _CSP = (
 )
 
 
+# Active-time tracker config: a workspace accrues seconds only while the
+# user has typed into one of its tabs within this window. Captures real
+# focus, ignores "left for lunch" and long-running commands the user
+# isn't watching.
+ACTIVITY_IDLE_THRESHOLD = 30.0  # seconds since last keystroke
+
+
 class AppController:
     """Owns AppState + live terminals. All access is on the server event loop."""
 
@@ -70,6 +79,14 @@ class AppController:
         self.state: AppState = load_state() if persist else AppState.default()
         self.terminals = TerminalRegistry()
         self.spawn_lock = asyncio.Lock()  # serialize PTY creation (§8)
+        # Per-workspace cumulative active seconds for this terminus session.
+        # Transient (in-memory only) — resets when the process exits or when
+        # the user explicitly invokes "Reset session activity counters".
+        self._active_seconds: dict[str, float] = {}
+        self._last_input_at: float | None = None
+        # Wall-clock time when the activity session started, used to drive
+        # the "session started Xm ago" header in the stats overlay.
+        self._session_started_at: float = time.time()
 
     def save(self) -> None:
         if not self._persist:
@@ -92,6 +109,42 @@ class AppController:
         # pref was toggled mid-run and a stale file lingers).
         if self._persist:
             delete_scrollback(tab_id)
+
+    def note_input(self) -> None:
+        """Called when keystrokes arrive over a PTY WebSocket — the only
+        signal we treat as "user is actually working here right now"."""
+        self._last_input_at = time.monotonic()
+
+    def tick(self, dt: float, *, now: float | None = None) -> None:
+        """Credit the active workspace with ``dt`` seconds iff the user has
+        typed something in the last ``ACTIVITY_IDLE_THRESHOLD`` seconds.
+
+        Called by the 1 Hz background ticker; ``now`` is injectable for
+        deterministic testing.
+        """
+        if self._last_input_at is None:
+            return
+        current = now if now is not None else time.monotonic()
+        if current - self._last_input_at > ACTIVITY_IDLE_THRESHOLD:
+            return
+        ws_id = self.state.active_workspace_id
+        if ws_id is None or self.state.get_workspace(ws_id) is None:
+            return
+        self._active_seconds[ws_id] = self._active_seconds.get(ws_id, 0.0) + dt
+
+    def active_seconds(self, ws_id: str) -> int:
+        return int(self._active_seconds.get(ws_id, 0.0))
+
+    def reset_activity(self) -> None:
+        """Clear all per-workspace counters and start a fresh session."""
+        self._active_seconds.clear()
+        self._last_input_at = None
+        self._session_started_at = time.time()
+
+    @property
+    def session_started_at(self) -> float:
+        """Epoch seconds when the current activity session started."""
+        return self._session_started_at
 
     def _snapshot_cwds(self) -> None:
         """Capture each live shell's cwd so a restart can respawn there."""
@@ -180,12 +233,14 @@ class AppController:
         pay the ``tcgetpgrp`` syscall outside the ~2 Hz frontend poll.
         """
         view = self.state.view_json()
+        view["session_started_at"] = self.session_started_at
         by_id = {w.id: w for w in self.state.workspaces}
         for wv in view["workspaces"]:
             ws = by_id.get(wv["id"])
             if ws is None:
                 continue
             wv["name"] = self._workspace_label(ws)
+            wv["active_seconds"] = self.active_seconds(ws.id)
             # Only the "idle" slot is overridable — active/unseen/exited
             # all carry more urgent information that wins over "busy".
             if wv["status"] == "idle" and any(
@@ -484,6 +539,12 @@ class Api:
         self.ctl.delete_scrollback(request.path_params["tab_id"])
         return JSONResponse({"ok": True})
 
+    async def reset_activity(self, request: Request) -> Response:
+        if (deny := _deny(request)) is not None:
+            return deny
+        self.ctl.reset_activity()
+        return JSONResponse({"ok": True})
+
     async def open_url(  # noqa: PLR6301 — uniform Route handler shape across Api
         self,
         request: Request,
@@ -528,7 +589,7 @@ class Api:
         sub = term.subscribe()
         out_task = asyncio.create_task(_pump_out(ws, sub, term))
         try:
-            await _pump_in(ws, term)
+            await _pump_in(ws, term, self.ctl)
         except (WebSocketDisconnect, RuntimeError):
             pass
         finally:
@@ -548,13 +609,16 @@ async def _pump_out(ws: WebSocket, sub: Subscriber, term: Terminal) -> None:
             return
 
 
-async def _pump_in(ws: WebSocket, term: Terminal) -> None:
+async def _pump_in(ws: WebSocket, term: Terminal, ctl: AppController) -> None:
     while True:
         message = await ws.receive()
         if message.get("type") == "websocket.disconnect":
             return
         data = message.get("bytes")
         if data is not None:
+            # Real keystrokes from the user — credit the active workspace
+            # with active-session time until idle silences it.
+            ctl.note_input()
             term.write(data)
             continue
         text = message.get("text")
@@ -610,11 +674,31 @@ def build_app(*, persist: bool = True) -> Starlette:
         ),
         Route("/api/ui", api.patch_ui, methods=["PATCH"]),
         Route("/api/open-url", api.open_url, methods=["POST"]),
+        Route("/api/activity/reset", api.reset_activity, methods=["POST"]),
         WebSocketRoute("/pty/{terminal_id}", api.pty_ws),
     ]
+
+    async def _activity_ticker() -> None:
+        """1 Hz: credit the active workspace with a second of active time
+        when the user has typed in the last ACTIVITY_IDLE_THRESHOLD secs."""
+        while True:
+            await asyncio.sleep(1.0)
+            ctl.tick(1.0)
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_app: Starlette) -> AsyncIterator[None]:
+        task = asyncio.create_task(_activity_ticker())
+        try:
+            yield
+        finally:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
     app = Starlette(
         routes=routes,
         middleware=[Middleware(SecurityHeadersMiddleware)],
+        lifespan=lifespan,
     )
     app.mount(
         "/assets",

@@ -4,11 +4,13 @@
 import "./style.css";
 
 import { api } from "./api";
+import { installCmdPalette } from "./cmdpalette";
 import { installDragAndDrop } from "./dragdrop";
 import { installFind } from "./find";
 import { syncFontFromState } from "./font";
 import { installShortcuts } from "./keymap";
 import { installPalette } from "./palette";
+import { installStatsPanel } from "./statspanel";
 import { isReordering } from "./reorder";
 import { applyLayout, installSidebarResizer } from "./layout";
 import { renderSidebar } from "./sidebar";
@@ -42,6 +44,8 @@ window.addEventListener("resize", () => {
 installSidebarResizer();
 installFind();
 installPalette();
+installCmdPalette();
+installStatsPanel();
 installShortcuts();
 installDragAndDrop();
 installScrollbackAutosave();

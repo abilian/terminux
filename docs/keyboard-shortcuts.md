@@ -9,6 +9,7 @@ Shortcuts keep working while the terminal has focus. Use ++cmd++ on macOS and
 | --- | --- | --- |
 | Jump to workspace 1–9 | ++cmd+1++ … ++cmd+9++ | ++ctrl+1++ … ++ctrl+9++ |
 | Quick switcher (fuzzy, workspaces & tabs) | ++cmd+p++ | ++ctrl+p++ |
+| Command palette (workspaces ranked by activity + commands) | ++cmd+shift+p++ | ++ctrl+shift+p++ |
 | Previous / next tab | ++cmd+shift+bracket-left++ / ++cmd+shift+bracket-right++ | ++ctrl+shift+bracket-left++ / ++ctrl+shift+bracket-right++ |
 
 The quick switcher fuzzy-matches across every workspace and tab:
