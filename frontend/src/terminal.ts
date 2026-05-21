@@ -163,9 +163,16 @@ async function openTerminal(tid: string, restore = true): Promise<void> {
   // the buffer first, then rendering starts on a settled state — and the
   // separator lands on the shell's main buffer, not whatever alt-screen
   // mode the previous session might have been carrying.
+  //
+  // term.write() is async — it queues bytes for the parser. We MUST wait
+  // for the parser to consume the saved bytes at the captured size before
+  // fit() resizes the buffer; otherwise the resize lands mid-parse and
+  // wrapped rows that should hit the right edge and continue at col 0
+  // instead bleed across into a cumulative staircase.
   if (saved) {
-    term.write(saved.content);
-    term.write(resumedSeparator());
+    await new Promise<void>((resolve) => {
+      term.write(saved.content + resumedSeparator(), () => resolve());
+    });
   }
 
   term.open(host);

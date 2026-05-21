@@ -75,6 +75,16 @@ def test_scrollback_round_trip(tmp_path: Path) -> None:
     assert not list((tmp_path / "scrollback").glob(".scrollback-*.tmp"))
 
 
+def test_scrollback_preserves_crlf(tmp_path: Path) -> None:
+    """Universal-newlines regression: Path.read_text() silently rewrites
+    \\r\\n to \\n, which strips the CR SerializeAddon emits between rows
+    and turns the replay into a staircase of LF-without-CR positioning.
+    Bytes must round-trip verbatim."""
+    raw = "row1\r\nrow2\r\nrow3"
+    save_scrollback("t1", raw, base=tmp_path)
+    assert load_scrollback("t1", base=tmp_path) == raw
+
+
 def test_scrollback_missing_returns_none(tmp_path: Path) -> None:
     assert load_scrollback("ghost", base=tmp_path) is None
 

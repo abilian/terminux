@@ -86,7 +86,12 @@ def load_scrollback(tab_id: str, base: Path | None = None) -> str | None:
     if path is None:
         return None
     try:
-        return path.read_text(encoding="utf-8")
+        # Read in binary + decode by hand. ``Path.read_text(newline=None)``
+        # enables universal-newlines mode and silently rewrites every
+        # ``\r\n`` to ``\n`` — which strips the CR that SerializeAddon emits
+        # between rows, and the replay then renders as a cumulative
+        # LF-without-CR "staircase" of restored content.
+        return path.read_bytes().decode("utf-8")
     except FileNotFoundError:
         return None
     except OSError as exc:
