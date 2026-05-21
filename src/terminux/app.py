@@ -141,6 +141,9 @@ def _run_windowed(url: str, ctl: AppController, server: uvicorn.Server) -> None:
         height=ui.win_h,
         x=ui.win_x,
         y=ui.win_y,
+        # Catch Cmd/Ctrl+Q and the close button so a stray chord doesn't
+        # nuke a workspace full of live shells without a prompt.
+        confirm_close=True,
     )
     if window is None:
         msg = "failed to create application window"
