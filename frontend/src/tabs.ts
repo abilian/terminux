@@ -32,11 +32,18 @@ export function renderTabs(): void {
   bar.innerHTML = "";
   const ws = activeWorkspace();
   if (!ws) return;
+  // Tabs go in an overflow-clipped wrapper so the "+" sibling at the end
+  // of #tabbar stays visible no matter how many tabs accrue.
+  const list = document.createElement("div");
+  list.id = "tabs-list";
   for (const tid of ws.tab_ids) {
     const t = state.tabs[tid];
     if (!t) continue;
     const el = document.createElement("div");
     el.className = "tab" + (tid === ws.active_tab_id ? " active" : "");
+    // Full title on hover — visible text is ellipsized by CSS once the
+    // tab hits its max-width.
+    el.title = t.title;
     if (t.needs_attention && tid !== ws.active_tab_id) {
       const a = document.createElement("span");
       a.className = "attn";
@@ -108,8 +115,9 @@ export function renderTabs(): void {
         },
       );
     }
-    bar.appendChild(el);
+    list.appendChild(el);
   }
+  bar.appendChild(list);
   const add = document.createElement("div");
   add.id = "new-tab";
   add.textContent = "+";

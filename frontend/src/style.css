@@ -189,7 +189,16 @@ body {
   background: var(--bg-alt);
   border-bottom: 1px solid var(--border);
   height: 34px;
-  overflow-x: auto;
+  /* The bar itself never scrolls; #tabs-list clips tabs that don't fit
+     while the trailing "+" stays put. */
+  overflow: hidden;
+}
+#tabs-list {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
 }
 .tab {
   display: flex;
@@ -201,6 +210,19 @@ body {
   white-space: nowrap;
   color: var(--dim);
   user-select: none;
+  /* Cap individual tab width and allow shrinking so a long shell title
+     can't push neighbours off-screen. When many tabs together still
+     don't fit, the last ones get clipped (full title is on the tooltip). */
+  flex: 0 1 auto;
+  min-width: 5em;
+  max-width: 18em;
+}
+.tab .title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tab.active {
   background: var(--bg);
