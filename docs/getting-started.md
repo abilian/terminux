@@ -31,6 +31,16 @@ so keep the URL private if you ever bind beyond loopback with `--host`.
 terminux can be bundled into a self-contained desktop app — no Python or Node
 needed to run it.
 
+=== "Linux"
+
+    ```sh
+    make linux           # -> dist/linux/terminux/terminux (PyInstaller onedir)
+    make docker-run      # run the same image in web mode on :8000
+    ```
+
+    Built in a container (PyInstaller can't cross-compile). Runtime host
+    needs `libgtk-3` and `libwebkit2gtk-4.1`.
+
 === "macOS"
 
     ```sh
@@ -40,13 +50,6 @@ needed to run it.
 
     The bundle embeds the Python backend, the built web UI, and pywebview's
     WKWebView backend.
-
-=== "Linux"
-
-    ```sh
-    make linux           # -> dist/linux/terminux/terminux (PyInstaller onedir)
-    make docker-run      # run the same image in web mode on :8000
-    ```
 
 See [Packaging & distribution](packaging.md) for signing, Gatekeeper, X11, and
 architecture details.

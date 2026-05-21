@@ -7,7 +7,7 @@
 **Workspaces on the left. Tabbed terminals in the middle. Everything where you left it.**
 
 [![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey.svg)](#-install--package)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey.svg)](#-install--package)
 [![Status](https://img.shields.io/badge/status-v1%20preview-orange.svg)](#-status--v1-preview)
 [![License](https://img.shields.io/badge/license-see%20repo-green.svg)](https://github.com/abilian/terminux)
 
@@ -48,16 +48,23 @@ That's it. You're in.
   shell's working directory, and *the visible scrollback of every tab* all
   come back. Fresh shells, same layout, same view you left.
 - **Keyboard-first** — sidebar shows a keycap on each of the first nine
-  workspaces; jump straight there with `Cmd/Ctrl+1..9`. Plus a fuzzy
-  quick-switcher (`Cmd/Ctrl+P`), find-in-terminal, font zoom, and more.
-- **Clickable URLs & iTerm2-style copy** — `Cmd/Ctrl+click` opens links;
-  optional auto-copy on selection (`Cmd/Ctrl+Alt+C` toggle, persisted, off by
-  default).
+  workspaces; jump straight there with `Ctrl+Shift+1..9` on Linux
+  (`Cmd+1..9` on macOS). Plus a fuzzy quick-switcher, find-in-terminal,
+  font zoom, and more.
+- **Platform-respecting shortcuts** — Linux uses `Ctrl+Shift+<key>` for app
+  shortcuts (matching GNOME Terminal, Konsole, Alacritty, Ghostty, kitty),
+  so raw `Ctrl+P` / `Ctrl+B` / `Ctrl+F` flow straight to your shell. macOS
+  uses `Cmd` for the same job; raw `Ctrl` is left alone.
+- **Clickable URLs & iTerm2-style copy** — modifier-click opens links;
+  optional auto-copy on selection, persisted, off by default.
 - **Working vs ready** — sidebar status dot turns amber while a
   workspace is running a foreground task; green wins for unseen output;
   reads at a glance like a CI traffic light.
-- **Attention that finds you** — background activity indicators; BEL or
-  `OSC 9` on an off-screen tab raises a badge that bubbles up to its workspace.
+- **Attention that finds you** — background activity indicators; a real
+  BEL, `OSC 9`, or a long-running command finishing (`OSC 133;D`, opt-in
+  via [shell integration](docs/shell-integration.md) for bash / zsh /
+  fish) on an off-screen tab raises a badge that bubbles up to its
+  workspace. Title-bar updates don't count.
 - **Drag & drop** — reorder workspaces and tabs with live drop feedback
   (works even in WKWebView, where HTML5 DnD doesn't). Drop a file to paste its
   shell-quoted path.
@@ -66,9 +73,9 @@ That's it. You're in.
 
 <div align="center">
 
-<img src="docs/images/quick-switcher.png" alt="The fuzzy quick switcher (Cmd/Ctrl+P) jumping between workspaces and tabs" width="800"/>
+<img src="docs/images/quick-switcher.png" alt="The fuzzy quick switcher (Ctrl+Shift+P / Cmd+P) jumping between workspaces and tabs" width="800"/>
 
-<sub>The fuzzy quick switcher (<code>Cmd/Ctrl+P</code>) — jump to any workspace or tab.</sub>
+<sub>The fuzzy quick switcher (<code>Ctrl+Shift+P</code> on Linux, <code>Cmd+P</code> on macOS) — jump to any workspace or tab.</sub>
 
 </div>
 
@@ -89,9 +96,9 @@ terminux ships as a self-contained desktop app — no Python or Node required to
 run the bundle.
 
 ```sh
-make app          # macOS .app  → dist/terminux.app
 make linux        # Linux bundle (built in Docker) → dist/linux/terminux/terminux
 make docker-run   # run headless web mode on :8000
+make app          # macOS .app → dist/terminux.app
 ```
 
 Full platform notes (signing, Gatekeeper, X11, architectures) live in the

@@ -47,7 +47,7 @@ seconds you've actually been typing into one of its tabs. Counting rules:
 Each workspace's accumulated time shows inline in the sidebar (small, dim,
 right-aligned next to the name). Hover for the same value as a tooltip.
 
-The **command palette** (`Cmd/Ctrl+Shift+P`) is a launcher — verbs only,
+The **command palette** (`F1` on Linux — provisional — or `Cmd+Shift+P` on macOS) is a launcher — verbs only,
 fuzzy-filtered. Commands relevant to activity stats:
 
 - **Display usage stats** — opens a focused overlay listing every
@@ -138,8 +138,10 @@ above the separator are *not* still running.
 - macOS line-editing chords and `Shift+Cmd`+arrow navigation are supported;
   `Shift+Enter` inserts a newline (works with Claude Code and similar tools).
 - **Clickable URLs.** URLs in the terminal are highlighted on hover and open
-  with `Cmd/Ctrl+click` — matching iTerm2 and Terminal.app, so a stray click
+  with `Ctrl+click` on Linux or `Cmd+click` on macOS — matching iTerm2 and
+  Terminal.app, so a stray click
   never navigates.
 - **Auto-copy on select** (iTerm2-style) is available as a persisted
-  preference; off by default. Toggle with `Cmd/Ctrl+Alt+C` (see
+  preference; off by default. Toggle with `Ctrl+Shift+Alt+C` (Linux) or
+  `Cmd+Alt+C` (macOS) — see
   [Keyboard shortcuts](keyboard-shortcuts.md)).
