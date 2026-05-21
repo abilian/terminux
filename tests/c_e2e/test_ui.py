@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from typing import TYPE_CHECKING
 
 from playwright.sync_api import expect
@@ -10,6 +11,11 @@ if TYPE_CHECKING:
     from playwright.sync_api import Page
 
 UI = 15_000  # ms; shells (login → fish) can be slow to first prompt
+
+# The browser runs on the host OS, so navigator.platform follows that and
+# the frontend's appMod() picks Cmd on macOS, Ctrl+Shift on Linux — mirror
+# that here so keyboard shortcuts work in both CI (Linux) and local dev.
+APP_MOD = "Meta" if sys.platform == "darwin" else "Control+Shift"
 
 
 def test_app_loads_workspace_tab_and_terminal(page: Page, app_url: str) -> None:
@@ -108,7 +114,7 @@ def test_palette_opens_filters_and_closes(page: Page, app_url: str) -> None:
     expect(page.locator(".xterm")).to_be_visible(timeout=UI)
     pal = page.locator("#palette")
     expect(pal).to_be_hidden()
-    page.keyboard.press("Control+p")
+    page.keyboard.press(f"{APP_MOD}+p")
     expect(pal).to_be_visible()
     expect(pal.locator("input")).to_be_focused()
     # Lists the (single) workspace + its tab; typing filters the list.
@@ -124,7 +130,7 @@ def test_find_overlay_opens_and_closes(page: Page, app_url: str) -> None:
     expect(page.locator(".xterm")).to_be_visible(timeout=UI)
     find = page.locator("#find")
     expect(find).to_be_hidden()
-    page.keyboard.press("Control+f")
+    page.keyboard.press(f"{APP_MOD}+f")
     expect(find).to_be_visible()
     expect(find.locator("input")).to_be_focused()
     page.keyboard.press("Escape")
@@ -135,7 +141,7 @@ def test_sidebar_toggle_shortcut(page: Page, app_url: str) -> None:
     page.goto(app_url)
     sidebar = page.locator("#sidebar")
     expect(sidebar).to_be_visible()
-    page.keyboard.press("Control+b")
+    page.keyboard.press(f"{APP_MOD}+b")
     expect(sidebar).to_be_hidden()
-    page.keyboard.press("Control+b")
+    page.keyboard.press(f"{APP_MOD}+b")
     expect(sidebar).to_be_visible()

@@ -11,6 +11,7 @@ import { api } from "./api";
 import { macEditingSeq } from "./editing";
 import { getFontSize } from "./font";
 import { createKitty } from "./kitty";
+import { appMod } from "./platform";
 import {
   activeWorkspace,
   getState,
@@ -151,7 +152,9 @@ async function openTerminal(tid: string, restore = true): Promise<void> {
   // window.open() — the same handler then also works in --no-window mode.
   term.loadAddon(
     new WebLinksAddon((event, uri) => {
-      if (!(event.metaKey || event.ctrlKey)) return;
+      // Cmd+click on macOS, Ctrl+click on Linux — Ctrl+click on macOS is
+      // the platform context-menu chord, deliberately left alone.
+      if (!appMod(event)) return;
       void api("/open-url", {
         method: "POST",
         body: JSON.stringify({ url: uri }),
