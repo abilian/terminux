@@ -9,6 +9,7 @@ import logging
 import shutil
 import subprocess  # noqa: S404 — argv form only, no shell, opener path resolved via shutil.which
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -79,6 +80,11 @@ class AppController:
         self.state: AppState = load_state() if persist else AppState.default()
         self.terminals = TerminalRegistry()
         self.spawn_lock = asyncio.Lock()  # serialize PTY creation (§8)
+        # Starlette runs sync route handlers in anyio's threadpool, so multiple
+        # of them can mutate `state` (and its `tabs` dict) concurrently. This
+        # reentrant lock serializes every state access; route handlers acquire
+        # it around the synchronous mutation block (never across `await`).
+        self.lock = threading.RLock()
         # Per-workspace cumulative active seconds for this terminus session.
         # Transient (in-memory only) — resets when the process exits or when
         # the user explicitly invokes "Reset session activity counters".
@@ -91,8 +97,9 @@ class AppController:
     def save(self) -> None:
         if not self._persist:
             return
-        self._snapshot_cwds()
-        save_state(self.state)
+        with self.lock:
+            self._snapshot_cwds()
+            save_state(self.state)
 
     def save_scrollback(self, tab_id: str, content: str) -> None:
         if not self._persist or not self.state.ui.scrollback_persist:
@@ -127,10 +134,13 @@ class AppController:
         current = now if now is not None else time.monotonic()
         if current - self._last_input_at > ACTIVITY_IDLE_THRESHOLD:
             return
-        ws_id = self.state.active_workspace_id
-        if ws_id is None or self.state.get_workspace(ws_id) is None:
-            return
-        self._active_seconds[ws_id] = self._active_seconds.get(ws_id, 0.0) + dt
+        with self.lock:
+            ws_id = self.state.active_workspace_id
+            if ws_id is None or self.state.get_workspace(ws_id) is None:
+                return
+            self._active_seconds[ws_id] = (
+                self._active_seconds.get(ws_id, 0.0) + dt
+            )
 
     def active_seconds(self, ws_id: str) -> int:
         return int(self._active_seconds.get(ws_id, 0.0))
@@ -147,8 +157,13 @@ class AppController:
         return self._session_started_at
 
     def _snapshot_cwds(self) -> None:
-        """Capture each live shell's cwd so a restart can respawn there."""
-        for tab in self.state.tabs.values():
+        """Capture each live shell's cwd so a restart can respawn there.
+
+        Iterates a list snapshot — callers may already hold ``self.lock`` (so
+        the dict can't change underfoot), but ``list()`` makes the intent
+        local to this method and survives anyone calling it without the lock.
+        """
+        for tab in list(self.state.tabs.values()):
             if tab.terminal_id is None:
                 continue
             term = self.terminals.get(tab.terminal_id)
@@ -158,43 +173,46 @@ class AppController:
                     tab.last_cwd = live
 
     def ensure_terminal(self, tab_id: str, cols: int, rows: int) -> Terminal | None:
-        tab = self.state.tabs.get(tab_id)
-        if tab is None:
-            return None
-        if tab.terminal_id is not None:
-            existing = self.terminals.get(tab.terminal_id)
-            if existing is not None and not existing.exited:
-                return existing
-        cwd = tab.spawn_cwd or default_cwd()
-        if not Path(cwd).is_dir():  # e.g. a restored dir since deleted
-            cwd = default_cwd()
-        term = self.terminals.create(default_shell(), cwd, cols, rows)
-        tab.terminal_id = term.id
-        term.on_activity = lambda: self._mark_activity(tab_id)
-        term.on_attention = lambda: self._mark_attention(tab_id)
-        term.on_exit = lambda _code: setattr(tab, "terminal_id", None)
-        return term
+        with self.lock:
+            tab = self.state.tabs.get(tab_id)
+            if tab is None:
+                return None
+            if tab.terminal_id is not None:
+                existing = self.terminals.get(tab.terminal_id)
+                if existing is not None and not existing.exited:
+                    return existing
+            cwd = tab.spawn_cwd or default_cwd()
+            if not Path(cwd).is_dir():  # e.g. a restored dir since deleted
+                cwd = default_cwd()
+            term = self.terminals.create(default_shell(), cwd, cols, rows)
+            tab.terminal_id = term.id
+            term.on_activity = lambda: self._mark_activity(tab_id)
+            term.on_attention = lambda: self._mark_attention(tab_id)
+            term.on_exit = lambda _code: setattr(tab, "terminal_id", None)
+            return term
 
     def inherit_cwd(self, ws_id: str) -> str | None:
         """Working directory of a workspace's currently active live shell."""
-        ws = self.state.get_workspace(ws_id)
-        if ws is None or ws.active_tab_id is None:
-            return None
-        tab = self.state.tabs.get(ws.active_tab_id)
-        if tab is None or tab.terminal_id is None:
-            return None
-        term = self.terminals.get(tab.terminal_id)
-        return term.cwd() if term is not None else None
+        with self.lock:
+            ws = self.state.get_workspace(ws_id)
+            if ws is None or ws.active_tab_id is None:
+                return None
+            tab = self.state.tabs.get(ws.active_tab_id)
+            if tab is None or tab.terminal_id is None:
+                return None
+            term = self.terminals.get(tab.terminal_id)
+            return term.cwd() if term is not None else None
 
     def active_terminal(self) -> Terminal | None:
-        ws_id = self.state.active_workspace_id
-        ws = self.state.get_workspace(ws_id) if ws_id else None
-        if ws is None or ws.active_tab_id is None:
-            return None
-        tab = self.state.tabs.get(ws.active_tab_id)
-        if tab is None or tab.terminal_id is None:
-            return None
-        return self.terminals.get(tab.terminal_id)
+        with self.lock:
+            ws_id = self.state.active_workspace_id
+            ws = self.state.get_workspace(ws_id) if ws_id else None
+            if ws is None or ws.active_tab_id is None:
+                return None
+            tab = self.state.tabs.get(ws.active_tab_id)
+            if tab is None or tab.terminal_id is None:
+                return None
+            return self.terminals.get(tab.terminal_id)
 
     def _workspace_label(self, ws: Workspace) -> str:
         """Display name: a pinned rename, else the shell's directory.
@@ -232,26 +250,27 @@ class AppController:
         > unseen > busy > idle). Computed on demand at view time so we never
         pay the ``tcgetpgrp`` syscall outside the ~2 Hz frontend poll.
         """
-        view = self.state.view_json()
-        view["session_started_at"] = self.session_started_at
-        by_id = {w.id: w for w in self.state.workspaces}
-        for wv in view["workspaces"]:
-            ws = by_id.get(wv["id"])
-            if ws is None:
-                continue
-            wv["name"] = self._workspace_label(ws)
-            wv["active_seconds"] = self.active_seconds(ws.id)
-            # Only the "idle" slot is overridable — active/unseen/exited
-            # all carry more urgent information that wins over "busy".
-            if wv["status"] == "idle" and any(
-                (tab := self.state.tabs.get(tid)) is not None
-                and tab.terminal_id is not None
-                and (term := self.terminals.get(tab.terminal_id)) is not None
-                and term.is_busy()
-                for tid in ws.tab_ids
-            ):
-                wv["status"] = "busy"
-        return view
+        with self.lock:
+            view = self.state.view_json()
+            view["session_started_at"] = self.session_started_at
+            by_id = {w.id: w for w in self.state.workspaces}
+            for wv in view["workspaces"]:
+                ws = by_id.get(wv["id"])
+                if ws is None:
+                    continue
+                wv["name"] = self._workspace_label(ws)
+                wv["active_seconds"] = self.active_seconds(ws.id)
+                # Only the "idle" slot is overridable — active/unseen/exited
+                # all carry more urgent information that wins over "busy".
+                if wv["status"] == "idle" and any(
+                    (tab := self.state.tabs.get(tid)) is not None
+                    and tab.terminal_id is not None
+                    and (term := self.terminals.get(tab.terminal_id)) is not None
+                    and term.is_busy()
+                    for tid in ws.tab_ids
+                ):
+                    wv["status"] = "busy"
+            return view
 
     def paste_paths(self, paths: list[str]) -> None:
         """Insert dropped file paths (shell-quoted) into the active terminal.
@@ -266,32 +285,36 @@ class AppController:
         term.write(text.encode())
 
     def _mark_activity(self, tab_id: str) -> None:
-        tab = self.state.tabs.get(tab_id)
-        if tab is None:
-            return
-        for ws in self.state.workspaces:
-            if tab_id not in ws.tab_ids:
-                continue
-            is_active = (
-                ws.id == self.state.active_workspace_id and ws.active_tab_id == tab_id
-            )
-            if not is_active:
-                tab.has_unseen_output = True
-                if ws.id != self.state.active_workspace_id:
-                    ws.has_unseen_output = True
+        with self.lock:
+            tab = self.state.tabs.get(tab_id)
+            if tab is None:
+                return
+            for ws in self.state.workspaces:
+                if tab_id not in ws.tab_ids:
+                    continue
+                is_active = (
+                    ws.id == self.state.active_workspace_id
+                    and ws.active_tab_id == tab_id
+                )
+                if not is_active:
+                    tab.has_unseen_output = True
+                    if ws.id != self.state.active_workspace_id:
+                        ws.has_unseen_output = True
 
     def _mark_attention(self, tab_id: str) -> None:
-        tab = self.state.tabs.get(tab_id)
-        if tab is None:
-            return
-        for ws in self.state.workspaces:
-            if tab_id not in ws.tab_ids:
-                continue
-            viewed = (
-                ws.id == self.state.active_workspace_id and ws.active_tab_id == tab_id
-            )
-            if not viewed:
-                tab.needs_attention = True
+        with self.lock:
+            tab = self.state.tabs.get(tab_id)
+            if tab is None:
+                return
+            for ws in self.state.workspaces:
+                if tab_id not in ws.tab_ids:
+                    continue
+                viewed = (
+                    ws.id == self.state.active_workspace_id
+                    and ws.active_tab_id == tab_id
+                )
+                if not viewed:
+                    tab.needs_attention = True
 
 
 def _shell_quote(path: str) -> str:
@@ -373,164 +396,173 @@ class Api:
             return deny
         # Display name tracks the shell's cwd (see _workspace_label); the
         # numbered name is just the fallback before a shell/cwd is known.
-        ws = self.ctl.state.add_workspace()
-        self.ctl.state.add_tab(ws.id)
-        self.ctl.state.set_active_workspace(ws.id)
-        self.ctl.save()
+        with self.ctl.lock:
+            ws = self.ctl.state.add_workspace()
+            self.ctl.state.add_tab(ws.id)
+            self.ctl.state.set_active_workspace(ws.id)
+            self.ctl.save()
         return JSONResponse({"id": ws.id})
 
     async def patch_workspace(self, request: Request) -> Response:
         if (deny := _deny(request)) is not None:
             return deny
-        ws = self.ctl.state.get_workspace(request.path_params["ws_id"])
-        if ws is None:
-            return JSONResponse({"error": "not found"}, status_code=404)
         body: dict[str, Any] = await request.json()
-        if "name" in body:
-            ws.name = str(body["name"]).strip() or ws.name
-            ws.user_set_name = True  # pin it; stop tracking cwd
-        if body.get("active"):
-            self.ctl.state.set_active_workspace(ws.id)
-        if "active_tab_id" in body:
-            ws.active_tab_id = body["active_tab_id"]
-            if ws.active_tab_id is not None:
-                tab = self.ctl.state.tabs.get(ws.active_tab_id)
-                if tab is not None:
-                    tab.has_unseen_output = False
-                    tab.needs_attention = False
-        if "order" in body:
-            order = [str(x) for x in body["order"]]
-            self.ctl.state.workspaces.sort(
-                key=lambda w: order.index(w.id) if w.id in order else 1_000_000,
-            )
-        if "tab_order" in body:
-            want = [str(x) for x in body["tab_order"]]
-            # Keep only ids that belong to this workspace; append any the
-            # client omitted so no tab is ever lost on a stale reorder.
-            ordered = [t for t in want if t in ws.tab_ids]
-            ws.tab_ids = ordered + [t for t in ws.tab_ids if t not in ordered]
-        self.ctl.save()
+        with self.ctl.lock:
+            ws = self.ctl.state.get_workspace(request.path_params["ws_id"])
+            if ws is None:
+                return JSONResponse({"error": "not found"}, status_code=404)
+            if "name" in body:
+                ws.name = str(body["name"]).strip() or ws.name
+                ws.user_set_name = True  # pin it; stop tracking cwd
+            if body.get("active"):
+                self.ctl.state.set_active_workspace(ws.id)
+            if "active_tab_id" in body:
+                ws.active_tab_id = body["active_tab_id"]
+                if ws.active_tab_id is not None:
+                    tab = self.ctl.state.tabs.get(ws.active_tab_id)
+                    if tab is not None:
+                        tab.has_unseen_output = False
+                        tab.needs_attention = False
+            if "order" in body:
+                order = [str(x) for x in body["order"]]
+                self.ctl.state.workspaces.sort(
+                    key=lambda w: order.index(w.id) if w.id in order else 1_000_000,
+                )
+            if "tab_order" in body:
+                want = [str(x) for x in body["tab_order"]]
+                # Keep only ids that belong to this workspace; append any the
+                # client omitted so no tab is ever lost on a stale reorder.
+                ordered = [t for t in want if t in ws.tab_ids]
+                ws.tab_ids = ordered + [t for t in ws.tab_ids if t not in ordered]
+            self.ctl.save()
         return JSONResponse({"ok": True})
 
     def delete_workspace(self, request: Request) -> Response:
         if (deny := _deny(request)) is not None:
             return deny
         ws_id = request.path_params["ws_id"]
-        # Collect terminal ids and tab ids BEFORE removal — remove_workspace
-        # drops the tabs from state, so we need the references first (and a
-        # deliberate close also drops the saved scrollback for each tab).
-        ws = self.ctl.state.get_workspace(ws_id)
-        tab_ids: list[str] = list(ws.tab_ids) if ws is not None else []
-        term_ids = [
-            tab.terminal_id
-            for tid in tab_ids
-            if (tab := self.ctl.state.tabs.get(tid)) is not None
-            and tab.terminal_id is not None
-        ]
-        self.ctl.state.remove_workspace(ws_id)
-        for term_id in term_ids:
-            self.ctl.terminals.close(term_id)
-        for tid in tab_ids:
-            self.ctl.delete_scrollback(tid)
-        if not self.ctl.state.workspaces:
-            ws = self.ctl.state.add_workspace(name="workspace 1")
-            self.ctl.state.add_tab(ws.id)
-            self.ctl.state.set_active_workspace(ws.id)
-        self.ctl.save()
+        with self.ctl.lock:
+            # Collect terminal ids and tab ids BEFORE removal — remove_workspace
+            # drops the tabs from state, so we need the references first (and a
+            # deliberate close also drops the saved scrollback for each tab).
+            ws = self.ctl.state.get_workspace(ws_id)
+            tab_ids: list[str] = list(ws.tab_ids) if ws is not None else []
+            term_ids = [
+                tab.terminal_id
+                for tid in tab_ids
+                if (tab := self.ctl.state.tabs.get(tid)) is not None
+                and tab.terminal_id is not None
+            ]
+            self.ctl.state.remove_workspace(ws_id)
+            for term_id in term_ids:
+                self.ctl.terminals.close(term_id)
+            for tid in tab_ids:
+                self.ctl.delete_scrollback(tid)
+            if not self.ctl.state.workspaces:
+                ws = self.ctl.state.add_workspace(name="workspace 1")
+                self.ctl.state.add_tab(ws.id)
+                self.ctl.state.set_active_workspace(ws.id)
+            self.ctl.save()
         return JSONResponse({"ok": True})
 
     def create_tab(self, request: Request) -> Response:
         if (deny := _deny(request)) is not None:
             return deny
         ws_id = request.path_params["ws_id"]
-        spawn_cwd = self.ctl.inherit_cwd(ws_id)
-        tab = self.ctl.state.add_tab(ws_id, spawn_cwd=spawn_cwd)
-        if tab is None:
-            return JSONResponse({"error": "not found"}, status_code=404)
-        self.ctl.save()
+        with self.ctl.lock:
+            spawn_cwd = self.ctl.inherit_cwd(ws_id)
+            tab = self.ctl.state.add_tab(ws_id, spawn_cwd=spawn_cwd)
+            if tab is None:
+                return JSONResponse({"error": "not found"}, status_code=404)
+            self.ctl.save()
         return JSONResponse({"id": tab.id})
 
     async def patch_tab(self, request: Request) -> Response:
         if (deny := _deny(request)) is not None:
             return deny
-        tab = self.ctl.state.tabs.get(request.path_params["tab_id"])
-        if tab is None:
-            return JSONResponse({"error": "not found"}, status_code=404)
         body: dict[str, Any] = await request.json()
-        if "title" in body:
-            # Explicit rename pins the title.
-            tab.title = str(body["title"]).strip() or tab.title
-            tab.user_set_title = True
-        elif "osc_title" in body and not tab.user_set_title:
-            # OSC 0/2 from the shell — tracks unless the user pinned a name.
-            tab.title = str(body["osc_title"]).strip() or tab.title
-        self.ctl.save()
+        with self.ctl.lock:
+            tab = self.ctl.state.tabs.get(request.path_params["tab_id"])
+            if tab is None:
+                return JSONResponse({"error": "not found"}, status_code=404)
+            if "title" in body:
+                # Explicit rename pins the title.
+                tab.title = str(body["title"]).strip() or tab.title
+                tab.user_set_title = True
+            elif "osc_title" in body and not tab.user_set_title:
+                # OSC 0/2 from the shell — tracks unless the user pinned a name.
+                tab.title = str(body["osc_title"]).strip() or tab.title
+            self.ctl.save()
         return JSONResponse({"ok": True})
 
     async def patch_ui(self, request: Request) -> Response:
         if (deny := _deny(request)) is not None:
             return deny
         body: dict[str, Any] = await request.json()
-        ui = self.ctl.state.ui
-        if "sidebar_width" in body:
-            ui.sidebar_width = max(120, min(600, int(body["sidebar_width"])))
-        if "font_size" in body:
-            ui.font_size = max(6, min(32, int(body["font_size"])))
-        for k in (
-            "sidebar_collapsed",
-            "copy_on_select",
-            "scrollback_persist",
-            "win_maximized",
-        ):
-            if k in body:
-                setattr(ui, k, bool(body[k]))
-        for k in ("win_w", "win_h"):
-            if k in body:
-                setattr(ui, k, max(200, int(body[k])))
-        for k in ("win_x", "win_y"):
-            if k in body:
-                setattr(ui, k, None if body[k] is None else int(body[k]))
-        self.ctl.save()
+        with self.ctl.lock:
+            ui = self.ctl.state.ui
+            if "sidebar_width" in body:
+                ui.sidebar_width = max(120, min(600, int(body["sidebar_width"])))
+            if "font_size" in body:
+                ui.font_size = max(6, min(32, int(body["font_size"])))
+            for k in (
+                "sidebar_collapsed",
+                "copy_on_select",
+                "scrollback_persist",
+                "win_maximized",
+            ):
+                if k in body:
+                    setattr(ui, k, bool(body[k]))
+            for k in ("win_w", "win_h"):
+                if k in body:
+                    setattr(ui, k, max(200, int(body[k])))
+            for k in ("win_x", "win_y"):
+                if k in body:
+                    setattr(ui, k, None if body[k] is None else int(body[k]))
+            self.ctl.save()
         return JSONResponse({"ok": True})
 
     def delete_tab(self, request: Request) -> Response:
         if (deny := _deny(request)) is not None:
             return deny
         tab_id = request.path_params["tab_id"]
-        tab = self.ctl.state.tabs.get(tab_id)
-        if tab is not None and tab.terminal_id is not None:
-            self.ctl.terminals.close(tab.terminal_id)
-        self.ctl.state.remove_tab(tab_id)
-        # Deliberate close drops the captured scrollback too; restart-in-place
-        # uses the dedicated DELETE /scrollback endpoint.
-        self.ctl.delete_scrollback(tab_id)
-        self.ctl.save()
+        with self.ctl.lock:
+            tab = self.ctl.state.tabs.get(tab_id)
+            if tab is not None and tab.terminal_id is not None:
+                self.ctl.terminals.close(tab.terminal_id)
+            self.ctl.state.remove_tab(tab_id)
+            # Deliberate close drops the captured scrollback too; restart-in-place
+            # uses the dedicated DELETE /scrollback endpoint.
+            self.ctl.delete_scrollback(tab_id)
+            self.ctl.save()
         return JSONResponse({"ok": True})
 
     async def get_scrollback(self, request: Request) -> Response:
         if (deny := _deny(request)) is not None:
             return deny
         tab_id = request.path_params["tab_id"]
-        if self.ctl.state.tabs.get(tab_id) is None:
-            return PlainTextResponse("", status_code=404)
-        content = self.ctl.load_scrollback(tab_id) or ""
+        with self.ctl.lock:
+            if self.ctl.state.tabs.get(tab_id) is None:
+                return PlainTextResponse("", status_code=404)
+            content = self.ctl.load_scrollback(tab_id) or ""
         return PlainTextResponse(content)
 
     async def put_scrollback(self, request: Request) -> Response:
         if (deny := _deny(request)) is not None:
             return deny
         tab_id = request.path_params["tab_id"]
-        if self.ctl.state.tabs.get(tab_id) is None:
-            return JSONResponse({"error": "not found"}, status_code=404)
-        if not self.ctl.state.ui.scrollback_persist:
-            # Pref disabled: accept silently so the client doesn't retry.
-            return JSONResponse({"ok": True})
         body = await request.body()
         if len(body) > SCROLLBACK_MAX_BYTES * 2:
             # Reject obviously-oversized payloads up front; the helper still
             # tail-trims to the on-disk cap.
             return JSONResponse({"error": "too large"}, status_code=413)
-        self.ctl.save_scrollback(tab_id, body.decode("utf-8", errors="replace"))
+        with self.ctl.lock:
+            if self.ctl.state.tabs.get(tab_id) is None:
+                return JSONResponse({"error": "not found"}, status_code=404)
+            if not self.ctl.state.ui.scrollback_persist:
+                # Pref disabled: accept silently so the client doesn't retry.
+                return JSONResponse({"ok": True})
+            self.ctl.save_scrollback(tab_id, body.decode("utf-8", errors="replace"))
         return JSONResponse({"ok": True})
 
     async def delete_scrollback(self, request: Request) -> Response:
@@ -542,7 +574,8 @@ class Api:
     async def reset_activity(self, request: Request) -> Response:
         if (deny := _deny(request)) is not None:
             return deny
-        self.ctl.reset_activity()
+        with self.ctl.lock:
+            self.ctl.reset_activity()
         return JSONResponse({"ok": True})
 
     async def open_url(  # noqa: PLR6301 — uniform Route handler shape across Api

@@ -373,6 +373,37 @@ def test_tab_order_reorders_and_sanitizes(server: LiveServer) -> None:
     assert tab_ids() == [t1, t2, t0]
 
 
+def test_concurrent_tab_creation_does_not_race(server: LiveServer) -> None:
+    """Regression: sync route handlers run in anyio's threadpool, so two
+    ``POST /tabs`` calls can hit ``AppController.save`` while another is
+    iterating ``state.tabs`` — used to raise ``RuntimeError: dictionary
+    changed size during iteration``. The state lock now serializes them."""
+    import concurrent.futures
+
+    base = server.url
+    st = _req(f"{base}/api/state?t={T}")
+    ws = st["workspaces"][0]["id"]
+    before = len(st["workspaces"][0]["tab_ids"])
+
+    n = 20
+    with concurrent.futures.ThreadPoolExecutor(max_workers=n) as pool:
+        results = list(
+            pool.map(
+                lambda _i: _req(
+                    f"{base}/api/workspaces/{ws}/tabs?t={T}",
+                    "POST",
+                    b"{}",
+                ),
+                range(n),
+            )
+        )
+
+    assert len({r["id"] for r in results}) == n
+    after = _req(f"{base}/api/state?t={T}")
+    ws_view = next(w for w in after["workspaces"] if w["id"] == ws)
+    assert len(ws_view["tab_ids"]) == before + n
+
+
 def test_unknown_ids_return_404(server: LiveServer) -> None:
     base = server.url
     for url, method in [
