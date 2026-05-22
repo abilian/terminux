@@ -138,9 +138,7 @@ class AppController:
             ws_id = self.state.active_workspace_id
             if ws_id is None or self.state.get_workspace(ws_id) is None:
                 return
-            self._active_seconds[ws_id] = (
-                self._active_seconds.get(ws_id, 0.0) + dt
-            )
+            self._active_seconds[ws_id] = self._active_seconds.get(ws_id, 0.0) + dt
 
     def active_seconds(self, ws_id: str) -> int:
         return int(self._active_seconds.get(ws_id, 0.0))

@@ -69,3 +69,72 @@ export async function poll(): Promise<void> {
   await fetchState();
   await onRender();
 }
+
+// Apply an already-mutated local state: re-render and re-activate without
+// hitting the network. Used by the optimistic switch helpers so a click
+// re-paints in one frame instead of waiting on PATCH + GET /state.
+async function localApply(): Promise<void> {
+  await onRender();
+  await onActivate();
+}
+
+// Optimistic workspace switch. Mutates `state` to mirror what the backend's
+// ``set_active_workspace`` would do (clear unseen/attention on the new
+// workspace's active tab, flip the active id), re-renders right away, then
+// fires the PATCH in the background. The 2 s status poll heals any drift —
+// notably it recomputes the previously-active workspace's "real" status
+// (idle / unseen / busy / exited).
+export async function setActiveWorkspaceOptimistic(
+  wsId: string,
+): Promise<void> {
+  if (!state || state.active_workspace_id === wsId) return;
+  const tabs = state.tabs;
+  const w = state.workspaces.find((x) => x.id === wsId);
+  if (!w) return;
+  state.active_workspace_id = wsId;
+  if (w.active_tab_id) {
+    const tab = tabs[w.active_tab_id];
+    if (tab) {
+      tab.has_unseen_output = false;
+      tab.needs_attention = false;
+    }
+  }
+  w.attention = w.tab_ids.some((t) => tabs[t]?.needs_attention ?? false);
+  w.status = "active";
+  for (const other of state.workspaces) {
+    if (other.id !== wsId && other.status === "active") {
+      // Best-guess fallback; the poll will promote it back to unseen /
+      // busy / exited if any of those apply.
+      other.status = "idle";
+    }
+  }
+  await localApply();
+  void api(`/workspaces/${wsId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ active: true }),
+  });
+}
+
+// Optimistic tab switch within a workspace. Same trick as the workspace
+// helper above — local mutation, render, fire-and-forget PATCH.
+export async function setActiveTabOptimistic(
+  wsId: string,
+  tid: string,
+): Promise<void> {
+  if (!state) return;
+  const tabs = state.tabs;
+  const w = state.workspaces.find((x) => x.id === wsId);
+  if (!w || w.active_tab_id === tid) return;
+  w.active_tab_id = tid;
+  const tab = tabs[tid];
+  if (tab) {
+    tab.has_unseen_output = false;
+    tab.needs_attention = false;
+  }
+  w.attention = w.tab_ids.some((t) => tabs[t]?.needs_attention ?? false);
+  await localApply();
+  void api(`/workspaces/${wsId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ active_tab_id: tid }),
+  });
+}

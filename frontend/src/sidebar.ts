@@ -4,7 +4,7 @@ import { api } from "./api";
 import { formatDuration } from "./duration";
 import { makeRenameInput } from "./rename";
 import { makeDraggable, recentlyReordered } from "./reorder";
-import { getState, refresh } from "./store";
+import { getState, refresh, setActiveWorkspaceOptimistic } from "./store";
 import { disposeSession } from "./terminal";
 
 let editingWsId: string | null = null;
@@ -110,10 +110,7 @@ export function renderSidebar(): void {
     }
     row.onclick = (): void => {
       if (recentlyReordered()) return; // ignore the click after a drag
-      api(`/workspaces/${w.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ active: true }),
-      }).then(refresh);
+      void setActiveWorkspaceOptimistic(w.id);
     };
     if (editingWsId !== w.id) {
       makeDraggable(
@@ -148,8 +145,5 @@ export function switchWorkspace(delta: number): void {
   let i = state.workspaces.findIndex((w) => w.id === state.active_workspace_id);
   if (i < 0) i = 0;
   const next = state.workspaces[(i + delta + n) % n];
-  api(`/workspaces/${next.id}`, {
-    method: "PATCH",
-    body: JSON.stringify({ active: true }),
-  }).then(refresh);
+  void setActiveWorkspaceOptimistic(next.id);
 }

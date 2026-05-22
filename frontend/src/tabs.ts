@@ -3,7 +3,12 @@
 import { api } from "./api";
 import { makeRenameInput } from "./rename";
 import { makeDraggable, recentlyReordered } from "./reorder";
-import { activeWorkspace, getState, refresh } from "./store";
+import {
+  activeWorkspace,
+  getState,
+  refresh,
+  setActiveTabOptimistic,
+} from "./store";
 import { disposeSession } from "./terminal";
 
 let editingTabId: string | null = null;
@@ -19,10 +24,7 @@ export function switchTab(delta: number): void {
   const len = ws.tab_ids.length;
   const i = ws.tab_ids.indexOf(ws.active_tab_id);
   const next = ws.tab_ids[(i + delta + len) % len];
-  api(`/workspaces/${ws.id}`, {
-    method: "PATCH",
-    body: JSON.stringify({ active_tab_id: next }),
-  }).then(refresh);
+  void setActiveTabOptimistic(ws.id, next);
 }
 
 export function renderTabs(): void {
@@ -97,10 +99,7 @@ export function renderTabs(): void {
     el.onclick = (): void => {
       if (recentlyReordered()) return; // ignore the click after a drag
       if (tid === ws.active_tab_id) return; // already active; lets dblclick rename
-      api(`/workspaces/${ws.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ active_tab_id: tid }),
-      }).then(refresh);
+      void setActiveTabOptimistic(ws.id, tid);
     };
     if (editingTabId !== tid) {
       makeDraggable(
