@@ -41,7 +41,7 @@ That's it. You're in.
 ## ✨ What you get
 
 - **Workspaces sidebar** — a persistent list of named workspaces. Names track
-  the active shell's working directory automatically (until you pin one).
+  the first tab's working directory automatically (until you pin one).
 - **Tabbed terminals** — every workspace has its own tabs, each a real PTY
   shell. Switch freely; background tabs keep streaming, no jank.
 - **Survives restarts** — workspaces, tabs, window geometry, font size, each

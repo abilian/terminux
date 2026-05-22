@@ -13,9 +13,12 @@ reorderable list of them.
 - **Create / rename / reorder / close.** Drag-and-drop reordering works even in
   pywebview's WKWebView (where HTML5 drag-and-drop does not), with live
   before/after drop feedback.
-- **Automatic naming.** A workspace's name tracks the active shell's working
-  directory automatically. An explicit rename *pins* the name so it stops
-  tracking. Inline rename works for both workspaces and tabs.
+- **Automatic naming.** A workspace's name tracks the **first tab's**
+  working directory automatically — drag a different tab into slot 0 to
+  promote it into the naming role; jumping between tabs within a workspace
+  doesn't keep renaming it. An explicit rename *pins* the name so it stops
+  tracking, and the pinned name survives across restarts. Inline rename
+  works for both workspaces and tabs.
 - **Status dot.** Each workspace shows a lightweight status indicator.
 - **Closing the last tab** of a workspace closes the *workspace* and activates
   another one — it does not quit the app.

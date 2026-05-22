@@ -179,6 +179,47 @@ def test_state_view_overrides_names() -> None:
     assert view["workspaces"][0]["name"] == "log"
 
 
+def test_workspace_label_tracks_first_tab_not_active(tmp_path) -> None:
+    """The workspace label follows ``tab_ids[0]``, not ``active_tab_id`` —
+    switching tabs within a workspace must not keep renaming it."""
+    ctl = AppController(persist=False)
+    ws = ctl.state.workspaces[0]
+    first = ctl.state.tabs[ws.tab_ids[0]]
+    second = ctl.state.add_tab(ws.id, spawn_cwd="/var/log")
+    assert second is not None
+    first.spawn_cwd = str(tmp_path)
+    # Activate the second tab; the first is still in slot 0.
+    ws.active_tab_id = second.id
+    assert ws.tab_ids[0] == first.id
+    assert ctl._workspace_label(ws) == tmp_path.name
+
+
+def test_user_set_name_persists_through_save_load(tmp_path, monkeypatch) -> None:
+    """Renaming a workspace and round-tripping through the on-disk JSON
+    keeps both ``name`` and ``user_set_name`` — the auto-tracker stays
+    pinned across a restart."""
+    from terminux.core import persistence
+
+    state_file = tmp_path / "state.json"
+    monkeypatch.setattr(persistence, "state_path", lambda: state_file)
+
+    ctl = AppController(persist=True)
+    ws = ctl.state.workspaces[0]
+    ws.name = "Project Alpha"
+    ws.user_set_name = True
+    ctl.save()
+
+    reloaded = AppController(persist=True)
+    rws = reloaded.state.workspaces[0]
+    assert rws.name == "Project Alpha"
+    assert rws.user_set_name is True
+    # And the display label honours the pin even if the first tab's cwd
+    # would otherwise resolve to something else.
+    rtab = reloaded.state.tabs[rws.tab_ids[0]]
+    rtab.spawn_cwd = "/var/log"
+    assert reloaded._workspace_label(rws) == "Project Alpha"
+
+
 def test_spawn_lock_is_an_asyncio_lock() -> None:
     import asyncio
 

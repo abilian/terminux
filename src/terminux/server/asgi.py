@@ -213,7 +213,12 @@ class AppController:
             return self.terminals.get(tab.terminal_id)
 
     def _workspace_label(self, ws: Workspace) -> str:
-        """Display name: a pinned rename, else the shell's directory.
+        """Display name: a pinned rename, else the **first** tab's directory.
+
+        Tracks ``ws.tab_ids[0]`` rather than the active tab so jumping
+        between tabs within a workspace doesn't keep renaming it; the
+        drag-reorderable tab list gives the user a direct way to
+        promote a different tab into the naming slot.
 
         Resolves to a directory immediately (never the numbered name): a
         live shell's cwd, else the last-seen cwd, else where it will spawn,
@@ -223,8 +228,9 @@ class AppController:
         if ws.user_set_name:
             return ws.name
         cwd: str | None = None
-        if ws.active_tab_id is not None:
-            tab = self.state.tabs.get(ws.active_tab_id)
+        if ws.tab_ids:
+            first_tid = ws.tab_ids[0]
+            tab = self.state.tabs.get(first_tid)
             if tab is not None:
                 if tab.terminal_id is not None:
                     term = self.terminals.get(tab.terminal_id)

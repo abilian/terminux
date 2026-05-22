@@ -59,8 +59,9 @@ architecture details.
 1. terminux opens with a default workspace and one terminal tab.
 2. Press ++cmd+n++ / ++ctrl+n++ to create a workspace, ++cmd+t++ / ++ctrl+t++
    for a new tab.
-3. `cd` somewhere — the workspace name follows the active shell's working
-   directory until you pin a name by renaming it.
+3. `cd` somewhere — the workspace name follows the **first tab's** working
+   directory until you pin a name by renaming it (pinned names survive
+   restarts).
 4. Quit and relaunch: your workspaces and tabs come back, each shell respawned
    in the directory it was in at exit.
 
