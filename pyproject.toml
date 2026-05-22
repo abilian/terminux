@@ -35,12 +35,13 @@ dev = [
     "pre-commit>=4.6.0",
     "pyrefly>=1.0.0",
     "ty>=0.0.37",
+    # Doc
     "zensical>=0.0.43",
 ]
 
 [project.urls]
 Homepage = "https://github.com/abilian/terminux"
-Documentation = "https://github.com/abilian/py-capnweb#readme"
+Documentation = "https://github.com/abilian/terminux/blob/main/docs/index.md"
 Repository = "https://github.com/abilian/terminux.git"
 Issues = "https://github.com/abilian/terminux/issues"
 Changelog = "https://github.com/abilian/terminux/blob/main/CHANGES.md"
