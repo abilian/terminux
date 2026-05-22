@@ -26,7 +26,3 @@ tasks:
   #     cd terminux
   #     uvx nox
 
-triggers:
-  - action: email
-    condition: failure
-    to: sf@fermigier.com

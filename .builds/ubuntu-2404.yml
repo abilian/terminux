@@ -54,7 +54,3 @@ tasks:
       cd terminux
       uvx nox
 
-triggers:
-  - action: email
-    condition: failure
-    to: builds@fermigier.com
