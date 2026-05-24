@@ -179,6 +179,50 @@ def test_state_view_overrides_names() -> None:
     assert view["workspaces"][0]["name"] == "log"
 
 
+def test_busy_status_wins_over_unseen() -> None:
+    """A workspace whose foreground task is still running shows ``busy``
+    even when it has unseen output — otherwise a chatty long-running
+    task (Claude Code's spinner, a noisy build) flips the dot to
+    ``unseen`` (green) while it's still working."""
+
+    class FakeTerm:
+        def is_busy(self) -> bool:
+            return True
+
+        def cwd(self) -> str | None:  # called by _workspace_label
+            return None
+
+    ctl = AppController(persist=False)
+    # Add a second workspace so the first isn't the active one (active
+    # status would otherwise outrank everything).
+    other = ctl.state.add_workspace()
+    ctl.state.add_tab(other.id)
+    ctl.state.set_active_workspace(other.id)
+
+    target = ctl.state.workspaces[0]
+    tab = ctl.state.tabs[target.tab_ids[0]]
+    tab.terminal_id = "fake-term"
+    target.has_unseen_output = True  # would normally make it status=unseen
+    ctl.terminals._terminals["fake-term"] = FakeTerm()  # type: ignore[assignment]
+
+    view = ctl.state_view()
+    target_view = next(w for w in view["workspaces"] if w["id"] == target.id)
+    assert target_view["status"] == "busy"
+
+    # Sanity: once the task finishes (is_busy → False), unseen wins.
+    class IdleTerm:
+        def is_busy(self) -> bool:
+            return False
+
+        def cwd(self) -> str | None:
+            return None
+
+    ctl.terminals._terminals["fake-term"] = IdleTerm()  # type: ignore[assignment]
+    view = ctl.state_view()
+    target_view = next(w for w in view["workspaces"] if w["id"] == target.id)
+    assert target_view["status"] == "unseen"
+
+
 def test_workspace_label_tracks_first_tab_not_active(tmp_path) -> None:
     """The workspace label follows ``tab_ids[0]``, not ``active_tab_id`` —
     switching tabs within a workspace must not keep renaming it."""

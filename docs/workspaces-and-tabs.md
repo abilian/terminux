@@ -67,9 +67,11 @@ fuzzy-filtered. Commands relevant to activity stats:
 The sidebar status dot turns **amber** when a workspace has a foreground
 task running and nothing more urgent applies — same color language as CI
 dashboards (green = result for you, amber = wait, empty = nothing here).
-Priority is **active > exited > unseen > busy > idle**: `unseen` (green)
-already says "go check this," so it wins over `busy` (amber). The signal
-sources, in order of preference:
+Priority is **active > exited > busy > unseen > idle**: while a task is
+still running, the dot stays amber even if it's emitting output (a
+spinner, progress lines, `tail -f`), since "still working" is the
+honest signal — `unseen` only takes over once the task has finished.
+The signal sources, in order of preference:
 
 1. **`OSC 133;C` / `;D`** when [shell integration](shell-integration.md) is
    set up — the shell itself tells terminux when a command begins and ends.

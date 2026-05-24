@@ -251,8 +251,15 @@ class AppController:
         """`AppState.view_json` with cwd-derived workspace display names and
         a ``"busy"`` status promotion when a workspace has a foreground task
         running and nothing more urgent to signal (priority: active > exited
-        > unseen > busy > idle). Computed on demand at view time so we never
+        > busy > unseen > idle). Computed on demand at view time so we never
         pay the ``tcgetpgrp`` syscall outside the ~2 Hz frontend poll.
+
+        ``busy`` beats ``unseen`` because a chatty long-running task (Claude
+        Code's spinner, a build's progress lines, ``tail -f``) would
+        otherwise keep flipping the workspace green while it's still
+        working. "Output happened" is only a useful "go check this" signal
+        once the task has finished; until then "still running" is the
+        more accurate cue.
         """
         with self.lock:
             view = self.state.view_json()
@@ -264,9 +271,10 @@ class AppController:
                     continue
                 wv["name"] = self._workspace_label(ws)
                 wv["active_seconds"] = self.active_seconds(ws.id)
-                # Only the "idle" slot is overridable — active/unseen/exited
-                # all carry more urgent information that wins over "busy".
-                if wv["status"] == "idle" and any(
+                # Active/exited carry more urgent meaning and stay untouched.
+                # Idle and unseen are both demoted to busy when any tab has
+                # a foreground task running.
+                if wv["status"] in {"idle", "unseen"} and any(
                     (tab := self.state.tabs.get(tid)) is not None
                     and tab.terminal_id is not None
                     and (term := self.terminals.get(tab.terminal_id)) is not None
