@@ -7,6 +7,7 @@ import type { SerializeAddon } from "@xterm/addon-serialize";
 import type { Terminal } from "@xterm/xterm";
 
 import { api } from "./api";
+import { reconcile } from "./reconcile";
 import type { StateView, WorkspaceView } from "./types";
 
 export interface Session {
@@ -52,9 +53,42 @@ export function activeSession(): Session | null {
   return sessions.get(ws.active_tab_id) ?? null;
 }
 
+// Two distinct races motivated the machinery below:
+//
+// 1. A ``GET /api/state`` poll started **before** our optimistic
+//    PATCH arrives at the backend comes back with a stale snapshot
+//    (active id = the *previous* workspace). ``fetchState`` then
+//    overwrites the optimistic state and the UI "jumps back".
+// 2. Rapid PATCHes race for the backend's ``AppController.lock``;
+//    the order they win the lock is not the order they were sent,
+//    so the backend can settle on workspace B even though the
+//    user's last intent was C.
+//
+// ``activationQueue`` serializes outgoing PATCHes so the backend
+// sees them in the order the user issued them (fix for #2).
+// ``expectedActiveWs`` / ``expectedActiveTabByWs`` carry the
+// user's latest local intent; on each fetch, ``reconcile`` overrides
+// the polled active ids with the expectation until a poll agrees
+// — only then is the expectation cleared (fix for #1).
+let activationQueue: Promise<unknown> = Promise.resolve();
+let expectedActiveWs: string | null = null;
+const expectedActiveTabByWs = new Map<string, string>();
+
+function enqueueActivation(call: () => Promise<unknown>): void {
+  activationQueue = activationQueue.then(call).catch(() => undefined);
+}
+
 async function fetchState(): Promise<void> {
   const r = await api("/state");
-  state = (await r.json()) as StateView;
+  const fetched = (await r.json()) as StateView;
+  const next = reconcile(fetched, {
+    ws: expectedActiveWs,
+    tabs: expectedActiveTabByWs,
+  });
+  expectedActiveWs = next.ws;
+  expectedActiveTabByWs.clear();
+  for (const [k, v] of next.tabs) expectedActiveTabByWs.set(k, v);
+  state = fetched;
 }
 
 // Full refresh: re-render and (re)activate the focused terminal.
@@ -81,9 +115,9 @@ async function localApply(): Promise<void> {
 // Optimistic workspace switch. Mutates `state` to mirror what the backend's
 // ``set_active_workspace`` would do (clear unseen/attention on the new
 // workspace's active tab, flip the active id), re-renders right away, then
-// fires the PATCH in the background. The 2 s status poll heals any drift —
-// notably it recomputes the previously-active workspace's "real" status
-// (idle / unseen / busy / exited).
+// queues the PATCH so the backend sees switches in the order they were
+// issued. ``expectedActiveWs`` keeps the local truth intact across any
+// in-flight stale polls.
 export async function setActiveWorkspaceOptimistic(
   wsId: string,
 ): Promise<void> {
@@ -108,15 +142,18 @@ export async function setActiveWorkspaceOptimistic(
       other.status = "idle";
     }
   }
+  expectedActiveWs = wsId;
   await localApply();
-  void api(`/workspaces/${wsId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ active: true }),
-  });
+  enqueueActivation(() =>
+    api(`/workspaces/${wsId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ active: true }),
+    }),
+  );
 }
 
 // Optimistic tab switch within a workspace. Same trick as the workspace
-// helper above — local mutation, render, fire-and-forget PATCH.
+// helper above — local mutation, render, queued PATCH, expectation.
 export async function setActiveTabOptimistic(
   wsId: string,
   tid: string,
@@ -132,9 +169,12 @@ export async function setActiveTabOptimistic(
     tab.needs_attention = false;
   }
   w.attention = w.tab_ids.some((t) => tabs[t]?.needs_attention ?? false);
+  expectedActiveTabByWs.set(wsId, tid);
   await localApply();
-  void api(`/workspaces/${wsId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ active_tab_id: tid }),
-  });
+  enqueueActivation(() =>
+    api(`/workspaces/${wsId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ active_tab_id: tid }),
+    }),
+  );
 }
