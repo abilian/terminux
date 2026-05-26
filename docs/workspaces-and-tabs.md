@@ -71,14 +71,18 @@ Priority is **active > exited > busy > unseen > idle**: while a task is
 still running, the dot stays amber even if it's emitting output (a
 spinner, progress lines, `tail -f`), since "still working" is the
 honest signal — `unseen` only takes over once the task has finished.
-The signal sources, in order of preference:
+"Busy" also requires **recent PTY output** (within the last few
+seconds), so a TUI parked at its prompt (Claude Code waiting for
+input, an idle vim, less with nothing scrolling) doesn't keep the dot
+lit. The signal sources, in order of preference:
 
 1. **`OSC 133;C` / `;D`** when [shell integration](shell-integration.md) is
    set up — the shell itself tells terminux when a command begins and ends.
 2. **`tcgetpgrp` on the PTY**, comparing the foreground process group to the
-   shell's pid — works with no setup. Interactive TUIs (vim, less, fzf, …)
-   register as "working" while focused; OSC 133 gives the more precise
-   behavior if you want it.
+   shell's pid — works with no setup. Both signals are AND-ed with the
+   recent-output gate; a silent task (e.g. a long `make` step that's
+   compiling without printing) will briefly read as idle until it
+   emits again.
 
 State is recomputed each time the frontend polls `/api/state` (~every 2 s);
 no separate poll task.

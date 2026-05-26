@@ -32,6 +32,8 @@ class _FakePty:
 
 
 def _bare_terminal(loop: _FakeLoop, pty: _FakePty) -> Terminal:
+    import time
+
     t = Terminal.__new__(Terminal)
     t.id = "x"
     t._pty = pty  # type: ignore[attr-defined]
@@ -44,6 +46,9 @@ def _bare_terminal(loop: _FakeLoop, pty: _FakePty) -> Terminal:
     t.on_attention = None
     t.on_exit = None
     t._attention = term_mod._AttentionScanner()
+    # is_busy() requires recent PTY output; seed at "now" so freshly
+    # built test terminals fall inside the activity window by default.
+    t._last_output_at = time.monotonic()
     return t
 
 
@@ -203,6 +208,45 @@ def test_is_busy_trusts_osc133_once_seen(monkeypatch) -> None:
     monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"\x1b]133;D;0\x07")
     t._on_readable()
     assert t.is_busy() is False
+
+
+def test_is_busy_requires_recent_output(monkeypatch) -> None:
+    """A foreground child without recent PTY output is treated as
+    quiescent — covers parked TUIs (Claude Code waiting for input,
+    idle vim) that would otherwise keep the kernel signal lit
+    forever even though nothing is happening."""
+    import time
+
+    t = _bare_terminal(_FakeLoop(), _FakePty())
+    # Kernel says "something else is foregrounded" — a child exists.
+    monkeypatch.setattr(term_mod.os, "tcgetpgrp", lambda _fd: 9999)
+
+    # Recent output → busy.
+    t._last_output_at = time.monotonic()
+    assert t.is_busy() is True
+
+    # Silent past the threshold → not busy, even with a foreground child.
+    t._last_output_at = time.monotonic() - term_mod.BUSY_IDLE_THRESHOLD - 1
+    assert t.is_busy() is False
+
+
+def test_is_busy_recovers_from_stuck_osc133(monkeypatch) -> None:
+    """A shell that emits ``OSC 133;C`` but never the matching ``;D``
+    used to keep the workspace amber forever; the recent-output veto
+    now releases it once the workspace falls silent."""
+    import time
+
+    t = _bare_terminal(_FakeLoop(), _FakePty())
+    monkeypatch.setattr(term_mod.os, "tcgetpgrp", lambda _fd: 9999)
+    # Simulate the stuck state: in_command=True, no ;D ever.
+    t._attention._osc133_seen = True
+    t._attention._in_command = True
+
+    t._last_output_at = time.monotonic()
+    assert t.is_busy() is True  # output still flowing
+
+    t._last_output_at = time.monotonic() - term_mod.BUSY_IDLE_THRESHOLD - 1
+    assert t.is_busy() is False  # silent → release the dot
 
 
 def test_osc133_fires_only_for_long_commands(monkeypatch) -> None:

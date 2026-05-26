@@ -36,6 +36,15 @@ READ_CHUNK = 65536
 # every `cd` in a background tab would ring the sidebar.
 OSC133_MIN_COMMAND_SECONDS = 2.0
 
+# How long a foreground task can be silent before ``is_busy()`` treats it
+# as quiescent. Catches: (a) idle TUIs (Claude Code parked at its prompt,
+# vim with no activity) that would otherwise keep the kernel-level
+# ``tcgetpgrp`` signal lit forever, and (b) shell integrations that emit
+# ``OSC 133;C`` but never the matching ``;D``, leaving ``_in_command``
+# stuck True. Claude Code's spinner ticks at multiple Hz so a thinking
+# session stays well within this window.
+BUSY_IDLE_THRESHOLD = 3.0
+
 # Single-byte control codes the attention scanner inspects.
 _BEL = 0x07
 _ESC_BYTE = 0x1B
@@ -193,6 +202,9 @@ class Terminal:
         self.on_attention: Callable[[], None] | None = None
         self.on_exit: Callable[[int | None], None] | None = None
         self._attention = _AttentionScanner()
+        # Updated on every successful read; ``is_busy()`` uses it as a
+        # recent-activity gate so an idle TUI doesn't keep the dot amber.
+        self._last_output_at: float = time.monotonic()
         self._loop.add_reader(self._pty.fd, self._on_readable)
 
     # ----- reading ------------------------------------------------------
@@ -205,6 +217,7 @@ class Terminal:
         if not data:
             self._handle_eof()
             return
+        self._last_output_at = time.monotonic()
         self._backlog += data
         if len(self._backlog) > BACKLOG_CAP:
             del self._backlog[: len(self._backlog) - BACKLOG_CAP]
@@ -263,16 +276,26 @@ class Terminal:
         return self._pty.cwd()
 
     def is_busy(self) -> bool:
-        """True if a foreground task is running in this terminal right now.
+        """True if a foreground task is actively producing output.
 
-        Prefers OSC 133 (shell integration) — between ``;C`` and ``;D`` the
-        shell *is* running a command. With no shell integration, falls back
-        to comparing ``tcgetpgrp(fd)`` with the shell's own pid: if some
-        other process group is foregrounded, the shell has spawned a child
-        that is currently in the foreground. Defensive against closed fds
-        and exited shells.
+        Two signals combined:
+
+        1. *Something is foregrounded.* Either ``OSC 133;C`` without a
+           matching ``;D`` (precise — the shell told us), or — with no
+           shell integration — ``tcgetpgrp(fd) != self._pty.pid``
+           (kernel-level fallback).
+        2. *Output flowed recently* — within ``BUSY_IDLE_THRESHOLD`` s.
+           Without this, an open TUI parked at its prompt (Claude Code
+           waiting for input, vim with no activity, less) would keep the
+           sidebar dot amber forever since the kernel still sees a
+           foreground child. Also recovers from a stuck ``OSC 133;C``
+           that never received its ``;D``.
+
+        Defensive against closed fds and exited shells.
         """
         if self._exited:
+            return False
+        if (time.monotonic() - self._last_output_at) > BUSY_IDLE_THRESHOLD:
             return False
         scanner = self._attention
         if scanner.osc133_seen:
