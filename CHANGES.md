@@ -2,6 +2,24 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-05-26
+
+### Changed
+
+- **Workspace name now tracks the *first* tab's working directory**, not the active tab's. Switching between tabs inside a workspace no longer keeps renaming it; drag a different tab into slot 0 to promote it into the naming role.
+
+### Fixed
+
+- **Sidebar dot stuck amber on idle workspaces.** `is_busy()` now requires recent PTY output (≤ 3 s) in addition to the existing kernel/`OSC 133` signals, so a TUI parked at its prompt (Claude Code waiting for input, idle vim, less) and a shell that emits `OSC 133;C` without the matching `;D` both release the amber dot once they go silent. Tradeoff: a fully silent long-running command briefly reads as idle until it emits again.
+- **Sidebar dot green on a thinking Claude Code.** Spinner output kept flipping the dot to `unseen` (green) while the task was still working. Swapped the priority — `busy` now outranks `unseen` (new order: active > exited > busy > unseen > idle).
+- **Rapid `Cmd+Shift+Arrow` switching could jump back to a previous workspace.** Two distinct races: a `GET /api/state` poll in flight at the time of the optimistic switch came back with the stale active id and wholesale-replaced the local state, and two fire-and-forget PATCHes could be applied out of user-issued order by the backend threadpool. Optimistic switch helpers now serialize their PATCHes through a shared promise queue, and polls reconcile against a per-id "expected" map until the backend confirms it has caught up.
+
+### Internal
+
+- `ci(ubuntu)` switched to `playwright install --with-deps chromium` — no more hand-maintained `libxcb-*` / `libxrandr` apt list to drift on every Playwright bump, and the suite stops downloading firefox/webkit/ffmpeg (~220 MB).
+- Alpine CI dropped — Playwright doesn't officially support musl, the lint task wasn't pulling its weight.
+- Dependency lockfile refresh.
+
 ## [0.6.0] - 2026-05-22
 
 ### Added
