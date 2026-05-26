@@ -17,24 +17,9 @@ packages:
   - python3-pip
   # Extra
   - nodejs
-  # For playwright
-  - libxcb-shm0
-  - libx11-xcb1
-  - libxrandr2
-  - libxcomposite1
-  - libxcursor1
-  - libxdamage1
-  - libxi6
-  - libxfixes3
-  - libgtk-3-0t64
-  - libpangocairo-1.0-0
-  - libpango-1.0-0
-  - libatk1.0-0t64
-  - libcairo-gobject2
-  - libcairo2
-  - libgdk-pixbuf-2.0-0
-  - libxrender1
-  - libasound2t64
+  # Playwright's chromium system deps (libnss3, libgtk-3, fonts, etc.) are
+  # installed by `playwright install --with-deps chromium` in the test step
+  # below — keeping that list out of here avoids drift on every Playwright bump.
 
 tasks:
   - setup: |
@@ -44,7 +29,9 @@ tasks:
       uv sync
   - test: |
       cd terminux
-      uv run playwright install
+      # Chromium only — the e2e suite never touches firefox/webkit — and
+      # `--with-deps` lets playwright apt-install exactly what it needs.
+      uv run playwright install --with-deps chromium
       uv run pytest -q --tb=short
   - lint: |
       cd terminux
