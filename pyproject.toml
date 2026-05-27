@@ -1,6 +1,6 @@
 [project]
 name = "terminux"
-version = "0.6.1"
+version = "0.6.2"
 description = "A cross-platform desktop terminal with workspaces and tabs"
 readme = "README.md"
 requires-python = ">=3.12"
