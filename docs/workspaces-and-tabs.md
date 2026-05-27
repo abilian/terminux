@@ -84,6 +84,16 @@ lit. The signal sources, in order of preference:
    compiling without printing) will briefly read as idle until it
    emits again.
 
+For a few seconds after you leave a workspace, both the **busy**
+promotion and the **unseen** flag are suppressed. The visit's redraw
+tail and xterm's settling effects (cursor restore, mode restoration)
+emit a stream of bytes that would otherwise paint the dot the moment
+the user looked away. The grace window only applies right after a
+visit — output that arrives later is reflected normally. The
+trade-off is that a task which both starts *and* finishes within
+those few seconds won't raise the dot; `OSC 133;D` still rings the
+bell badge independently for real "command finished" events.
+
 State is recomputed each time the frontend polls `/api/state` (~every 2 s);
 no separate poll task.
 

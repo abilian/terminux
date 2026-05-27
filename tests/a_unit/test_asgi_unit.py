@@ -235,6 +235,9 @@ def test_busy_status_wins_over_unseen() -> None:
     tab = ctl.state.tabs[target.tab_ids[0]]
     tab.terminal_id = "fake-term"
     target.has_unseen_output = True  # would normally make it status=unseen
+    # Push target past the post-visit grace window so busy promotion is
+    # eligible (the new grace fix would otherwise hold it at "unseen").
+    target.last_active_at = None
     ctl.terminals._terminals["fake-term"] = FakeTerm()  # type: ignore[assignment]
 
     view = ctl.state_view()
@@ -253,6 +256,47 @@ def test_busy_status_wins_over_unseen() -> None:
     view = ctl.state_view()
     target_view = next(w for w in view["workspaces"] if w["id"] == target.id)
     assert target_view["status"] == "unseen"
+
+
+def test_busy_promotion_suppressed_inside_grace() -> None:
+    """During the post-visit grace window, even a genuinely busy terminal
+    in a just-deactivated workspace doesn't flip the dot orange. The
+    visit-redraw tail dominates the recent-bytes window and would
+    otherwise paint the dot busy the moment the user looks away."""
+    import time
+
+    from terminux.server import asgi
+
+    class FakeTerm:
+        def is_busy(self) -> bool:
+            return True
+
+        def cwd(self) -> str | None:
+            return None
+
+    ctl = AppController(persist=False)
+    target = ctl.state.workspaces[0]
+    other = ctl.state.add_workspace()
+    ctl.state.add_tab(other.id)
+    # Visit target then leave it — stamps target.last_active_at ≈ now.
+    ctl.state.set_active_workspace(target.id)
+    ctl.state.set_active_workspace(other.id)
+    assert target.last_active_at is not None
+
+    tab = ctl.state.tabs[target.tab_ids[0]]
+    tab.terminal_id = "fake-term"
+    ctl.terminals._terminals["fake-term"] = FakeTerm()  # type: ignore[assignment]
+
+    # Inside the grace window: busy promotion is suppressed.
+    view = ctl.state_view()
+    target_view = next(w for w in view["workspaces"] if w["id"] == target.id)
+    assert target_view["status"] == "idle"
+
+    # Outside the grace window: the same FakeTerm promotes to busy.
+    target.last_active_at = time.monotonic() - asgi.UNSEEN_GRACE_SECONDS - 0.1
+    view = ctl.state_view()
+    target_view = next(w for w in view["workspaces"] if w["id"] == target.id)
+    assert target_view["status"] == "busy"
 
 
 def test_workspace_label_tracks_first_tab_not_active(tmp_path) -> None:

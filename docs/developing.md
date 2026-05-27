@@ -62,3 +62,19 @@ uv run zensical build    # static site → site/
 
 To add a page, create `docs/<name>.md` and add it to the `nav` array in
 `zensical.toml`.
+
+## Debugging knobs
+
+- `TERMINUX_PTY_LOG=<path>` — when set in the environment, every PTY
+  read is appended to `<path>` as a one-line trace: `<epoch.ms>
+  <terminal-id-prefix> <byte_count> <repr of first 120 bytes>`.
+  Useful for characterizing what an "idle" TUI actually emits when
+  you suspect a sidebar dot is reacting to noise rather than real
+  work. Off by default — leaves no trace on disk in normal runs.
+
+  ```sh
+  rm -f /tmp/pty.log
+  TERMINUX_PTY_LOG=/tmp/pty.log uv run terminux
+  # reproduce the scenario
+  tail -n 50 /tmp/pty.log
+  ```

@@ -272,6 +272,7 @@ class AppController:
         with self.lock:
             view = self.state.view_json()
             view["session_started_at"] = self.session_started_at
+            now = time.monotonic()
             by_id = {w.id: w for w in self.state.workspaces}
             for wv in view["workspaces"]:
                 ws = by_id.get(wv["id"])
@@ -281,13 +282,24 @@ class AppController:
                 wv["active_seconds"] = self.active_seconds(ws.id)
                 # Active/exited carry more urgent meaning and stay untouched.
                 # Idle and unseen are both demoted to busy when any tab has
-                # a foreground task running.
-                if wv["status"] in {"idle", "unseen"} and any(
-                    (tab := self.state.tabs.get(tid)) is not None
-                    and tab.terminal_id is not None
-                    and (term := self.terminals.get(tab.terminal_id)) is not None
-                    and term.is_busy()
-                    for tid in ws.tab_ids
+                # a foreground task running — UNLESS the workspace was just
+                # deactivated: the visit-redraw tail / xterm settling would
+                # otherwise paint the dot orange for the few seconds after
+                # the user looked away.
+                in_grace = ws.last_active_at is not None and (
+                    now - ws.last_active_at < UNSEEN_GRACE_SECONDS
+                )
+                if (
+                    wv["status"] in {"idle", "unseen"}
+                    and not in_grace
+                    and any(
+                        (tab := self.state.tabs.get(tid)) is not None
+                        and tab.terminal_id is not None
+                        and (term := self.terminals.get(tab.terminal_id))
+                        is not None
+                        and term.is_busy()
+                        for tid in ws.tab_ids
+                    )
                 ):
                     wv["status"] = "busy"
             return view

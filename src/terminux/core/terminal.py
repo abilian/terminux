@@ -46,6 +46,29 @@ OSC133_MIN_COMMAND_SECONDS = 2.0
 BUSY_IDLE_THRESHOLD = 3.0
 
 
+# Diagnostic hook: set ``TERMINUX_PTY_LOG=<path>`` in the environment to
+# record every PTY read (epoch seconds with ms precision, terminal id
+# prefix, byte count, ``repr`` of the first 120 bytes) to that file.
+# Off by default — leaves no trace on disk in normal runs. Useful for
+# characterizing what an "idle" TUI actually emits when you suspect the
+# sidebar dot is reacting to noise rather than real work.
+_PTY_LOG_PATH = os.environ.get("TERMINUX_PTY_LOG")
+
+
+def _log_pty_read(terminal_id: str, data: bytes) -> None:
+    if not _PTY_LOG_PATH:
+        return
+    try:
+        with open(_PTY_LOG_PATH, "ab") as fh:  # noqa: PTH123 — single-line append, no Path benefit
+            line = (
+                f"{time.time():.3f} {terminal_id[:8]} {len(data):5d} "
+                f"{data[:120]!r}\n"
+            )
+            fh.write(line.encode("utf-8", errors="replace"))
+    except OSError:
+        pass
+
+
 # Single-byte control codes the attention scanner inspects.
 _BEL = 0x07
 _ESC_BYTE = 0x1B
@@ -218,6 +241,7 @@ class Terminal:
         if not data:
             self._handle_eof()
             return
+        _log_pty_read(self.id, data)
         self._last_output_at = time.monotonic()
         self._backlog += data
         if len(self._backlog) > BACKLOG_CAP:

@@ -58,8 +58,9 @@ That's it. You're in.
 - **Clickable URLs & iTerm2-style copy** — modifier-click opens links;
   optional auto-copy on selection, persisted, off by default.
 - **Working vs ready** — sidebar status dot turns amber while a
-  workspace is running a foreground task; green wins for unseen output;
-  reads at a glance like a CI traffic light.
+  foreground task is actively producing output (idle TUIs and parked
+  prompts don't count); green wins once the task finishes and there's
+  output you haven't seen; reads at a glance like a CI traffic light.
 - **Attention that finds you** — background activity indicators; a real
   BEL, `OSC 9`, or a long-running command finishing (`OSC 133;D`, opt-in
   via [shell integration](docs/shell-integration.md) for bash / zsh /
