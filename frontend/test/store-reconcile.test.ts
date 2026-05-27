@@ -14,7 +14,6 @@ function ws(
     tab_ids: tab_ids.length ? tab_ids : active_tab_id ? [active_tab_id] : [],
     active_tab_id,
     status: "idle",
-    attention: false,
     active_seconds: 0,
   };
 }
@@ -26,7 +25,6 @@ function tab(id: string): TabView {
     user_set_title: false,
     live: true,
     has_unseen_output: false,
-    needs_attention: false,
   };
 }
 

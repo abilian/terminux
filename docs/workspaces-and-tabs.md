@@ -64,48 +64,57 @@ fuzzy-filtered. Commands relevant to activity stats:
 
 ## Working vs ready
 
-The sidebar status dot turns **amber** when a workspace has a foreground
-task running and nothing more urgent applies — same color language as CI
-dashboards (green = result for you, amber = wait, empty = nothing here).
-Priority is **active > exited > busy > unseen > idle**: while a task is
-still running, the dot stays amber even if it's emitting output (a
-spinner, progress lines, `tail -f`), since "still working" is the
-honest signal — `unseen` only takes over once the task has finished.
-"Busy" also requires **recent PTY output** (within the last few
-seconds), so a TUI parked at its prompt (Claude Code waiting for
-input, an idle vim, less with nothing scrolling) doesn't keep the dot
-lit. The signal sources, in order of preference:
+Two indicators carry meaning in the sidebar:
 
-1. **`OSC 133;C` / `;D`** when [shell integration](shell-integration.md) is
-   set up — the shell itself tells terminux when a command begins and ends.
-2. **`tcgetpgrp` on the PTY**, comparing the foreground process group to the
-   shell's pid — works with no setup. Both signals are AND-ed with the
-   recent-output gate; a silent task (e.g. a long `make` step that's
-   compiling without printing) will briefly read as idle until it
-   emits again.
+- **Amber dot — *working*.** A foreground task is actively producing
+  output. You can ignore unless you want to check on it.
+- **Green dot — *ready***. A task has finished or signalled here.
+  Worth a look when convenient.
 
-For a few seconds after you leave a workspace, both the **busy**
-promotion and the **unseen** flag are suppressed. The visit's redraw
-tail and xterm's settling effects (cursor restore, mode restoration)
-emit a stream of bytes that would otherwise paint the dot the moment
-the user looked away. The grace window only applies right after a
-visit — output that arrives later is reflected normally. The
-trade-off is that a task which both starts *and* finishes within
-those few seconds won't raise the dot; `OSC 133;D` still rings the
-bell badge independently for real "command finished" events.
+Priority is **active > exited > busy > unseen > idle**. "Busy" requires
+**recent PTY output** (within the last few seconds), so an idle TUI
+(Claude Code waiting for input, a parked vim) doesn't keep the dot lit.
+Busy beats unseen so a chatty long-running task keeps the *working*
+signal until it actually quiets down.
 
-State is recomputed each time the frontend polls `/api/state` (~every 2 s);
-no separate poll task.
+The **ready** signal is deliberately strict — raw output by itself does
+*not* flip a workspace to ready. It fires only on:
 
-## Attention & activity
+1. **`OSC 133;C` / `;D`** when [shell integration](shell-integration.md)
+   is set up — the shell itself tells terminux a command finished (≥ 2 s).
+2. A raw **`BEL`** outside any OSC, or an **`OSC 9`** notification — an
+   app explicitly signalling "look here."
+3. A **kernel-level `busy → idle` transition** that lasted at least
+   ~5 s. Catches the cases without shell integration: `sleep 10` ending,
+   `make test` finishing, Claude Code returning to its prompt after a
+   real thinking session.
 
-- Background tabs that produce output show an **activity indicator**.
-- A tab that emits **BEL**, an **`OSC 9`** notification, or completes a
-  long-running command (**`OSC 133;D`** — see [Shell
-  integration](shell-integration.md)) while not in view raises an
-  **attention badge** that propagates up to its workspace.
-- The BEL byte that terminates an `OSC 0/2` *title* update doesn't count —
-  tools like Claude Code change their title constantly while working.
+The 1 Hz background ticker drives the busy→idle detection, so a "task
+finished" event surfaces within a second of going quiet.
+
+Two short windows soften the visual feedback right around a visit:
+
+- **Post-visit grace** (a few seconds after you leave a workspace) —
+  both the busy promotion and ready flagging are suppressed for that
+  window. The visit's redraw tail and xterm's settling effects emit
+  bytes that would otherwise paint the dot the moment you looked away.
+- **Visit dwell** — a workspace only counts as "seen" (clearing its
+  ready flag on the way out) when you stay for ~3 s. A brisk
+  `Cmd+1` / `Cmd+2` / `Cmd+3` sweep across a row of green dots
+  preserves every one of them, so quick navigation doesn't silently
+  dismiss "look here later" information.
+
+Trade-offs of the heuristic:
+
+- A task that starts *and* finishes inside the post-visit grace window
+  won't raise the dot.
+- `tail -f` going quiet after a sustained burst falsely reads as
+  "ready" — bounded; the next batch of output flips it back to busy.
+- A very short task (< 5 s busy) doesn't trigger the kernel-level ready
+  signal; if you want every `git status` to register, set up shell
+  integration so `OSC 133;D` does the (more precise) job.
+
+The per-tab tab-bar indicator inside the active workspace is finer-grained: any output to a non-viewed tab shows a small activity dot. That's the "something is happening" signal, distinct from the workspace-level "ready" cue.
 
 ## Persistence
 

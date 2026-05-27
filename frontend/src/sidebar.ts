@@ -11,9 +11,9 @@ let editingWsId: string | null = null;
 
 const DOT_TOOLTIP: Record<string, string> = {
   active: "This workspace is the one in view",
-  unseen: "New output since you last viewed this workspace",
+  unseen: "Ready for review (a task finished or signalled here)",
   busy: "A foreground task is running",
-  idle: "No new output",
+  idle: "Nothing of note",
   exited: "All shells in this workspace have exited",
 };
 
@@ -38,14 +38,8 @@ export function renderSidebar(): void {
     row.appendChild(slot);
 
     const dot = document.createElement("span");
-    if (w.attention && w.id !== state.active_workspace_id) {
-      dot.className = "attn";
-      dot.title = "A tab signaled it's ready (BEL, OSC 9, or OSC 133;D)";
-      dot.textContent = "🔔";
-    } else {
-      dot.className = "dot " + w.status;
-      dot.title = DOT_TOOLTIP[w.status] ?? "";
-    }
+    dot.className = "dot " + w.status;
+    dot.title = DOT_TOOLTIP[w.status] ?? "";
     row.appendChild(dot);
 
     const beginRename = (e?: Event): void => {

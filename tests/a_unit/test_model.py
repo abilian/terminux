@@ -81,14 +81,48 @@ def test_set_active_workspace_invalid_noop() -> None:
     assert s.active_workspace_id == before
 
 
-def test_set_active_clears_unseen_flags() -> None:
+def test_set_active_clears_unseen_after_dwell() -> None:
+    """Visiting a workspace clears its unseen flags only if the user
+    dwelled at least ``VISIT_DWELL_SECONDS``. Brief fly-bys leave the
+    flags intact so a quick ``Cmd+1 / Cmd+2 / Cmd+3`` sweep across a
+    row of green dots doesn't silently dismiss them."""
+    from terminux.core.model import VISIT_DWELL_SECONDS
+
     s = AppState.default()
     ws = s.workspaces[0]
+    other = s.add_workspace()
+    s.add_tab(other.id)
+    # Park the user elsewhere so we can deactivate `ws` cleanly.
+    s.set_active_workspace(other.id)
+
     ws.has_unseen_output = True
     s.tabs[ws.active_tab_id].has_unseen_output = True
+
+    # Fly-by: visit ws then leave immediately. Flags must survive.
     s.set_active_workspace(ws.id)
+    s.set_active_workspace(other.id)
+    assert ws.has_unseen_output is True
+    assert s.tabs[ws.active_tab_id].has_unseen_output is True
+
+    # Real visit: dwell at least VISIT_DWELL_SECONDS, then leave.
+    s.set_active_workspace(ws.id)
+    assert ws.active_since_at is not None
+    ws.active_since_at -= VISIT_DWELL_SECONDS + 0.1  # fake the wait
+    s.set_active_workspace(other.id)
     assert ws.has_unseen_output is False
     assert s.tabs[ws.active_tab_id].has_unseen_output is False
+
+
+def test_reactivating_same_workspace_is_noop() -> None:
+    """A no-op re-activation must not reset the dwell timer — a stray
+    duplicate ``set_active_workspace`` call would otherwise restart the
+    clock and turn a long visit into a fly-by."""
+    s = AppState.default()
+    ws = s.workspaces[0]
+    started_at = ws.active_since_at
+    assert started_at is not None
+    s.set_active_workspace(ws.id)
+    assert ws.active_since_at == started_at
 
 
 def test_add_tab_unknown_workspace_returns_none() -> None:
@@ -118,16 +152,27 @@ def test_remove_non_active_workspace_keeps_active() -> None:
     assert s.active_workspace_id == active.id
 
 
-def test_set_active_with_inactive_tab_present() -> None:
+def test_dwell_clears_only_active_tab() -> None:
+    """When a dwell is long enough to clear flags on deactivation, only
+    the active tab's flags are cleared — other tabs in the workspace
+    keep theirs (the user only "saw" the one tab they were on)."""
+    from terminux.core.model import VISIT_DWELL_SECONDS
+
     s = AppState.default()
     ws = s.workspaces[0]
+    other = s.add_workspace()
+    s.add_tab(other.id)
+    s.set_active_workspace(other.id)  # park elsewhere
+
     first_tab = ws.active_tab_id
-    second = s.add_tab(ws.id)  # second becomes active
+    second = s.add_tab(ws.id)  # second becomes ws.active_tab_id
     assert second is not None
     s.tabs[first_tab].has_unseen_output = True
     s.tabs[second.id].has_unseen_output = True
+
     s.set_active_workspace(ws.id)
-    # Only the active tab's unseen flag is cleared by selection.
+    ws.active_since_at -= VISIT_DWELL_SECONDS + 0.1
+    s.set_active_workspace(other.id)
     assert s.tabs[second.id].has_unseen_output is False
     assert s.tabs[first_tab].has_unseen_output is True
 

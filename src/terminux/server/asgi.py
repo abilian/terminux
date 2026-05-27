@@ -74,10 +74,17 @@ ACTIVITY_IDLE_THRESHOLD = 30.0  # seconds since last keystroke
 # Window during which PTY output is treated as visit-cleanup, not real
 # news. The moment a workspace is deactivated, the TUI's redraw tail and
 # xterm's own settling effects (cursor restore, mode restoration, etc.)
-# emit a stream of bytes that would otherwise call ``_mark_activity`` and
-# flip the workspace to ``has_unseen_output=True`` — leaving a misleading
-# green "ready for attention" dot the moment the user looks away.
+# emit a stream of bytes that would otherwise flag the workspace as
+# ``has_unseen_output=True`` — leaving a misleading green "ready for
+# attention" dot the moment the user looks away.
 UNSEEN_GRACE_SECONDS = 5.0
+
+# Minimum sustained busy time before a busy→idle transition counts as
+# a "task finished" ready signal. Filters out cosmetic blips and very
+# short commands; Claude Code returning to its prompt after a real
+# thinking session, ``sleep 10`` finishing without shell integration,
+# and ``make test`` ending all cross this comfortably.
+READY_TRANSITION_SECONDS = 5.0
 
 
 class AppController:
@@ -101,6 +108,11 @@ class AppController:
         # Wall-clock time when the activity session started, used to drive
         # the "session started Xm ago" header in the stats overlay.
         self._session_started_at: float = time.time()
+        # Per-terminal busy-transition tracker. Used by the 1 Hz ticker to
+        # detect busy→idle transitions that lasted long enough to count
+        # as a "task finished" signal (drives the green "ready" dot).
+        self._was_busy: dict[str, bool] = {}
+        self._busy_since: dict[str, float] = {}
 
     def save(self) -> None:
         if not self._persist:
@@ -193,7 +205,7 @@ class AppController:
             term = self.terminals.create(default_shell(), cwd, cols, rows)
             tab.terminal_id = term.id
             term.on_activity = lambda: self._mark_activity(tab_id)
-            term.on_attention = lambda: self._mark_attention(tab_id)
+            term.on_attention = lambda: self._mark_ready(tab_id)
             term.on_exit = lambda _code: setattr(tab, "terminal_id", None)
             return term
 
@@ -317,6 +329,10 @@ class AppController:
         term.write(text.encode())
 
     def _mark_activity(self, tab_id: str) -> None:
+        """Per-tab "output happened in a non-viewed tab" — drives the
+        small activity indicator in the tab bar. Workspace-level "ready"
+        is a separate signal handled by ``_mark_ready`` / the busy→idle
+        tracker — generic output no longer flips the workspace dot."""
         with self.lock:
             tab = self.state.tabs.get(tab_id)
             if tab is None:
@@ -339,23 +355,63 @@ class AppController:
                 ):
                     continue
                 tab.has_unseen_output = True
-                if ws.id != self.state.active_workspace_id:
-                    ws.has_unseen_output = True
 
-    def _mark_attention(self, tab_id: str) -> None:
+    def _mark_ready(self, tab_id: str) -> None:
+        """Fire the workspace-level "ready for review" signal. Called
+        when one of the strict task-finished sources triggers: raw
+        ``BEL`` outside any OSC, ``OSC 9`` notification, ``OSC 133;D``
+        (≥ 2 s), or the kernel-level busy→idle transition (≥ 5 s,
+        driven by ``poll_busy_transitions``).
+
+        Skipped while the workspace is currently active or sitting in
+        the post-visit grace window."""
         with self.lock:
             tab = self.state.tabs.get(tab_id)
             if tab is None:
                 return
+            now = time.monotonic()
             for ws in self.state.workspaces:
                 if tab_id not in ws.tab_ids:
                     continue
-                viewed = (
-                    ws.id == self.state.active_workspace_id
-                    and ws.active_tab_id == tab_id
-                )
-                if not viewed:
-                    tab.needs_attention = True
+                if ws.id == self.state.active_workspace_id:
+                    continue
+                if ws.last_active_at is not None and (
+                    now - ws.last_active_at < UNSEEN_GRACE_SECONDS
+                ):
+                    continue
+                ws.has_unseen_output = True
+
+    def poll_busy_transitions(self) -> None:
+        """1 Hz heartbeat: detect kernel-level busy→idle transitions. A
+        terminal that was sustained-busy for at least
+        ``READY_TRANSITION_SECONDS`` then went quiet is treated as
+        "task finished" and feeds the workspace's "ready" signal — the
+        same end-state as ``OSC 133;D`` but for shells/apps that don't
+        speak shell-integration (Claude Code returning to its prompt,
+        ``sleep 10`` ending, ``make test`` finishing without OSC 133)."""
+        with self.lock:
+            now = time.monotonic()
+            for ws in self.state.workspaces:
+                for tid in ws.tab_ids:
+                    tab = self.state.tabs.get(tid)
+                    if tab is None or tab.terminal_id is None:
+                        continue
+                    term = self.terminals.get(tab.terminal_id)
+                    if term is None:
+                        continue
+                    term_id = term.id
+                    is_busy_now = term.is_busy()
+                    was_busy = self._was_busy.get(term_id, False)
+                    if is_busy_now and not was_busy:
+                        self._busy_since[term_id] = now
+                    elif was_busy and not is_busy_now:
+                        since = self._busy_since.pop(term_id, None)
+                        if (
+                            since is not None
+                            and (now - since) >= READY_TRANSITION_SECONDS
+                        ):
+                            self._mark_ready(tid)
+                    self._was_busy[term_id] = is_busy_now
 
 
 def _shell_quote(path: str) -> str:
@@ -463,7 +519,6 @@ class Api:
                     tab = self.ctl.state.tabs.get(ws.active_tab_id)
                     if tab is not None:
                         tab.has_unseen_output = False
-                        tab.needs_attention = False
             if "order" in body:
                 order = [str(x) for x in body["order"]]
                 self.ctl.state.workspaces.sort(
@@ -754,10 +809,13 @@ def build_app(*, persist: bool = True) -> Starlette:
 
     async def _activity_ticker() -> None:
         """1 Hz: credit the active workspace with a second of active time
-        when the user has typed in the last ACTIVITY_IDLE_THRESHOLD secs."""
+        when the user has typed in the last ACTIVITY_IDLE_THRESHOLD secs,
+        and detect kernel-level busy→idle transitions that feed the
+        workspace's "ready" signal."""
         while True:
             await asyncio.sleep(1.0)
             ctl.tick(1.0)
+            ctl.poll_busy_transitions()
 
     @contextlib.asynccontextmanager
     async def lifespan(_app: Starlette) -> AsyncIterator[None]:

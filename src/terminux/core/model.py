@@ -40,8 +40,11 @@ class Tab:
     user_set_title: bool = False
     # Transient (never persisted):
     terminal_id: str | None = None
+    # Per-tab "output happened while you weren't viewing this tab" — drives
+    # the small activity indicator in the tab bar. Workspace-level "ready"
+    # is a separate signal (Workspace.has_unseen_output) gated by the
+    # stricter "task finished" sources.
     has_unseen_output: bool = False
-    needs_attention: bool = False  # BEL / OSC 9 from a non-viewed tab
     spawn_cwd: str | None = None  # directory inherited from the previous tab
     last_cwd: str | None = None  # last observed shell cwd (for the label)
 
@@ -87,6 +90,11 @@ class Workspace:
     # tails and xterm settling effects would otherwise falsely paint
     # the dot "ready for attention" (green).
     last_active_at: float | None = None
+    # Transient: monotonic-clock timestamp when this workspace became
+    # active. ``set_active_workspace`` reads this on the *outgoing* side
+    # to decide whether the user dwelled long enough to count as "seen"
+    # — fly-by visits preserve the unseen/attention flags.
+    active_since_at: float | None = None
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -168,6 +176,13 @@ class UiPrefs:
 SCHEMA_VERSION = 1
 
 
+# How long the user must dwell on a workspace before the visit counts as
+# "I looked here". A brisk fly-through (Cmd+1, Cmd+2, Cmd+3 to scan a row
+# of green dots) leaves the unseen / attention flags intact so the
+# information about which workspaces still want a real look isn't lost.
+VISIT_DWELL_SECONDS = 3.0
+
+
 @dataclass
 class AppState:
     """Authoritative state. All mutation happens on the backend event loop."""
@@ -185,7 +200,11 @@ class AppState:
         state = cls()
         ws = state.add_workspace(name="workspace 1")
         state.add_tab(ws.id)
-        state.active_workspace_id = ws.id
+        # Route through set_active_workspace so ``active_since_at`` is
+        # initialized — direct assignment would leave it None and a
+        # subsequent quick switch would treat the first visit as a
+        # zero-second fly-by.
+        state.set_active_workspace(ws.id)
         return state
 
     # ----- workspace ops ------------------------------------------------
@@ -223,23 +242,43 @@ class AppState:
     def set_active_workspace(self, ws_id: str) -> None:
         if self.get_workspace(ws_id) is None:
             return
+        if self.active_workspace_id == ws_id:
+            # Already active — preserve the dwell timer rather than
+            # resetting it (a stray re-activation must not reset what
+            # was already a long visit).
+            return
         previous_id = self.active_workspace_id
+        now = time.monotonic()
         self.active_workspace_id = ws_id
         ws = self.get_workspace(ws_id)
         if ws is not None:
-            ws.has_unseen_output = False
             ws.last_active_at = None  # currently active; grace doesn't apply
-            for tid in ws.tab_ids:
-                tab = self.tabs.get(tid)
-                if tab is not None and tid == ws.active_tab_id:
-                    tab.has_unseen_output = False
-                    tab.needs_attention = False
-        # Stamp the *outgoing* workspace so its post-visit output (redraw
-        # tail, xterm settling) gets the unseen-suppression grace window.
-        if previous_id is not None and previous_id != ws_id:
+            ws.active_since_at = now
+            # NOTE: ``has_unseen_output`` and the active tab's
+            # ``has_unseen_output`` / ``needs_attention`` are NOT cleared
+            # here. The clearing is deferred to the deactivating side and
+            # gated by ``VISIT_DWELL_SECONDS`` so a fly-by visit doesn't
+            # silently dismiss the "I want a real look here" signal.
+        # Stamp the outgoing workspace; if the user dwelled long enough,
+        # finally clear its unseen/attention flags. ``last_active_at`` is
+        # always set so the post-visit grace window (used by
+        # ``_mark_activity`` and busy promotion) kicks in regardless of
+        # the dwell length.
+        if previous_id is not None:
             prev = self.get_workspace(previous_id)
             if prev is not None:
-                prev.last_active_at = time.monotonic()
+                dwelled = (
+                    prev.active_since_at is not None
+                    and (now - prev.active_since_at) >= VISIT_DWELL_SECONDS
+                )
+                prev.active_since_at = None
+                prev.last_active_at = now
+                if dwelled:
+                    prev.has_unseen_output = False
+                    if prev.active_tab_id is not None:
+                        tab = self.tabs.get(prev.active_tab_id)
+                        if tab is not None:
+                            tab.has_unseen_output = False
 
     # ----- tab ops ------------------------------------------------------
 
@@ -339,10 +378,6 @@ class AppState:
                 {
                     **w.to_json(),
                     "status": self.workspace_status(w.id).value,
-                    "attention": any(
-                        (tb := self.tabs.get(t)) is not None and tb.needs_attention
-                        for t in w.tab_ids
-                    ),
                 }
                 for w in self.workspaces
             ],
@@ -351,7 +386,6 @@ class AppState:
                     **t.to_json(),
                     "live": t.terminal_id is not None,
                     "has_unseen_output": t.has_unseen_output,
-                    "needs_attention": t.needs_attention,
                 }
                 for tid, t in self.tabs.items()
             },

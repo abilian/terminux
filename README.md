@@ -57,15 +57,13 @@ That's it. You're in.
   uses `Cmd` for the same job; raw `Ctrl` is left alone.
 - **Clickable URLs & iTerm2-style copy** — modifier-click opens links;
   optional auto-copy on selection, persisted, off by default.
-- **Working vs ready** — sidebar status dot turns amber while a
+- **Working vs ready** — two-color sidebar dot: **amber** while a
   foreground task is actively producing output (idle TUIs and parked
-  prompts don't count); green wins once the task finishes and there's
-  output you haven't seen; reads at a glance like a CI traffic light.
-- **Attention that finds you** — background activity indicators; a real
-  BEL, `OSC 9`, or a long-running command finishing (`OSC 133;D`, opt-in
-  via [shell integration](docs/shell-integration.md) for bash / zsh /
-  fish) on an off-screen tab raises a badge that bubbles up to its
-  workspace. Title-bar updates don't count.
+  prompts don't count); **green** once that task has finished — driven
+  by `BEL` / `OSC 9` / `OSC 133;D` (opt-in [shell integration](docs/shell-integration.md))
+  or a kernel-level busy→idle transition. Plain output by itself
+  never falsely promotes to green. Reads at a glance like a CI traffic
+  light.
 - **Drag & drop** — reorder workspaces and tabs with live drop feedback
   (works even in WKWebView, where HTML5 DnD doesn't). Drop a file to paste its
   shell-quoted path.

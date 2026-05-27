@@ -46,13 +46,7 @@ export function renderTabs(): void {
     // Full title on hover — visible text is ellipsized by CSS once the
     // tab hits its max-width.
     el.title = t.title;
-    if (t.needs_attention && tid !== ws.active_tab_id) {
-      const a = document.createElement("span");
-      a.className = "attn";
-      a.title = "Wants attention";
-      a.textContent = "🔔";
-      el.appendChild(a);
-    } else if (t.has_unseen_output && tid !== ws.active_tab_id) {
+    if (t.has_unseen_output && tid !== ws.active_tab_id) {
       const a = document.createElement("span");
       a.className = "activity";
       el.appendChild(a);

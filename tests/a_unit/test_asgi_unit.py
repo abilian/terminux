@@ -65,7 +65,10 @@ def test_ensure_terminal_unknown_tab_returns_none() -> None:
     assert ctl.ensure_terminal("no-such-tab", 80, 24) is None
 
 
-def test_mark_activity_branches() -> None:
+def test_mark_activity_only_flags_the_tab_now() -> None:
+    """``_mark_activity`` is the per-output hook; it only flags the
+    per-tab activity indicator. Workspace-level "ready" is driven by
+    the stricter sources (``_mark_ready`` + busy→idle transition)."""
     ctl = AppController(persist=False)
     ctl._mark_activity("ghost")  # unknown tab -> early return
 
@@ -75,10 +78,11 @@ def test_mark_activity_branches() -> None:
     assert bg_tab is not None
     ctl.state.set_active_workspace(active_ws.id)
 
-    # Output on a tab in a non-active workspace marks both as unseen.
+    # Output on a tab in a non-active workspace flags the tab only —
+    # the workspace dot is not promoted to "ready" by plain output.
     ctl._mark_activity(bg_tab.id)
     assert ctl.state.tabs[bg_tab.id].has_unseen_output is True
-    assert other.has_unseen_output is True
+    assert other.has_unseen_output is False
 
     # Output on the active tab of the active workspace marks nothing.
     active_tab = active_ws.active_tab_id
@@ -88,8 +92,8 @@ def test_mark_activity_branches() -> None:
 
 def test_unseen_grace_period_after_deactivation() -> None:
     """Output that arrives within UNSEEN_GRACE_SECONDS of a workspace
-    being deactivated does not flip the unseen flag — that window
-    catches the visit-cleanup tail (xterm settling, TUI redraw
+    being deactivated does not flip the per-tab activity flag — that
+    window catches the visit-cleanup tail (xterm settling, TUI redraw
     trailing bytes) rather than real user-facing news."""
     import time
 
@@ -108,41 +112,97 @@ def test_unseen_grace_period_after_deactivation() -> None:
 
     # Inside the grace window: output is suppressed.
     ctl._mark_activity(b_tab.id)
-    assert b.has_unseen_output is False
     assert ctl.state.tabs[b_tab.id].has_unseen_output is False
 
-    # Outside the grace window: the same output flags unseen normally.
+    # Outside the grace window: the same output flags the tab normally.
     b.last_active_at = time.monotonic() - asgi.UNSEEN_GRACE_SECONDS - 0.1
     ctl._mark_activity(b_tab.id)
-    assert b.has_unseen_output is True
     assert ctl.state.tabs[b_tab.id].has_unseen_output is True
 
 
-def test_mark_attention_and_clear_on_view() -> None:
+def test_mark_ready_flags_workspace_and_dwell_clears() -> None:
+    """A "ready" signal (BEL, OSC 9, OSC 133;D ≥ 2 s, busy→idle ≥ 5 s)
+    fires ``_mark_ready`` on the tab, which flags the workspace's
+    ``has_unseen_output``. Dwell-and-leave clears it as usual."""
+    from terminux.core.model import VISIT_DWELL_SECONDS
+
     ctl = AppController(persist=False)
-    ctl._mark_attention("ghost")  # unknown tab -> early return
+    ctl._mark_ready("ghost")  # unknown tab -> early return
 
     active_ws = ctl.state.workspaces[0]
     other = ctl.state.add_workspace()
     bg_tab = ctl.state.add_tab(other.id)
     assert bg_tab is not None
+    # Give the bg tab a (ghost) terminal id so workspace_status doesn't
+    # short-circuit to "exited" — we want to exercise the unseen path.
+    bg_tab.terminal_id = "ghost-term"
     ctl.state.set_active_workspace(active_ws.id)
 
-    # Attention on a non-viewed tab flags the tab; workspace view derives it.
-    ctl._mark_attention(bg_tab.id)
-    assert ctl.state.tabs[bg_tab.id].needs_attention is True
+    # Ready on a tab in a non-active workspace flags the workspace.
+    ctl._mark_ready(bg_tab.id)
+    assert other.has_unseen_output is True
     v = ctl.state_view()
-    assert v["tabs"][bg_tab.id]["needs_attention"] is True
     other_view = next(w for w in v["workspaces"] if w["id"] == other.id)
-    assert other_view["attention"] is True
+    assert other_view["status"] == "unseen"
 
-    # Viewing the tab clears it (switch workspace to `other`).
+    # Dwell-and-leave clears the workspace's unseen flag.
     ctl.state.set_active_workspace(other.id)
-    assert ctl.state.tabs[bg_tab.id].needs_attention is False
+    other.active_since_at -= VISIT_DWELL_SECONDS + 0.1  # fake the dwell
+    ctl.state.set_active_workspace(active_ws.id)
+    assert other.has_unseen_output is False
 
-    # Attention on the currently-viewed tab is ignored.
-    ctl._mark_attention(bg_tab.id)
-    assert ctl.state.tabs[bg_tab.id].needs_attention is False
+    # Ready on the currently-viewed workspace is ignored.
+    ctl.state.set_active_workspace(other.id)
+    ctl._mark_ready(bg_tab.id)
+    assert other.has_unseen_output is False
+
+
+def test_busy_to_idle_transition_flags_ready() -> None:
+    """A terminal that was sustained-busy for >= READY_TRANSITION_SECONDS
+    then went idle triggers the workspace's "ready" signal (via the 1 Hz
+    transition poll)."""
+    from terminux.server import asgi
+
+    busy_state: dict[str, bool] = {"value": True}
+
+    class FakeTerm:
+        id = "fake-term"
+
+        def is_busy(self) -> bool:
+            return busy_state["value"]
+
+        def cwd(self) -> str | None:
+            return None
+
+    ctl = AppController(persist=False)
+    active_ws = ctl.state.workspaces[0]
+    target = ctl.state.add_workspace()
+    target_tab = ctl.state.add_tab(target.id)
+    assert target_tab is not None
+    ctl.state.set_active_workspace(active_ws.id)
+
+    target_tab.terminal_id = "fake-term"
+    ctl.terminals._terminals["fake-term"] = FakeTerm()  # type: ignore[assignment]
+
+    # First poll: target term is busy → record busy_since.
+    ctl.poll_busy_transitions()
+    assert ctl._busy_since["fake-term"] is not None
+    # Backdate busy_since past the threshold so the next transition counts.
+    ctl._busy_since["fake-term"] -= asgi.READY_TRANSITION_SECONDS + 0.1
+
+    # Term goes idle → next poll fires _mark_ready on the tab's workspace.
+    busy_state["value"] = False
+    ctl.poll_busy_transitions()
+    assert target.has_unseen_output is True
+
+    # Short busy bursts don't trigger ready: re-arm busy, transition idle
+    # immediately, expect no change.
+    target.has_unseen_output = False
+    busy_state["value"] = True
+    ctl.poll_busy_transitions()
+    busy_state["value"] = False
+    ctl.poll_busy_transitions()
+    assert target.has_unseen_output is False
 
 
 def test_persist_true_loads_and_saves(monkeypatch) -> None:
