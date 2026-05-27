@@ -71,6 +71,14 @@ _CSP = (
 # isn't watching.
 ACTIVITY_IDLE_THRESHOLD = 30.0  # seconds since last keystroke
 
+# Window during which PTY output is treated as visit-cleanup, not real
+# news. The moment a workspace is deactivated, the TUI's redraw tail and
+# xterm's own settling effects (cursor restore, mode restoration, etc.)
+# emit a stream of bytes that would otherwise call ``_mark_activity`` and
+# flip the workspace to ``has_unseen_output=True`` — leaving a misleading
+# green "ready for attention" dot the moment the user looks away.
+UNSEEN_GRACE_SECONDS = 5.0
+
 
 class AppController:
     """Owns AppState + live terminals. All access is on the server event loop."""
@@ -301,6 +309,7 @@ class AppController:
             tab = self.state.tabs.get(tab_id)
             if tab is None:
                 return
+            now = time.monotonic()
             for ws in self.state.workspaces:
                 if tab_id not in ws.tab_ids:
                     continue
@@ -308,10 +317,18 @@ class AppController:
                     ws.id == self.state.active_workspace_id
                     and ws.active_tab_id == tab_id
                 )
-                if not is_active:
-                    tab.has_unseen_output = True
-                    if ws.id != self.state.active_workspace_id:
-                        ws.has_unseen_output = True
+                if is_active:
+                    continue
+                # Grace period: output within UNSEEN_GRACE_SECONDS of the
+                # workspace being deactivated is treated as visit-cleanup
+                # (redraw tail, xterm settling) and does not flag unseen.
+                if ws.last_active_at is not None and (
+                    now - ws.last_active_at < UNSEEN_GRACE_SECONDS
+                ):
+                    continue
+                tab.has_unseen_output = True
+                if ws.id != self.state.active_workspace_id:
+                    ws.has_unseen_output = True
 
     def _mark_attention(self, tab_id: str) -> None:
         with self.lock:

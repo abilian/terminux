@@ -6,6 +6,7 @@ Live terminals are transient and rebuilt on demand; see ``core.terminal``.
 
 from __future__ import annotations
 
+import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
@@ -80,6 +81,12 @@ class Workspace:
     active_tab_id: str | None = None
     # Transient: set when a tab produces output while this workspace is not active.
     has_unseen_output: bool = False
+    # Transient: monotonic-clock timestamp when this workspace was last
+    # deactivated. ``AppController._mark_activity`` uses it to suppress
+    # the unseen flag for a brief window after a visit — visit-redraw
+    # tails and xterm settling effects would otherwise falsely paint
+    # the dot "ready for attention" (green).
+    last_active_at: float | None = None
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -216,15 +223,23 @@ class AppState:
     def set_active_workspace(self, ws_id: str) -> None:
         if self.get_workspace(ws_id) is None:
             return
+        previous_id = self.active_workspace_id
         self.active_workspace_id = ws_id
         ws = self.get_workspace(ws_id)
         if ws is not None:
             ws.has_unseen_output = False
+            ws.last_active_at = None  # currently active; grace doesn't apply
             for tid in ws.tab_ids:
                 tab = self.tabs.get(tid)
                 if tab is not None and tid == ws.active_tab_id:
                     tab.has_unseen_output = False
                     tab.needs_attention = False
+        # Stamp the *outgoing* workspace so its post-visit output (redraw
+        # tail, xterm settling) gets the unseen-suppression grace window.
+        if previous_id is not None and previous_id != ws_id:
+            prev = self.get_workspace(previous_id)
+            if prev is not None:
+                prev.last_active_at = time.monotonic()
 
     # ----- tab ops ------------------------------------------------------
 

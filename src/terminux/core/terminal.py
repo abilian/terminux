@@ -45,6 +45,7 @@ OSC133_MIN_COMMAND_SECONDS = 2.0
 # session stays well within this window.
 BUSY_IDLE_THRESHOLD = 3.0
 
+
 # Single-byte control codes the attention scanner inspects.
 _BEL = 0x07
 _ESC_BYTE = 0x1B

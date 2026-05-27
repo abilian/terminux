@@ -86,6 +86,38 @@ def test_mark_activity_branches() -> None:
     assert ctl.state.tabs[active_tab].has_unseen_output is False
 
 
+def test_unseen_grace_period_after_deactivation() -> None:
+    """Output that arrives within UNSEEN_GRACE_SECONDS of a workspace
+    being deactivated does not flip the unseen flag — that window
+    catches the visit-cleanup tail (xterm settling, TUI redraw
+    trailing bytes) rather than real user-facing news."""
+    import time
+
+    from terminux.server import asgi
+
+    ctl = AppController(persist=False)
+    a = ctl.state.workspaces[0]
+    b = ctl.state.add_workspace()
+    b_tab = ctl.state.add_tab(b.id)
+    assert b_tab is not None
+
+    # Visit b then go back to a; b.last_active_at is now ~ monotonic().
+    ctl.state.set_active_workspace(b.id)
+    ctl.state.set_active_workspace(a.id)
+    assert b.last_active_at is not None
+
+    # Inside the grace window: output is suppressed.
+    ctl._mark_activity(b_tab.id)
+    assert b.has_unseen_output is False
+    assert ctl.state.tabs[b_tab.id].has_unseen_output is False
+
+    # Outside the grace window: the same output flags unseen normally.
+    b.last_active_at = time.monotonic() - asgi.UNSEEN_GRACE_SECONDS - 0.1
+    ctl._mark_activity(b_tab.id)
+    assert b.has_unseen_output is True
+    assert ctl.state.tabs[b_tab.id].has_unseen_output is True
+
+
 def test_mark_attention_and_clear_on_view() -> None:
     ctl = AppController(persist=False)
     ctl._mark_attention("ghost")  # unknown tab -> early return
