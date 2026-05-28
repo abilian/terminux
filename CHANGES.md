@@ -2,6 +2,23 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2026-05-28
+
+### Fixed
+
+- Inline workspace and tab renames no longer get overwritten by the 2 s status poll — each panel skips its re-render while an edit is in progress, and the input survives until you press Enter (commit) or Escape (cancel).
+
+## [0.6.2] - 2026-05-27
+
+### Changed
+
+- **Sidebar bell badge removed.** The 🔔 icon is gone; the sidebar dot is the single visual indicator now. Green ("ready") fires only on the strict task-finished sources: raw `BEL` outside any OSC, `OSC 9`, `OSC 133;D` (≥ 2 s), or a new kernel-level `busy → idle` transition where busy was sustained for ≥ ~5 s. The kernel-level transition (driven by the existing 1 Hz ticker) covers shells without shell-integration — Claude Code returning to its prompt, `sleep 10` ending, `make test` finishing — so they all surface the same way. Plain output no longer flips a workspace to ready.
+
+### Fixed
+
+- Post-visit grace window suppresses both the busy promotion and the unseen flag for a few seconds after you leave a workspace, so the visit-redraw tail and xterm settling effects don't paint the dot the moment you look away. Previously the unseen flag was guarded but the busy promotion still ran, briefly flashing the dot amber.
+- Frontend optimistic switch helpers now follow each activation PATCH with an immediate `poll()` instead of duplicating the backend's dwell-clearing logic on the client. Kills a "bell briefly reappears, then disappears" flicker without splitting state ownership.
+
 ## [0.6.1] - 2026-05-26
 
 ### Changed
