@@ -61,8 +61,7 @@ def _log_pty_read(terminal_id: str, data: bytes) -> None:
     try:
         with open(_PTY_LOG_PATH, "ab") as fh:  # noqa: PTH123 — single-line append, no Path benefit
             line = (
-                f"{time.time():.3f} {terminal_id[:8]} {len(data):5d} "
-                f"{data[:120]!r}\n"
+                f"{time.time():.3f} {terminal_id[:8]} {len(data):5d} {data[:120]!r}\n"
             )
             fh.write(line.encode("utf-8", errors="replace"))
     except OSError:

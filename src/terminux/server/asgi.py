@@ -307,8 +307,7 @@ class AppController:
                     and any(
                         (tab := self.state.tabs.get(tid)) is not None
                         and tab.terminal_id is not None
-                        and (term := self.terminals.get(tab.terminal_id))
-                        is not None
+                        and (term := self.terminals.get(tab.terminal_id)) is not None
                         and term.is_busy()
                         for tid in ws.tab_ids
                     )
