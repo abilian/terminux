@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from terminux.core.model import AppState
 from terminux.server import asgi
-from terminux.server.asgi import AppController, _shell_quote
+from terminux.server.asgi import AppController
+from terminux.server.controller import _shell_quote
 
 
 def test_shell_quote_plain() -> None:
@@ -97,8 +98,6 @@ def test_unseen_grace_period_after_deactivation() -> None:
     trailing bytes) rather than real user-facing news."""
     import time
 
-    from terminux.server import asgi
-
     ctl = AppController(persist=False)
     a = ctl.state.workspaces[0]
     b = ctl.state.add_workspace()
@@ -161,8 +160,6 @@ def test_busy_to_idle_transition_flags_ready() -> None:
     """A terminal that was sustained-busy for >= READY_TRANSITION_SECONDS
     then went idle triggers the workspace's "ready" signal (via the 1 Hz
     transition poll)."""
-    from terminux.server import asgi
-
     busy_state: dict[str, bool] = {"value": True}
 
     class FakeTerm:
@@ -206,17 +203,23 @@ def test_busy_to_idle_transition_flags_ready() -> None:
 
 
 def test_persist_true_loads_and_saves(monkeypatch) -> None:
+    # AppController binds load_state/save_state at import time in
+    # terminux.server.controller — that's the module to monkeypatch.
+    from terminux.server import controller
+
     saved: list[AppState] = []
-    monkeypatch.setattr(asgi, "load_state", AppState.default)
-    monkeypatch.setattr(asgi, "save_state", lambda s: saved.append(s))
+    monkeypatch.setattr(controller, "load_state", AppState.default)
+    monkeypatch.setattr(controller, "save_state", lambda s: saved.append(s))
     ctl = AppController(persist=True)
     ctl.save()
     assert saved and saved[0] is ctl.state
 
 
 def test_save_snapshots_live_cwd_so_it_persists(monkeypatch) -> None:
-    monkeypatch.setattr(asgi, "load_state", AppState.default)
-    monkeypatch.setattr(asgi, "save_state", lambda _s: None)
+    from terminux.server import controller
+
+    monkeypatch.setattr(controller, "load_state", AppState.default)
+    monkeypatch.setattr(controller, "save_state", lambda _s: None)
     ctl = AppController(persist=True)
     tab = ctl.state.tabs[ctl.state.workspaces[0].active_tab_id]
     tab.terminal_id = "term-1"
@@ -325,8 +328,6 @@ def test_busy_promotion_suppressed_inside_grace() -> None:
     otherwise paint the dot busy the moment the user looks away."""
     import time
 
-    from terminux.server import asgi
-
     class FakeTerm:
         def is_busy(self) -> bool:
             return True
@@ -413,7 +414,7 @@ def test_pump_out_emits_dropped_then_exit(monkeypatch) -> None:
 
     from terminux.core import terminal as term_mod
     from terminux.core.terminal import Subscriber
-    from terminux.server.asgi import _pump_out
+    from terminux.server.api import _pump_out
 
     monkeypatch.setattr(term_mod, "OUTBOUND_CAP", 4)
     monkeypatch.setattr(term_mod, "FLUSH_INTERVAL", 0)

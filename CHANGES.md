@@ -2,6 +2,21 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-05-28
+
+### Added
+
+- **Native application menu.** File / View / Workspace / Help, mirroring what the keyboard chords already do — discoverable at a glance, no docs trip required. On macOS the menu lives in the global menu bar; on Linux it sits in the window frame. Help → Documentation opens the project URL in the OS default browser. The menu is just another input surface on top of a new shared command bus, so adding a chord, a command-palette entry, and a menu item is one registration each.
+
+### Changed
+
+- **Keymap and command palette refactored onto a shared command bus** (`frontend/src/commands.ts`). Same handlers run regardless of whether you used a keyboard chord, picked from the palette, or clicked a menu item — no more duplicated dispatch. No user-visible change to existing shortcuts.
+
+### Internal
+
+- `open_url_in_default_app` extracted from `terminux.server.asgi` to a dedicated `terminux.openurl` module; reused by the menu's Help link and the existing `/api/open-url` route.
+- `terminux.constants` added for URL constants surfaced in multiple places (`DOCS_URL` for now).
+
 ## [0.6.3] - 2026-05-28
 
 ### Fixed

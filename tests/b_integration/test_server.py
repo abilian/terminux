@@ -326,12 +326,14 @@ def test_open_url_validates_scheme_and_requires_token(server: LiveServer) -> Non
             )
         assert exc.value.code == 400
 
-    # Patch the opener so the test never actually spawns `open`.
-    from terminux.server import asgi
+    # Patch the opener so the test never actually spawns `open`. The
+    # handler in api.py uses its own module-level binding; that's the
+    # one we need to swap.
+    from terminux.server import api
 
     calls: list[str] = []
-    monkey = asgi.open_url_in_default_app
-    asgi.open_url_in_default_app = lambda u: (calls.append(u), True)[1]  # type: ignore[assignment]
+    monkey = api.open_url_in_default_app
+    api.open_url_in_default_app = lambda u: (calls.append(u), True)[1]  # type: ignore[assignment]
     try:
         _req(
             f"{base}/api/open-url?t={T}",
@@ -340,7 +342,7 @@ def test_open_url_validates_scheme_and_requires_token(server: LiveServer) -> Non
         )
         assert calls == ["https://example.com/path?x=1"]
     finally:
-        asgi.open_url_in_default_app = monkey  # type: ignore[assignment]
+        api.open_url_in_default_app = monkey  # type: ignore[assignment]
 
 
 def test_tab_order_reorders_and_sanitizes(server: LiveServer) -> None:
