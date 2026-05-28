@@ -10,12 +10,17 @@ IS_MAC = sys.platform == "darwin"
 
 project = Path(SPECPATH)
 static_dir = project / "src" / "terminux" / "web" / "static"
+assets_dir = project / "src" / "terminux" / "assets"
+icon_icns = assets_dir / "icon.icns"
 if not (static_dir / "index.html").exists():
     raise SystemExit("Frontend bundle missing — run `make frontend` before packaging.")
 
-# Ship the built web UI next to the package so asgi.py's
-# Path(__file__).../web/static resolves inside the bundle.
-datas = [(str(static_dir), "terminux/web/static")]
+# Ship the built web UI and bundled icons next to the package so the
+# package-relative Path(__file__) lookups still resolve inside PyInstaller.
+datas = [
+    (str(static_dir), "terminux/web/static"),
+    (str(assets_dir), "terminux/assets"),
+]
 binaries = []
 hiddenimports = ["terminux", "terminux.app"]
 
@@ -70,7 +75,7 @@ if IS_MAC:
     app = BUNDLE(
         coll,
         name="terminux.app",
-        icon=None,
+        icon=str(icon_icns) if icon_icns.exists() else None,
         bundle_identifier="org.terminux.app",
         info_plist={
             "CFBundleName": "terminux",

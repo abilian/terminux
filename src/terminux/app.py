@@ -14,6 +14,7 @@ import socket
 import sys
 import threading
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
 import uvicorn
@@ -22,6 +23,10 @@ from terminux.constants import DOCS_URL
 from terminux.openurl import open_url_in_default_app
 from terminux.server.asgi import AppController, build_app
 from terminux.server.auth import SESSION_TOKEN
+
+_ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+ICON_PNG = _ASSETS_DIR / "icon.png"
+ICON_ICNS = _ASSETS_DIR / "icon.icns"
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -147,6 +152,30 @@ def _disable_macos_press_and_hold() -> None:
     )
 
 
+def _set_macos_dock_icon() -> None:
+    """Override the generic Python rocket in the dock when launched from the CLI.
+
+    The packaged .app picks its icon up from ``Info.plist`` — but
+    ``uv run terminux`` has no bundle, so AppKit falls back to the Python
+    interpreter's icon. ``NSApplication.setApplicationIconImage_`` swaps it
+    for the current process. Silently no-ops if PyObjC or the PNG is missing.
+    """
+    if sys.platform != "darwin" or not ICON_PNG.exists():
+        return
+    try:
+        # AppKit ships with PyObjC on macOS — dynamic Cocoa bridge, opaque
+        # to static checkers (same dance as the Foundation import above).
+        from AppKit import (  # noqa: PLC0415
+            NSApplication,  # ty: ignore[unresolved-import]  # pyrefly: ignore[missing-module-attribute]
+            NSImage,  # ty: ignore[unresolved-import]  # pyrefly: ignore[missing-module-attribute]
+        )
+    except ImportError:
+        return
+    image = NSImage.alloc().initWithContentsOfFile_(str(ICON_PNG))
+    if image is not None:
+        NSApplication.sharedApplication().setApplicationIconImage_(image)
+
+
 def _run_windowed(url: str, ctl: AppController, server: uvicorn.Server) -> None:
     _disable_macos_press_and_hold()
     import webview  # noqa: PLC0415  (heavy GUI import; only when windowing)
@@ -164,6 +193,7 @@ def _run_windowed(url: str, ctl: AppController, server: uvicorn.Server) -> None:
         # nuke a workspace full of live shells without a prompt.
         confirm_close=True,
     )
+    _set_macos_dock_icon()
     if window is None:
         msg = "failed to create application window"
         raise RuntimeError(msg)
@@ -197,10 +227,15 @@ def _run_windowed(url: str, ctl: AppController, server: uvicorn.Server) -> None:
 
     win.events.loaded += _register_drop
     win.events.closed += _shutdown
+    # icon= is the GTK/QT taskbar/window icon (pywebview docs: "Supported
+    # only on GTK/QT"); macOS uses _set_macos_dock_icon() above instead.
     # ``webview`` is a real module; the cast is purely to tell the static
     # checker that we'll only touch ``.active_window`` on it (which it
     # does have, but the module stubs don't declare).
-    webview.start(menu=_build_menu(cast("_WebviewModuleLike", webview)))
+    webview.start(
+        menu=_build_menu(cast("_WebviewModuleLike", webview)),
+        icon=str(ICON_PNG) if ICON_PNG.exists() else None,
+    )
 
 
 def _build_menu(webview_mod: _WebviewModuleLike) -> list[Menu]:
