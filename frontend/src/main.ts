@@ -4,6 +4,7 @@
 import "./style.css";
 
 import { api } from "./api";
+import { installCommands } from "./commands-bindings";
 import { installCmdPalette } from "./cmdpalette";
 import { installDragAndDrop } from "./dragdrop";
 import { installFind } from "./find";
@@ -46,6 +47,9 @@ window.addEventListener("resize", () => {
   if (s) s.fit.fit();
 });
 
+// Must come before any surface that calls ``invoke()`` — keymap and
+// the palettes both dispatch through the bus.
+installCommands();
 installSidebarResizer();
 installFind();
 installPalette();

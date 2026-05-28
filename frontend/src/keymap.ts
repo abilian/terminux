@@ -1,4 +1,6 @@
-// Global keyboard shortcuts (functional spec §8).
+// Global keyboard shortcuts (functional spec §8). One of three input
+// surfaces feeding the command bus in ``./commands.ts``; ``keymap``
+// just maps physical chords to command ids.
 //
 // Modifier conventions (see ./platform.ts):
 //   macOS  — Cmd        for app shortcuts; Ctrl flows to the shell.
@@ -9,28 +11,8 @@
 // on Linux — Shift mutates ``e.key`` (``"t"``→``"T"``, ``"1"``→``"!"``,
 // ``"="``→``"+"``) and a single check needs to fire on both platforms.
 
-import { api } from "./api";
-import { openCmdPalette } from "./cmdpalette";
-import { openFind } from "./find";
-import { applyFontSize, getFontSize, resetFontSize } from "./font";
-import { openPalette } from "./palette";
-import { toggleSidebar } from "./layout";
+import { invoke } from "./commands";
 import { IS_MAC, appMod } from "./platform";
-import { closeWorkspace, switchWorkspace } from "./sidebar";
-import { activeWorkspace, getState, refresh } from "./store";
-import { closeTab, switchTab } from "./tabs";
-
-function switchToWorkspaceAt(idx: number): boolean {
-  const state = getState();
-  if (!state) return false;
-  const target = state.workspaces[idx];
-  if (!target) return false;
-  void api(`/workspaces/${target.id}`, {
-    method: "PATCH",
-    body: JSON.stringify({ active: true }),
-  }).then(refresh);
-  return true;
-}
 
 // Linux-only chords that live outside the ``appMod`` gate: F1 for the
 // command palette (provisional, see notes/future-considerations.md).
@@ -39,108 +21,48 @@ function switchToWorkspaceAt(idx: number): boolean {
 function handleLinuxOnlyChord(e: KeyboardEvent): boolean {
   if (IS_MAC) return false;
   if (e.key === "F1" && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
-    openCmdPalette();
-    return true;
+    return invoke("palette.command");
   }
   return false;
 }
 
 function handleAppChord(e: KeyboardEvent): boolean {
-  const ws = activeWorkspace();
-  const state = getState();
-
   // Cmd/Ctrl+Shift+Alt+C — toggle iTerm2-style auto-copy on selection.
-  if (e.altKey && e.code === "KeyC") {
-    const next = !state?.ui.copy_on_select;
-    void api("/ui", {
-      method: "PATCH",
-      body: JSON.stringify({ copy_on_select: next }),
-    }).then(refresh);
-    return true;
-  }
+  if (e.altKey && e.code === "KeyC") return invoke("view.copy-on-select.toggle");
 
   // Font zoom uses ``e.code`` so Shift on Linux doesn't matter (``+``,
   // ``_``, ``)`` would otherwise hide ``=``, ``-``, ``0`` on shifted layouts).
-  if (e.code === "Equal" || e.code === "NumpadAdd") {
-    applyFontSize(getFontSize() + 1);
-    return true;
-  }
+  if (e.code === "Equal" || e.code === "NumpadAdd") return invoke("view.zoom.in");
   if (e.code === "Minus" || e.code === "NumpadSubtract") {
-    applyFontSize(getFontSize() - 1);
-    return true;
+    return invoke("view.zoom.out");
   }
-  if (e.code === "Digit0" || e.code === "Numpad0") {
-    resetFontSize();
-    return true;
-  }
+  if (e.code === "Digit0" || e.code === "Numpad0") return invoke("view.zoom.reset");
 
-  if (e.code === "KeyB") {
-    toggleSidebar();
-    return true;
-  }
-  if (e.code === "KeyF") {
-    openFind();
-    return true;
-  }
+  if (e.code === "KeyB") return invoke("view.sidebar.toggle");
+  if (e.code === "KeyF") return invoke("view.find");
 
   // Cmd+Shift+P on macOS opens the command palette. On Linux the same
   // physical chord (Ctrl+Shift+P) *is* the appMod for P — i.e. the quick
   // switcher — so the secondary action lives on F1 instead, handled above.
-  if (IS_MAC && e.shiftKey && e.code === "KeyP") {
-    openCmdPalette();
-    return true;
-  }
-  if (e.code === "KeyP") {
-    openPalette();
-    return true;
-  }
+  if (IS_MAC && e.shiftKey && e.code === "KeyP") return invoke("palette.command");
+  if (e.code === "KeyP") return invoke("palette.quick");
 
-  if (e.code === "KeyT" && ws) {
-    void api(`/workspaces/${ws.id}/tabs`, { method: "POST" }).then(refresh);
-    return true;
-  }
-  if (e.code === "KeyW") {
-    if (ws) {
-      if (ws.tab_ids.length > 1 && ws.active_tab_id) closeTab(ws.active_tab_id);
-      else closeWorkspace(ws.id);
-    }
-    return true;
-  }
-  if (e.code === "KeyN") {
-    void api("/workspaces", { method: "POST" }).then(refresh);
-    return true;
-  }
+  if (e.code === "KeyT") return invoke("tab.new");
+  if (e.code === "KeyW") return invoke("tab.close");
+  if (e.code === "KeyN") return invoke("workspace.new");
 
-  if (e.code === "BracketLeft") {
-    switchTab(-1);
-    return true;
-  }
-  if (e.code === "BracketRight") {
-    switchTab(1);
-    return true;
-  }
-  if (e.code === "ArrowLeft" && e.shiftKey) {
-    switchTab(-1);
-    return true;
-  }
-  if (e.code === "ArrowRight" && e.shiftKey) {
-    switchTab(1);
-    return true;
-  }
-  if (e.code === "ArrowUp" && e.shiftKey) {
-    switchWorkspace(-1);
-    return true;
-  }
-  if (e.code === "ArrowDown" && e.shiftKey) {
-    switchWorkspace(1);
-    return true;
-  }
+  if (e.code === "BracketLeft") return invoke("tab.prev");
+  if (e.code === "BracketRight") return invoke("tab.next");
+  if (e.code === "ArrowLeft" && e.shiftKey) return invoke("tab.prev");
+  if (e.code === "ArrowRight" && e.shiftKey) return invoke("tab.next");
+  if (e.code === "ArrowUp" && e.shiftKey) return invoke("workspace.prev");
+  if (e.code === "ArrowDown" && e.shiftKey) return invoke("workspace.next");
 
   // Cmd+1..9 (macOS) / Ctrl+Shift+1..9 (Linux). ``e.code`` is
   // layout-independent — important on Linux where Shift+1 makes
   // ``e.key`` equal "!" but the code stays "Digit1".
   const m = /^Digit([1-9])$/.exec(e.code);
-  if (m) return switchToWorkspaceAt(Number(m[1]) - 1);
+  if (m) return invoke(`workspace.jump.${m[1]}`);
 
   return false;
 }
