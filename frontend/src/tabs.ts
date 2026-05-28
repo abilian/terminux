@@ -27,11 +27,14 @@ export function switchTab(delta: number): void {
   void setActiveTabOptimistic(ws.id, next);
 }
 
+export function isEditingTab(): boolean {
+  return editingTabId !== null;
+}
+
 export function renderTabs(): void {
-  // Inline-rename guard: same shape as renderSidebar — a poll-driven
-  // re-render would otherwise destroy the in-progress <input> and
-  // reseed it from the polled title, wiping the user's typing.
-  if (editingTabId !== null) return;
+  // Same shape as renderSidebar: the "skip while editing" guard lives
+  // at the ``onRender`` call site so the dblclick-to-rename transition
+  // can still mount its <input>.
   const state = getState();
   const bar = document.getElementById("tabbar");
   if (!state || !bar) return;

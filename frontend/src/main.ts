@@ -13,17 +13,22 @@ import { installPalette } from "./palette";
 import { installStatsPanel } from "./statspanel";
 import { isReordering } from "./reorder";
 import { applyLayout, installSidebarResizer } from "./layout";
-import { renderSidebar } from "./sidebar";
+import { isEditingSidebar, renderSidebar } from "./sidebar";
 import { activeWorkspace, configure, poll, refresh, sessions } from "./store";
 import { ensureActiveTerminal, installScrollbackAutosave } from "./terminal";
-import { renderTabs } from "./tabs";
+import { isEditingTab, renderTabs } from "./tabs";
 
 configure({
   onRender: () => {
     syncFontFromState(); // before the first terminal opens; one-shot
     if (isReordering()) return; // don't rebuild rows mid-drag
-    renderSidebar();
-    renderTabs();
+    // Skip a panel's re-render while it has an inline rename in
+    // progress — otherwise the 2 s poll wipes the user's typing.
+    // ``beginRename`` and the commit/cancel callbacks invoke the
+    // renderer directly and bypass this hook, so the transitions
+    // into and out of edit mode still happen.
+    if (!isEditingSidebar()) renderSidebar();
+    if (!isEditingTab()) renderTabs();
   },
   onActivate: () => ensureActiveTerminal(),
 });
