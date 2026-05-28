@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 - `open_url_in_default_app` extracted from `terminux.server.asgi` to a dedicated `terminux.openurl` module; reused by the menu's Help link and the existing `/api/open-url` route.
 - `terminux.constants` added for URL constants surfaced in multiple places (`DOCS_URL` for now).
+- `terminux.server.asgi` (~580 LOC) split along its natural seams: `controller.py` (the `AppController` domain layer), `api.py` (HTTP/WebSocket handlers), `middleware.py` (CSP + hardening headers). `asgi.py` is now the slim composition root and re-exports `AppController` so existing imports keep working.
 
 ## [0.6.3] - 2026-05-28
 
