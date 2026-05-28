@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Added
 
 - **Native application menu.** File / View / Workspace / Help, mirroring what the keyboard chords already do — discoverable at a glance, no docs trip required. On macOS the menu lives in the global menu bar; on Linux it sits in the window frame. Help → Documentation opens the project URL in the OS default browser. The menu is just another input surface on top of a new shared command bus, so adding a chord, a command-palette entry, and a menu item is one registration each.
+- **App icon.** Stylized `>_` prompt on a dark rounded square. Used by the packaged `.app` (Finder + dock) and by the Linux GTK/QT window/taskbar entry. When launched from the CLI (`uv run terminux`) on macOS, the dock icon is overridden at startup via `NSApplication.setApplicationIconImage_` so it no longer falls back to the generic Python rocket.
 
 ### Changed
 
@@ -17,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - `open_url_in_default_app` extracted from `terminux.server.asgi` to a dedicated `terminux.openurl` module; reused by the menu's Help link and the existing `/api/open-url` route.
 - `terminux.constants` added for URL constants surfaced in multiple places (`DOCS_URL` for now).
 - `terminux.server.asgi` (~580 LOC) split along its natural seams: `controller.py` (the `AppController` domain layer), `api.py` (HTTP/WebSocket handlers), `middleware.py` (CSP + hardening headers). `asgi.py` is now the slim composition root and re-exports `AppController` so existing imports keep working.
+- New `src/terminux/assets/` directory ships `icon.svg` (source), `icon.png` (GTK/QT + macOS-dock raster), and `icon.icns` (multi-resolution macOS bundle icon). The PyInstaller spec now bundles the dir and points `BUNDLE(icon=...)` at the `.icns`.
 
 ## [0.6.3] - 2026-05-28
 

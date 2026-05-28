@@ -1263,7 +1263,7 @@ wheels = [
 
 [[package]]
 name = "terminux"
-version = "0.6.3"
+version = "0.7.0"
 source = { editable = "." }
 dependencies = [
     { name = "platformdirs" },
