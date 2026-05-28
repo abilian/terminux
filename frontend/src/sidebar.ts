@@ -18,6 +18,12 @@ const DOT_TOOLTIP: Record<string, string> = {
 };
 
 export function renderSidebar(): void {
+  // Inline-rename guard: a poll-driven re-render would otherwise blow
+  // away the in-progress <input> and reseed it from the polled name,
+  // wiping whatever the user just typed. Same convention as the
+  // drag-reorder guard. Edit-end (Enter / Escape) clears the flag and
+  // calls renderSidebar() itself, so we never get stuck.
+  if (editingWsId !== null) return;
   const state = getState();
   const list = document.getElementById("ws-list");
   if (!state || !list) return;

@@ -28,6 +28,10 @@ export function switchTab(delta: number): void {
 }
 
 export function renderTabs(): void {
+  // Inline-rename guard: same shape as renderSidebar — a poll-driven
+  // re-render would otherwise destroy the in-progress <input> and
+  // reseed it from the polled title, wiping the user's typing.
+  if (editingTabId !== null) return;
   const state = getState();
   const bar = document.getElementById("tabbar");
   if (!state || !bar) return;
