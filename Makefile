@@ -15,12 +15,16 @@ frontend-test:
 frontend-dev:
 	cd frontend && npm run dev
 
+# Run
+run:
+	uv run terminux
+
 # Package a macOS .app bundle into dist/terminux.app (PyInstaller).
-app: frontend
+build-macos: frontend
 	uv run --active pyinstaller --noconfirm --clean terminux.spec
 
 # Package a Linux onedir bundle via Docker -> dist/linux/terminux.
-linux:
+build-linux:
 	docker build --target bundle -t terminux:bundle .
 	rm -rf dist/linux && mkdir -p dist/linux
 	docker create --name terminux_extract terminux:bundle >/dev/null
