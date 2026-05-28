@@ -28,15 +28,18 @@ function handleLinuxOnlyChord(e: KeyboardEvent): boolean {
 
 function handleAppChord(e: KeyboardEvent): boolean {
   // Cmd/Ctrl+Shift+Alt+C — toggle iTerm2-style auto-copy on selection.
-  if (e.altKey && e.code === "KeyC") return invoke("view.copy-on-select.toggle");
+  if (e.altKey && e.code === "KeyC")
+    return invoke("view.copy-on-select.toggle");
 
   // Font zoom uses ``e.code`` so Shift on Linux doesn't matter (``+``,
   // ``_``, ``)`` would otherwise hide ``=``, ``-``, ``0`` on shifted layouts).
-  if (e.code === "Equal" || e.code === "NumpadAdd") return invoke("view.zoom.in");
+  if (e.code === "Equal" || e.code === "NumpadAdd")
+    return invoke("view.zoom.in");
   if (e.code === "Minus" || e.code === "NumpadSubtract") {
     return invoke("view.zoom.out");
   }
-  if (e.code === "Digit0" || e.code === "Numpad0") return invoke("view.zoom.reset");
+  if (e.code === "Digit0" || e.code === "Numpad0")
+    return invoke("view.zoom.reset");
 
   if (e.code === "KeyB") return invoke("view.sidebar.toggle");
   if (e.code === "KeyF") return invoke("view.find");
@@ -44,7 +47,8 @@ function handleAppChord(e: KeyboardEvent): boolean {
   // Cmd+Shift+P on macOS opens the command palette. On Linux the same
   // physical chord (Ctrl+Shift+P) *is* the appMod for P — i.e. the quick
   // switcher — so the secondary action lives on F1 instead, handled above.
-  if (IS_MAC && e.shiftKey && e.code === "KeyP") return invoke("palette.command");
+  if (IS_MAC && e.shiftKey && e.code === "KeyP")
+    return invoke("palette.command");
   if (e.code === "KeyP") return invoke("palette.quick");
 
   if (e.code === "KeyT") return invoke("tab.new");

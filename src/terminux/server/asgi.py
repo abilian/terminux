@@ -6,14 +6,10 @@ import asyncio
 import contextlib
 import json
 import logging
-import shutil
-import subprocess  # noqa: S404 — argv form only, no shell, opener path resolved via shutil.which
-import sys
 import threading
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urlparse
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -34,6 +30,7 @@ from terminux.core.persistence import (
 )
 from terminux.core.shellprobe import default_cwd, default_shell
 from terminux.core.terminal import Subscriber, Terminal, TerminalRegistry
+from terminux.openurl import open_url_in_default_app
 from terminux.server.auth import SESSION_TOKEN, token_ok
 
 if TYPE_CHECKING:
@@ -424,51 +421,6 @@ def _deny(request: Request) -> Response | None:
     return None
 
 
-# Only schemes safe to hand to the OS opener — `file://`, `javascript:`,
-# `data:` and friends are deliberately omitted.
-_OPENABLE_SCHEMES = frozenset({"http", "https", "mailto"})
-
-
-def _open_url_in_default_app(url: str) -> bool:
-    """Open ``url`` in the OS's default application, never via the shell.
-
-    pywebview's WKWebView ignores JavaScript ``window.open()``, so the
-    Cmd/Ctrl+click web-links handler routes the URL here. Returns True if
-    a real opener was dispatched; False if the URL was rejected or no
-    opener exists on the platform.
-    """
-    try:
-        parsed = urlparse(url)
-    except ValueError:
-        return False
-    if parsed.scheme.lower() not in _OPENABLE_SCHEMES:
-        return False
-
-    if sys.platform == "darwin":
-        opener = "open"
-    elif sys.platform.startswith("linux"):
-        opener = "xdg-open"
-    else:
-        return False  # Windows path is unreachable in v1 (no PTY support).
-
-    if shutil.which(opener) is None:
-        return False
-
-    try:
-        # No shell, no env munging — argv only, so the URL is opaque.
-        subprocess.Popen(  # noqa: S603 — argv form, opener is a literal
-            [opener, url],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
-            close_fds=True,
-        )
-    except OSError:
-        log.exception("failed to spawn %s for url", opener)
-        return False
-    return True
-
-
 class Api:
     """HTTP/WebSocket handlers bound to a single controller."""
 
@@ -683,7 +635,7 @@ class Api:
         url = str(body.get("url", "")).strip()
         if not url:
             return JSONResponse({"error": "missing url"}, status_code=400)
-        if not _open_url_in_default_app(url):
+        if not open_url_in_default_app(url):
             return JSONResponse({"error": "rejected"}, status_code=400)
         return JSONResponse({"ok": True})
 

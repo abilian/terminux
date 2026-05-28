@@ -8,17 +8,36 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import json
 import logging
 import socket
 import sys
 import threading
 import time
-from typing import cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 import uvicorn
 
+from terminux.constants import DOCS_URL
+from terminux.openurl import open_url_in_default_app
 from terminux.server.asgi import AppController, build_app
 from terminux.server.auth import SESSION_TOKEN
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from webview.menu import Menu, MenuAction, MenuSeparator
+
+    MenuEntry = Menu | MenuAction | MenuSeparator
+
+
+class _WebviewWindowLike(Protocol):
+    def evaluate_js(self, script: str) -> object: ...
+
+
+class _WebviewModuleLike(Protocol):
+    def active_window(self) -> _WebviewWindowLike | None: ...
+
 
 log = logging.getLogger(__name__)
 HOST = "127.0.0.1"
@@ -178,7 +197,94 @@ def _run_windowed(url: str, ctl: AppController, server: uvicorn.Server) -> None:
 
     win.events.loaded += _register_drop
     win.events.closed += _shutdown
-    webview.start()
+    # ``webview`` is a real module; the cast is purely to tell the static
+    # checker that we'll only touch ``.active_window`` on it (which it
+    # does have, but the module stubs don't declare).
+    webview.start(menu=_build_menu(cast("_WebviewModuleLike", webview)))
+
+
+def _build_menu(webview_mod: _WebviewModuleLike) -> list[Menu]:
+    """Build the native application menu — same set of verbs the keyboard
+    chords and the command palette dispatch through, so the menu is just
+    another input surface on the shared command bus.
+
+    Each ``MenuAction`` callback ``evaluate_js``s into
+    ``window.terminux.invoke('<id>')`` on the active window; URL items
+    (Help → Documentation) bypass the bus and shell out via
+    ``open_url_in_default_app`` since URL launching is Python-native.
+    """
+    # Import here so unit tests that exercise _build_menu without a real
+    # webview can stub the module via the argument.
+    from webview.menu import Menu, MenuAction, MenuSeparator  # noqa: PLC0415
+
+    def _cmd(command_id: str) -> Callable[[], None]:
+        js = f"window.terminux?.invoke({json.dumps(command_id)})"
+
+        def callback() -> None:
+            win = webview_mod.active_window()
+            if win is not None:
+                win.evaluate_js(js)
+
+        return callback
+
+    def _url(target: str) -> Callable[[], None]:
+        def callback() -> None:
+            open_url_in_default_app(target)
+
+        return callback
+
+    workspace_items: list[MenuEntry] = [
+        MenuAction("Next Workspace", _cmd("workspace.next")),
+        MenuAction("Previous Workspace", _cmd("workspace.prev")),
+        MenuSeparator(),
+    ]
+    workspace_items.extend(
+        MenuAction(f"Workspace {i}", _cmd(f"workspace.jump.{i}")) for i in range(1, 10)
+    )
+    workspace_items.extend([
+        MenuSeparator(),
+        MenuAction("Reorder by Activity", _cmd("workspace.reorder-by-activity")),
+    ])
+
+    return [
+        Menu(
+            "File",
+            [
+                MenuAction("New Workspace", _cmd("workspace.new")),
+                MenuAction("New Tab", _cmd("tab.new")),
+                MenuSeparator(),
+                MenuAction("Close Tab", _cmd("tab.close")),
+                MenuAction("Close Workspace", _cmd("workspace.close")),
+            ],
+        ),
+        Menu(
+            "View",
+            [
+                MenuAction("Quick Switcher", _cmd("palette.quick")),
+                MenuAction("Command Palette", _cmd("palette.command")),
+                MenuSeparator(),
+                MenuAction("Find…", _cmd("view.find")),
+                MenuAction("Usage Stats", _cmd("view.stats")),
+                MenuSeparator(),
+                MenuAction("Zoom In", _cmd("view.zoom.in")),
+                MenuAction("Zoom Out", _cmd("view.zoom.out")),
+                MenuAction("Reset Zoom", _cmd("view.zoom.reset")),
+                MenuSeparator(),
+                MenuAction("Toggle Sidebar", _cmd("view.sidebar.toggle")),
+                MenuSeparator(),
+                MenuAction(
+                    "Toggle Auto-Copy on Selection",
+                    _cmd("view.copy-on-select.toggle"),
+                ),
+                MenuAction(
+                    "Toggle Scrollback Persistence",
+                    _cmd("view.scrollback-persist.toggle"),
+                ),
+            ],
+        ),
+        Menu("Workspace", workspace_items),
+        Menu("Help", [MenuAction("Documentation", _url(DOCS_URL))]),
+    ]
 
 
 if __name__ == "__main__":

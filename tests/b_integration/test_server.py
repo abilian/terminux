@@ -330,8 +330,8 @@ def test_open_url_validates_scheme_and_requires_token(server: LiveServer) -> Non
     from terminux.server import asgi
 
     calls: list[str] = []
-    monkey = asgi._open_url_in_default_app
-    asgi._open_url_in_default_app = lambda u: (calls.append(u), True)[1]  # type: ignore[assignment]
+    monkey = asgi.open_url_in_default_app
+    asgi.open_url_in_default_app = lambda u: (calls.append(u), True)[1]  # type: ignore[assignment]
     try:
         _req(
             f"{base}/api/open-url?t={T}",
@@ -340,7 +340,7 @@ def test_open_url_validates_scheme_and_requires_token(server: LiveServer) -> Non
         )
         assert calls == ["https://example.com/path?x=1"]
     finally:
-        asgi._open_url_in_default_app = monkey  # type: ignore[assignment]
+        asgi.open_url_in_default_app = monkey  # type: ignore[assignment]
 
 
 def test_tab_order_reorders_and_sanitizes(server: LiveServer) -> None:

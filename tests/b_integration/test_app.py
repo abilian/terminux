@@ -116,8 +116,10 @@ def test_main_windowed_with_fake_webview(monkeypatch) -> None:
         return win
 
     fake_webview.create_window = _create  # type: ignore[attr-defined]
+    fake_webview.active_window = lambda: win  # type: ignore[attr-defined]
 
-    def fake_start() -> None:
+    def fake_start(**_k) -> None:
+        # **_k absorbs the ``menu=`` kwarg the real start() now receives.
         win.events.loaded.fire()  # -> _register_drop registers a drop handler
         drop = recorded["drop"]
         drop({"dataTransfer": {"files": [{"pywebviewFullPath": "/tmp/x.pdf"}]}})
@@ -137,8 +139,31 @@ def test_main_windowed_with_fake_webview(monkeypatch) -> None:
             self.callback = callback
 
     fake_dom.DOMEventHandler = DOMEventHandler  # type: ignore[attr-defined]
+
+    # The native menu construction in _build_menu pulls in webview.menu;
+    # stub it minimally so the test doesn't need pywebview installed.
+    fake_menu = types.ModuleType("webview.menu")
+
+    class _StubMenu:
+        def __init__(self, label, items=None) -> None:
+            self.label = label
+            self.items = items or []
+
+    class _StubMenuAction:
+        def __init__(self, label, callback) -> None:
+            self.label = label
+            self.callback = callback
+
+    class _StubSeparator:
+        pass
+
+    fake_menu.Menu = _StubMenu  # type: ignore[attr-defined]
+    fake_menu.MenuAction = _StubMenuAction  # type: ignore[attr-defined]
+    fake_menu.MenuSeparator = _StubSeparator  # type: ignore[attr-defined]
+
     monkeypatch.setitem(sys.modules, "webview", fake_webview)
     monkeypatch.setitem(sys.modules, "webview.dom", fake_dom)
+    monkeypatch.setitem(sys.modules, "webview.menu", fake_menu)
 
     monkeypatch.setattr(sys, "argv", ["terminux"])
     app.main()

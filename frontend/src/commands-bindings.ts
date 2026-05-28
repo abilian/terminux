@@ -12,6 +12,7 @@ import { applyFontSize, getFontSize, resetFontSize } from "./font";
 import { toggleSidebar } from "./layout";
 import { openPalette } from "./palette";
 import { closeWorkspace, switchWorkspace } from "./sidebar";
+import { openStatsPanel } from "./statspanel";
 import {
   activeWorkspace,
   getState,
@@ -33,6 +34,10 @@ export function installCommands(): void {
   });
   register("workspace.next", () => switchWorkspace(1));
   register("workspace.prev", () => switchWorkspace(-1));
+  register("workspace.close", () => {
+    const ws = activeWorkspace();
+    if (ws) closeWorkspace(ws.id);
+  });
   for (let i = 1; i <= 9; i++) {
     register(`workspace.jump.${i}`, () => {
       const state = getState();
@@ -76,6 +81,32 @@ export function installCommands(): void {
     void api("/ui", {
       method: "PATCH",
       body: JSON.stringify({ copy_on_select: next }),
+    }).then(refresh);
+  });
+  register("view.scrollback-persist.toggle", () => {
+    const next = !getState()?.ui.scrollback_persist;
+    void api("/ui", {
+      method: "PATCH",
+      body: JSON.stringify({ scrollback_persist: next }),
+    }).then(refresh);
+  });
+
+  // ----- session activity ---------------------------------------------
+  register("view.stats", () => openStatsPanel());
+  register("view.activity.reset", () => {
+    void api("/activity/reset", { method: "POST" }).then(refresh);
+  });
+  register("workspace.reorder-by-activity", () => {
+    const state = getState();
+    if (!state || state.workspaces.length < 2) return;
+    const order = [...state.workspaces]
+      .sort((a, b) => b.active_seconds - a.active_seconds)
+      .map((w) => w.id);
+    const target = order[0];
+    if (!target) return;
+    void api(`/workspaces/${target}`, {
+      method: "PATCH",
+      body: JSON.stringify({ order }),
     }).then(refresh);
   });
 
