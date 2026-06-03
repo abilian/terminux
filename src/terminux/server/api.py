@@ -74,37 +74,49 @@ class Api:
             self.ctl.save()
         return JSONResponse({"id": ws.id})
 
-    async def patch_workspace(self, request: Request) -> Response:
+    async def patch_workspace(  # noqa: C901 — nested ``_apply`` inflates the count
+        self, request: Request
+    ) -> Response:
         if (deny := _deny(request)) is not None:
             return deny
         body: dict[str, Any] = await request.json()
-        with self.ctl.lock:
-            ws = self.ctl.state.get_workspace(request.path_params["ws_id"])
-            if ws is None:
-                return JSONResponse({"error": "not found"}, status_code=404)
-            if "name" in body:
-                ws.name = str(body["name"]).strip() or ws.name
-                ws.user_set_name = True  # pin it; stop tracking cwd
-            if body.get("active"):
-                self.ctl.state.set_active_workspace(ws.id)
-            if "active_tab_id" in body:
-                ws.active_tab_id = body["active_tab_id"]
-                if ws.active_tab_id is not None:
-                    tab = self.ctl.state.tabs.get(ws.active_tab_id)
-                    if tab is not None:
-                        tab.has_unseen_output = False
-            if "order" in body:
-                order = [str(x) for x in body["order"]]
-                self.ctl.state.workspaces.sort(
-                    key=lambda w: order.index(w.id) if w.id in order else 1_000_000,
-                )
-            if "tab_order" in body:
-                want = [str(x) for x in body["tab_order"]]
-                # Keep only ids that belong to this workspace; append any the
-                # client omitted so no tab is ever lost on a stale reorder.
-                ordered = [t for t in want if t in ws.tab_ids]
-                ws.tab_ids = ordered + [t for t in ws.tab_ids if t not in ordered]
-            self.ctl.save()
+        ws_id = request.path_params["ws_id"]
+
+        # All state access + the disk-touching ``save()`` runs in a worker
+        # thread so a slow fsync (or anyone holding ``ctl.lock``) can't
+        # freeze the asyncio loop — see ``notes/lessons-learned.md``.
+        def _apply() -> bool:
+            with self.ctl.lock:
+                ws = self.ctl.state.get_workspace(ws_id)
+                if ws is None:
+                    return False
+                if "name" in body:
+                    ws.name = str(body["name"]).strip() or ws.name
+                    ws.user_set_name = True  # pin it; stop tracking cwd
+                if body.get("active"):
+                    self.ctl.state.set_active_workspace(ws.id)
+                if "active_tab_id" in body:
+                    ws.active_tab_id = body["active_tab_id"]
+                    if ws.active_tab_id is not None:
+                        tab = self.ctl.state.tabs.get(ws.active_tab_id)
+                        if tab is not None:
+                            tab.has_unseen_output = False
+                if "order" in body:
+                    order = [str(x) for x in body["order"]]
+                    self.ctl.state.workspaces.sort(
+                        key=lambda w: order.index(w.id) if w.id in order else 1_000_000,
+                    )
+                if "tab_order" in body:
+                    want = [str(x) for x in body["tab_order"]]
+                    # Keep only ids that belong to this workspace; append any the
+                    # client omitted so no tab is ever lost on a stale reorder.
+                    ordered = [t for t in want if t in ws.tab_ids]
+                    ws.tab_ids = ordered + [t for t in ws.tab_ids if t not in ordered]
+                self.ctl.save()
+                return True
+
+        if not await asyncio.to_thread(_apply):
+            return JSONResponse({"error": "not found"}, status_code=404)
         return JSONResponse({"ok": True})
 
     def delete_workspace(self, request: Request) -> Response:
@@ -151,45 +163,56 @@ class Api:
         if (deny := _deny(request)) is not None:
             return deny
         body: dict[str, Any] = await request.json()
-        with self.ctl.lock:
-            tab = self.ctl.state.tabs.get(request.path_params["tab_id"])
-            if tab is None:
-                return JSONResponse({"error": "not found"}, status_code=404)
-            if "title" in body:
-                # Explicit rename pins the title.
-                tab.title = str(body["title"]).strip() or tab.title
-                tab.user_set_title = True
-            elif "osc_title" in body and not tab.user_set_title:
-                # OSC 0/2 from the shell — tracks unless the user pinned a name.
-                tab.title = str(body["osc_title"]).strip() or tab.title
-            self.ctl.save()
+        tab_id = request.path_params["tab_id"]
+
+        def _apply() -> bool:
+            with self.ctl.lock:
+                tab = self.ctl.state.tabs.get(tab_id)
+                if tab is None:
+                    return False
+                if "title" in body:
+                    # Explicit rename pins the title.
+                    tab.title = str(body["title"]).strip() or tab.title
+                    tab.user_set_title = True
+                elif "osc_title" in body and not tab.user_set_title:
+                    # OSC 0/2 from the shell — tracks unless the user pinned a name.
+                    tab.title = str(body["osc_title"]).strip() or tab.title
+                self.ctl.save()
+                return True
+
+        if not await asyncio.to_thread(_apply):
+            return JSONResponse({"error": "not found"}, status_code=404)
         return JSONResponse({"ok": True})
 
-    async def patch_ui(self, request: Request) -> Response:
+    async def patch_ui(self, request: Request) -> Response:  # noqa: C901
         if (deny := _deny(request)) is not None:
             return deny
         body: dict[str, Any] = await request.json()
-        with self.ctl.lock:
-            ui = self.ctl.state.ui
-            if "sidebar_width" in body:
-                ui.sidebar_width = max(120, min(600, int(body["sidebar_width"])))
-            if "font_size" in body:
-                ui.font_size = max(6, min(32, int(body["font_size"])))
-            for k in (
-                "sidebar_collapsed",
-                "copy_on_select",
-                "scrollback_persist",
-                "win_maximized",
-            ):
-                if k in body:
-                    setattr(ui, k, bool(body[k]))
-            for k in ("win_w", "win_h"):
-                if k in body:
-                    setattr(ui, k, max(200, int(body[k])))
-            for k in ("win_x", "win_y"):
-                if k in body:
-                    setattr(ui, k, None if body[k] is None else int(body[k]))
-            self.ctl.save()
+
+        def _apply() -> None:
+            with self.ctl.lock:
+                ui = self.ctl.state.ui
+                if "sidebar_width" in body:
+                    ui.sidebar_width = max(120, min(600, int(body["sidebar_width"])))
+                if "font_size" in body:
+                    ui.font_size = max(6, min(32, int(body["font_size"])))
+                for k in (
+                    "sidebar_collapsed",
+                    "copy_on_select",
+                    "scrollback_persist",
+                    "win_maximized",
+                ):
+                    if k in body:
+                        setattr(ui, k, bool(body[k]))
+                for k in ("win_w", "win_h"):
+                    if k in body:
+                        setattr(ui, k, max(200, int(body[k])))
+                for k in ("win_x", "win_y"):
+                    if k in body:
+                        setattr(ui, k, None if body[k] is None else int(body[k]))
+                self.ctl.save()
+
+        await asyncio.to_thread(_apply)
         return JSONResponse({"ok": True})
 
     def delete_tab(self, request: Request) -> Response:
@@ -211,10 +234,16 @@ class Api:
         if (deny := _deny(request)) is not None:
             return deny
         tab_id = request.path_params["tab_id"]
-        with self.ctl.lock:
-            if self.ctl.state.tabs.get(tab_id) is None:
-                return PlainTextResponse("", status_code=404)
-            content = self.ctl.load_scrollback(tab_id) or ""
+
+        def _load() -> str | None:  # None signals "tab not found"
+            with self.ctl.lock:
+                if self.ctl.state.tabs.get(tab_id) is None:
+                    return None
+                return self.ctl.load_scrollback(tab_id) or ""
+
+        content = await asyncio.to_thread(_load)
+        if content is None:
+            return PlainTextResponse("", status_code=404)
         return PlainTextResponse(content)
 
     async def put_scrollback(self, request: Request) -> Response:
@@ -226,26 +255,41 @@ class Api:
             # Reject obviously-oversized payloads up front; the helper still
             # tail-trims to the on-disk cap.
             return JSONResponse({"error": "too large"}, status_code=413)
-        with self.ctl.lock:
-            if self.ctl.state.tabs.get(tab_id) is None:
-                return JSONResponse({"error": "not found"}, status_code=404)
-            if not self.ctl.state.ui.scrollback_persist:
-                # Pref disabled: accept silently so the client doesn't retry.
-                return JSONResponse({"ok": True})
-            self.ctl.save_scrollback(tab_id, body.decode("utf-8", errors="replace"))
+        decoded = body.decode("utf-8", errors="replace")
+
+        def _save() -> bool:  # False = tab not found
+            with self.ctl.lock:
+                if self.ctl.state.tabs.get(tab_id) is None:
+                    return False
+                if not self.ctl.state.ui.scrollback_persist:
+                    # Pref disabled: accept silently so the client doesn't retry.
+                    return True
+                self.ctl.save_scrollback(tab_id, decoded)
+                return True
+
+        if not await asyncio.to_thread(_save):
+            return JSONResponse({"error": "not found"}, status_code=404)
         return JSONResponse({"ok": True})
 
     async def delete_scrollback(self, request: Request) -> Response:
         if (deny := _deny(request)) is not None:
             return deny
-        self.ctl.delete_scrollback(request.path_params["tab_id"])
+        tab_id = request.path_params["tab_id"]
+        await asyncio.to_thread(self.ctl.delete_scrollback, tab_id)
         return JSONResponse({"ok": True})
 
     async def reset_activity(self, request: Request) -> Response:
         if (deny := _deny(request)) is not None:
             return deny
-        with self.ctl.lock:
-            self.ctl.reset_activity()
+
+        def _apply() -> None:
+            # ctl.reset_activity itself is in-memory only, but it still
+            # competes for ``ctl.lock`` — taking the lock from a worker
+            # thread keeps the asyncio loop free if the lock is contested.
+            with self.ctl.lock:
+                self.ctl.reset_activity()
+
+        await asyncio.to_thread(_apply)
         return JSONResponse({"ok": True})
 
     async def open_url(  # noqa: PLR6301 — uniform Route handler shape across Api
@@ -258,7 +302,9 @@ class Api:
         url = str(body.get("url", "")).strip()
         if not url:
             return JSONResponse({"error": "missing url"}, status_code=400)
-        if not open_url_in_default_app(url):
+        # open_url_in_default_app does ``shutil.which`` + Popen — both
+        # potentially slow under load, so keep them off the event loop.
+        if not await asyncio.to_thread(open_url_in_default_app, url):
             return JSONResponse({"error": "rejected"}, status_code=400)
         return JSONResponse({"ok": True})
 
@@ -267,7 +313,10 @@ class Api:
             return deny
         body: dict[str, Any] = await request.json()
         # Serialize PTY creation: concurrent openpty+spawn can stall output
-        # pipes under rapid tab creation (technical spec §8).
+        # pipes under rapid tab creation (technical spec §8). NOTE: we do
+        # *not* offload ensure_terminal to a worker thread — ``Terminal``
+        # constructs an asyncio reader via ``add_reader`` which requires
+        # the running loop to be in the calling thread.
         async with self.ctl.spawn_lock:
             term = self.ctl.ensure_terminal(
                 request.path_params["tab_id"],

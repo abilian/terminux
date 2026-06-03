@@ -77,14 +77,22 @@ def test_terminal_registry() -> None:
     asyncio.run(scenario())
 
 
+def _resolved(path: str | None) -> str | None:
+    return str(Path(path).resolve()) if path else None
+
+
 def test_unixpty_cwd_reports_spawn_directory(tmp_path: Path) -> None:
+    # libproc reports the *as-recorded* cwd (e.g. ``/tmp/...``) while the
+    # tmp_path fixture canonicalises through symlinks to ``/private/tmp/...``
+    # on macOS. Compare resolved forms so we're checking "same directory",
+    # not "same string".
     target = str(Path(tmp_path).resolve())
     pty = UnixPty(["/bin/sh"], target, 80, 24)
     try:
         deadline = time.time() + 6
-        while time.time() < deadline and pty.cwd() != target:
+        while time.time() < deadline and _resolved(pty.cwd()) != target:
             time.sleep(0.1)
-        assert pty.cwd() == target
+        assert _resolved(pty.cwd()) == target
     finally:
         pty.terminate()
 

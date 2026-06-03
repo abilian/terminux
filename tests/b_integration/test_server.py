@@ -511,6 +511,8 @@ def test_spawn_is_idempotent(server: LiveServer) -> None:
 
 
 def test_paste_inherit_and_active_terminal(server: LiveServer, tmp_path: Any) -> None:
+    from pathlib import Path
+
     base = server.url
     ctl = server.controller
     ws = ctl.state.workspaces[0]
@@ -520,10 +522,20 @@ def test_paste_inherit_and_active_terminal(server: LiveServer, tmp_path: Any) ->
 
     term = ctl.active_terminal()
     assert term is not None
+    # libproc reports the as-recorded cwd (``/tmp/...``) while ``tmp_path``
+    # is the symlink-resolved form (``/private/tmp/...``) — compare resolved.
+    target = str(Path(tmp_path).resolve())
+
+    def resolved_cwd() -> str | None:
+        value = term.cwd()
+        return str(Path(value).resolve()) if value else None
+
     deadline = time.time() + 6
-    while time.time() < deadline and term.cwd() != str(tmp_path):
+    while time.time() < deadline and resolved_cwd() != target:
         time.sleep(0.1)
-    assert ctl.inherit_cwd(ws.id) == str(tmp_path)
+    inherited = ctl.inherit_cwd(ws.id)
+    assert inherited is not None
+    assert str(Path(inherited).resolve()) == target
 
     written: list[bytes] = []
     term.write = written.append  # type: ignore[method-assign]

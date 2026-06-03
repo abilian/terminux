@@ -22,6 +22,7 @@ from starlette.middleware import Middleware
 from starlette.routing import Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 
+from terminux.diagnostics import beat as _heartbeat
 from terminux.server.api import STATIC_DIR, Api
 from terminux.server.controller import (
     ACTIVITY_IDLE_THRESHOLD,
@@ -88,15 +89,25 @@ def build_app(*, persist: bool = True) -> Starlette:
             ctl.tick(1.0)
             ctl.poll_busy_transitions()
 
+    async def _heartbeat_pulse() -> None:
+        """Bump the diagnostics heartbeat every 500 ms. The watchdog thread
+        reads it; if it stops advancing for ``STALL_THRESHOLD`` seconds,
+        the loop is wedged and the watchdog logs per-thread stacks."""
+        while True:
+            _heartbeat()
+            await asyncio.sleep(0.5)
+
     @contextlib.asynccontextmanager
     async def lifespan(_app: Starlette) -> AsyncIterator[None]:
-        task = asyncio.create_task(_activity_ticker())
+        ticker_task = asyncio.create_task(_activity_ticker())
+        heartbeat_task = asyncio.create_task(_heartbeat_pulse())
         try:
             yield
         finally:
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
+            for task in (ticker_task, heartbeat_task):
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
 
     app = Starlette(
         routes=routes,

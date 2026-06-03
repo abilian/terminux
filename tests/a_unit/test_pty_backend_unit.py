@@ -6,11 +6,21 @@ exercised without depending on signals or the host OS.
 
 from __future__ import annotations
 
+import os
 import signal
 import subprocess
+import sys
+from pathlib import Path
+
+import pytest
 
 from terminux.core import pty_backend
-from terminux.core.pty_backend import UnixPty, _darwin_cwd, _linux_cwd
+from terminux.core.pty_backend import (
+    UnixPty,
+    _darwin_cwd,
+    _libproc_cwd,
+    _linux_cwd,
+)
 
 
 class _FakeProc:
@@ -82,11 +92,14 @@ def test_linux_cwd_handles_missing_proc() -> None:
 
 
 def test_darwin_cwd_no_lsof(monkeypatch) -> None:
+    monkeypatch.setattr(pty_backend, "_libproc_cwd", lambda _pid: None)
     monkeypatch.setattr(pty_backend.shutil, "which", lambda _n: None)
     assert _darwin_cwd(123) is None
 
 
 def test_darwin_cwd_parses_lsof_output(monkeypatch) -> None:
+    # libproc is tried first; force the fallback to exercise the lsof parser.
+    monkeypatch.setattr(pty_backend, "_libproc_cwd", lambda _pid: None)
     monkeypatch.setattr(pty_backend.shutil, "which", lambda _n: "/usr/bin/lsof")
 
     def fake_run(*_a, **_k):
@@ -99,6 +112,7 @@ def test_darwin_cwd_parses_lsof_output(monkeypatch) -> None:
 
 
 def test_darwin_cwd_no_match_and_error(monkeypatch) -> None:
+    monkeypatch.setattr(pty_backend, "_libproc_cwd", lambda _pid: None)
     monkeypatch.setattr(pty_backend.shutil, "which", lambda _n: "/usr/bin/lsof")
     monkeypatch.setattr(
         pty_backend.subprocess,
@@ -114,6 +128,37 @@ def test_darwin_cwd_no_match_and_error(monkeypatch) -> None:
 
     monkeypatch.setattr(pty_backend.subprocess, "run", raises)
     assert _darwin_cwd(1) is None
+
+
+def test_darwin_cwd_prefers_libproc(monkeypatch) -> None:
+    """If libproc returns a value, lsof is never consulted."""
+    monkeypatch.setattr(pty_backend, "_libproc_cwd", lambda _pid: "/from/libproc")
+
+    def boom(*_a, **_k):
+        raise AssertionError("lsof fallback should not run")
+
+    monkeypatch.setattr(pty_backend.shutil, "which", boom)
+    assert _darwin_cwd(1) == "/from/libproc"
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="libproc is macOS-only")
+def test_libproc_cwd_resolves_current_process() -> None:
+    """End-to-end: real kernel call returns this process's actual cwd."""
+    expected = str(Path.cwd().resolve())
+    got = _libproc_cwd(os.getpid())
+    assert got is not None
+    assert str(Path(got).resolve()) == expected
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="libproc is macOS-only")
+def test_libproc_cwd_returns_none_for_invalid_pid() -> None:
+    # A PID well beyond typical kernel pid_max — proc_pidinfo returns 0.
+    assert _libproc_cwd(2_147_483_000) is None
+
+
+def test_libproc_cwd_returns_none_when_symbol_unavailable(monkeypatch) -> None:
+    monkeypatch.setattr(pty_backend, "_proc_pidinfo", None)
+    assert _libproc_cwd(1) is None
 
 
 def test_cwd_dispatches_by_platform(monkeypatch) -> None:

@@ -45,6 +45,14 @@ OSC133_MIN_COMMAND_SECONDS = 2.0
 # session stays well within this window.
 BUSY_IDLE_THRESHOLD = 3.0
 
+# How long ``Terminal.cwd()`` reuses its last result before re-querying the
+# kernel. The frontend polls ``/api/state`` twice a second, and the cwd
+# only matters for the workspace label and a "where to spawn the next tab"
+# default — both are fine reading a ~1 s stale value, and the cache means
+# a sudden series of polls during a slow moment can never amplify into
+# parallel kernel queries.
+CWD_CACHE_TTL = 1.0
+
 
 # Diagnostic hook: set ``TERMINUX_PTY_LOG=<path>`` in the environment to
 # record every PTY read (epoch seconds with ms precision, terminal id
@@ -228,6 +236,9 @@ class Terminal:
         # Updated on every successful read; ``is_busy()`` uses it as a
         # recent-activity gate so an idle TUI doesn't keep the dot amber.
         self._last_output_at: float = time.monotonic()
+        # (value, monotonic_time_at_read) for the cwd cache; None until first
+        # successful query.
+        self._cwd_cache: tuple[str | None, float] | None = None
         self._loop.add_reader(self._pty.fd, self._on_readable)
 
     # ----- reading ------------------------------------------------------
@@ -296,8 +307,18 @@ class Terminal:
             self._pty.resize(cols, rows)
 
     def cwd(self) -> str | None:
-        """Best-effort working directory of this terminal's shell."""
-        return self._pty.cwd()
+        """Best-effort working directory of this terminal's shell.
+
+        Cached for ``CWD_CACHE_TTL`` seconds so a 2 Hz ``/api/state`` poll
+        can't amplify into 2 Hz kernel queries — and so a transient stall
+        in the underlying syscall can't be retriggered before it recovers.
+        """
+        now = time.monotonic()
+        if self._cwd_cache is not None and (now - self._cwd_cache[1]) < CWD_CACHE_TTL:
+            return self._cwd_cache[0]
+        value = self._pty.cwd()
+        self._cwd_cache = (value, now)
+        return value
 
     def is_busy(self) -> bool:
         """True if a foreground task is actively producing output.

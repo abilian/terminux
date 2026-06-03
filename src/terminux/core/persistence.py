@@ -19,6 +19,7 @@ from pathlib import Path
 import platformdirs
 
 from terminux.core.model import AppState
+from terminux.diagnostics import time_op
 
 log = logging.getLogger(__name__)
 
@@ -63,40 +64,42 @@ def save_scrollback(tab_id: str, content: str, base: Path | None = None) -> None
     data = content.encode("utf-8")
     if len(data) > SCROLLBACK_MAX_BYTES:
         data = data[-SCROLLBACK_MAX_BYTES:]
-    fd, tmp_name = tempfile.mkstemp(
-        dir=path.parent,
-        prefix=".scrollback-",
-        suffix=".tmp",
-    )
-    tmp_path = Path(tmp_name)
-    try:
-        with os.fdopen(fd, "wb") as fh:
-            fh.write(data)
-            fh.flush()
-            os.fsync(fh.fileno())
-        tmp_path.replace(path)
-    except OSError:
-        log.exception("failed to persist scrollback for %s", tab_id)
-        with contextlib.suppress(OSError):
-            tmp_path.unlink(missing_ok=True)
+    with time_op(f"save_scrollback[{tab_id[:8]} {len(data) // 1024}KB]"):
+        fd, tmp_name = tempfile.mkstemp(
+            dir=path.parent,
+            prefix=".scrollback-",
+            suffix=".tmp",
+        )
+        tmp_path = Path(tmp_name)
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(data)
+                fh.flush()
+                os.fsync(fh.fileno())
+            tmp_path.replace(path)
+        except OSError:
+            log.exception("failed to persist scrollback for %s", tab_id)
+            with contextlib.suppress(OSError):
+                tmp_path.unlink(missing_ok=True)
 
 
 def load_scrollback(tab_id: str, base: Path | None = None) -> str | None:
     path = _scrollback_file(tab_id, base)
     if path is None:
         return None
-    try:
-        # Read in binary + decode by hand. ``Path.read_text(newline=None)``
-        # enables universal-newlines mode and silently rewrites every
-        # ``\r\n`` to ``\n`` — which strips the CR that SerializeAddon emits
-        # between rows, and the replay then renders as a cumulative
-        # LF-without-CR "staircase" of restored content.
-        return path.read_bytes().decode("utf-8")
-    except FileNotFoundError:
-        return None
-    except OSError as exc:
-        log.warning("could not read scrollback for %s (%s)", tab_id, exc)
-        return None
+    with time_op(f"load_scrollback[{tab_id[:8]}]"):
+        try:
+            # Read in binary + decode by hand. ``Path.read_text(newline=None)``
+            # enables universal-newlines mode and silently rewrites every
+            # ``\r\n`` to ``\n`` — which strips the CR that SerializeAddon
+            # emits between rows, and the replay then renders as a cumulative
+            # LF-without-CR "staircase" of restored content.
+            return path.read_bytes().decode("utf-8")
+        except FileNotFoundError:
+            return None
+        except OSError as exc:
+            log.warning("could not read scrollback for %s (%s)", tab_id, exc)
+            return None
 
 
 def delete_scrollback(tab_id: str, base: Path | None = None) -> None:
@@ -125,15 +128,18 @@ def save_state(state: AppState, path: Path | None = None) -> None:
     path = path or state_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(state.to_json(), indent=2)
-    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=".state-", suffix=".tmp")
-    tmp_path = Path(tmp_name)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(payload)
-            fh.flush()
-            os.fsync(fh.fileno())
-        tmp_path.replace(path)
-    except OSError:
-        log.exception("failed to persist state to %s", path)
-        with contextlib.suppress(OSError):
-            tmp_path.unlink(missing_ok=True)
+    with time_op(f"save_state[{len(payload) // 1024}KB]"):
+        fd, tmp_name = tempfile.mkstemp(
+            dir=path.parent, prefix=".state-", suffix=".tmp"
+        )
+        tmp_path = Path(tmp_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(payload)
+                fh.flush()
+                os.fsync(fh.fileno())
+            tmp_path.replace(path)
+        except OSError:
+            log.exception("failed to persist state to %s", path)
+            with contextlib.suppress(OSError):
+                tmp_path.unlink(missing_ok=True)

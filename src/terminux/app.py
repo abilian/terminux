@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import faulthandler
 import json
 import logging
+import signal
 import socket
 import sys
 import threading
@@ -20,6 +22,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 import uvicorn
 
 from terminux.constants import DOCS_URL
+from terminux.diagnostics import start_watchdog
 from terminux.openurl import open_url_in_default_app
 from terminux.server.asgi import AppController, build_app
 from terminux.server.auth import SESSION_TOKEN
@@ -58,10 +61,43 @@ def _serve(server: uvicorn.Server) -> None:
     server.run()
 
 
+def _install_freeze_diagnostics() -> None:
+    """Dump every thread's Python traceback to stderr on SIGUSR1 (or SIGINFO
+    on BSDs / macOS, raised by Ctrl-T at a terminal). The next time the
+    server wedges, ``kill -USR1 <pid>`` (or ``kill -INFO <pid>``) prints
+    where every thread is parked — no debugger or py-spy install required.
+    """
+    faulthandler.enable()
+    for name in ("SIGUSR1", "SIGINFO"):
+        sig = getattr(signal, name, None)
+        if sig is not None:
+            with contextlib.suppress(ValueError, OSError):
+                faulthandler.register(sig, all_threads=True, chain=False)
+
+
+def _configure_logging(*, debug: bool, trace: bool) -> None:
+    """Set log levels per the ``--debug`` / ``--trace`` flags.
+
+    Plain:    terminux.* at INFO,  uvicorn warnings only.
+    --debug:  terminux.* at DEBUG, uvicorn at INFO with access logs.
+    --trace:  everything (root) at DEBUG, uvicorn access logs, the
+              I/O instrumentation also logs every operation (not just
+              slow ones) by checking ``logging.DEBUG``.
+    """
+    fmt = "%(asctime)s.%(msecs)03d %(levelname)s %(name)s: %(message)s"
+    datefmt = "%H:%M:%S"
+    if trace:
+        logging.basicConfig(level=logging.DEBUG, format=fmt, datefmt=datefmt)
+    elif debug:
+        logging.basicConfig(level=logging.INFO, format=fmt, datefmt=datefmt)
+        logging.getLogger("terminux").setLevel(logging.DEBUG)
+    else:
+        logging.basicConfig(
+            level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
+        )
+
+
 def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
-    )
     parser = argparse.ArgumentParser(prog="terminux")
     parser.add_argument(
         "--no-window",
@@ -74,7 +110,28 @@ def main() -> None:
         default=HOST,
         help="bind address (default 127.0.0.1; use 0.0.0.0 for container/web mode)",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help=(
+            "verbose diagnostics: terminux.* loggers at DEBUG, uvicorn access "
+            "logs, timestamps with ms precision"
+        ),
+    )
+    parser.add_argument(
+        "--trace",
+        action="store_true",
+        help=(
+            "everything --debug enables plus: log every persisted state save, "
+            "every scrollback read/write, every cwd lookup, and every PTY "
+            "read/write (very chatty — only use when debugging a freeze)"
+        ),
+    )
     args = parser.parse_args()
+
+    _configure_logging(debug=args.debug or args.trace, trace=args.trace)
+    _install_freeze_diagnostics()
+    start_watchdog()
 
     port = args.port or _free_port()
     app = build_app(persist=True)
@@ -82,7 +139,8 @@ def main() -> None:
         app,
         host=args.host,
         port=port,
-        log_level="warning",
+        log_level="info" if (args.debug or args.trace) else "warning",
+        access_log=args.debug or args.trace,
         ws="websockets-sansio",  # avoid the deprecated legacy websockets impl
     )
     server = uvicorn.Server(config)
