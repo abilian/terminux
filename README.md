@@ -85,9 +85,13 @@ uv sync
 make frontend                # build the web UI (needs Node; first run only)
 uv run terminux              # desktop window (pywebview)
 uv run terminux --no-window  # server only — open the printed URL in a browser
+uv run terminux --debug      # verbose logs + slow-op warnings
+uv run terminux --trace      # extreme: log every save/load/cwd lookup
 ```
 
 `--no-window` is the dev/test path and a preview of the future **web mode**.
+`--debug` and `--trace` are diagnostics flags — see
+[**Debugging knobs**](docs/developing.md#debugging-knobs).
 
 ## Install / package
 
@@ -95,9 +99,9 @@ terminux ships as a self-contained desktop app — no Python or Node required to
 run the bundle.
 
 ```sh
-make linux        # Linux bundle (built in Docker) → dist/linux/terminux/terminux
+make build-linux  # Linux bundle (built in Docker) → dist/linux/terminux/terminux
 make docker-run   # run headless web mode on :8000
-make app          # macOS .app → dist/terminux.app
+make build-macos  # macOS .app → dist/terminux.app
 ```
 
 Full platform notes (signing, Gatekeeper, X11, architectures) live in the

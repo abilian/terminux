@@ -2,6 +2,27 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-06-03
+
+### Fixed
+
+- **Permanent server freeze on macOS when an external/network mount went sideways.** Reproducible symptom set: terminals stop accepting keystrokes, no new tabs/workspaces can be created, new HTTP connections (e.g. `wget`) hang at "Connecting…", but tab/workspace switching still works because that's pure frontend. Root cause: the `_workspace_label()` call path shelled out to `lsof` for each workspace's cwd on every `/api/state` poll, holding `ctl.lock` during the subprocess. On a wedged mount lsof would enter uninterruptible disk wait, `subprocess.run(..., timeout=2)` couldn't kill it, and the lock was held forever — the 1 Hz lifespan ticker then blocked the asyncio loop the moment it tried to acquire the lock. Three layered fixes:
+    - `_darwin_cwd` now calls `libproc.proc_pidinfo(PROC_PIDVNODEPATHINFO)` via `ctypes` — a kernel-only call that returns in microseconds and can't hang on a sick fd because it doesn't traverse them. The `lsof` path is kept as a soft fallback if the symbol is unreachable.
+    - `Terminal.cwd()` caches its result for 1 s, so the 2 Hz `/api/state` poll doesn't amplify into 2 Hz kernel queries.
+    - Every async handler in `terminux.server.api` that previously took `ctl.lock` and called `save()` / `save_scrollback()` / `load_scrollback()` now runs that block via `asyncio.to_thread(...)`. A slow `fsync` (or anyone else holding the lock) can no longer freeze the event loop.
+
+### Added
+
+- **Freeze diagnostics: watchdog + manual stack dump + slow-I/O warnings.** The next time the server wedges, you don't have to guess — there's evidence.
+    - **Watchdog**: a daemon thread reads a heartbeat the asyncio loop is expected to bump twice a second. If the loop falls more than 3 s behind, the watchdog logs at WARNING and automatically calls `faulthandler.dump_traceback(all_threads=True)` to stderr — the same per-thread Python stack `py-spy dump` would print, only fired automatically. Re-warns every 10 s for sustained stalls.
+    - **Signal hook**: `faulthandler.register` for `SIGINFO` (macOS / BSDs) and `SIGUSR1` (Linux). `kill -INFO <pid>` (or `kill -USR1 <pid>`) prints the same per-thread dump on demand.
+    - **Slow-I/O warnings**: a `time_op(name)` context manager wraps `save_state`, `save_scrollback`, `load_scrollback`, `_libproc_cwd`, and `_lsof_cwd`. Any call ≥ 200 ms logs at WARNING with the elapsed milliseconds, surfacing slow-disk warning signs *before* they escalate into a freeze.
+- **`--debug` and `--trace` CLI flags.** `--debug` raises `terminux.*` loggers to DEBUG, enables uvicorn access logs, and switches the log format to ms-precision timestamps. `--trace` does everything `--debug` does plus root-level DEBUG, so every individual save/load/cwd lookup logs its duration. See `docs/developing.md#debugging-knobs`.
+
+### Internal
+
+- New `terminux.diagnostics` module hosts the heartbeat, watchdog, and `time_op` helper.
+
 ## [0.7.0] - 2026-05-28
 
 ### Added

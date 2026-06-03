@@ -34,7 +34,7 @@ needed to run it.
 === "Linux"
 
     ```sh
-    make linux           # -> dist/linux/terminux/terminux (PyInstaller onedir)
+    make build-linux     # -> dist/linux/terminux/terminux (PyInstaller onedir)
     make docker-run      # run the same image in web mode on :8000
     ```
 
@@ -44,7 +44,7 @@ needed to run it.
 === "macOS"
 
     ```sh
-    make app
+    make build-macos
     open dist/terminux.app
     ```
 

@@ -65,16 +65,78 @@ To add a page, create `docs/<name>.md` and add it to the `nav` array in
 
 ## Debugging knobs
 
-- `TERMINUX_PTY_LOG=<path>` — when set in the environment, every PTY
-  read is appended to `<path>` as a one-line trace: `<epoch.ms>
-  <terminal-id-prefix> <byte_count> <repr of first 120 bytes>`.
-  Useful for characterizing what an "idle" TUI actually emits when
-  you suspect a sidebar dot is reacting to noise rather than real
-  work. Off by default — leaves no trace on disk in normal runs.
+### `--debug` and `--trace`
 
-  ```sh
-  rm -f /tmp/pty.log
-  TERMINUX_PTY_LOG=/tmp/pty.log uv run terminux
-  # reproduce the scenario
-  tail -n 50 /tmp/pty.log
-  ```
+Two CLI flags raise the noise level when something goes wrong:
+
+| Flag | What it does |
+| --- | --- |
+| `--debug` | `terminux.*` loggers at `DEBUG`, uvicorn `INFO` with access logs, ms-precision timestamps on every line. Slow-I/O warnings (see below) are surfaced. |
+| `--trace` | Everything `--debug` enables plus root logger at `DEBUG` — every `save_state`, `save_scrollback`, `load_scrollback`, and cwd lookup logs its individual duration. Very chatty; use only when actively chasing a freeze. |
+
+```sh
+uv run terminux --debug                  # daily-driver verbose
+uv run terminux --debug 2>/tmp/term.log  # also redirect to a file you can grep
+uv run terminux --trace 2>/tmp/term.log  # extreme mode for a known-reproducer
+```
+
+### Slow-I/O warnings
+
+Every disk-touching call on the server is wrapped in a `time_op(name)`
+context manager (see `src/terminux/diagnostics.py`). Operations slower
+than **200 ms** log at `WARNING` regardless of the log level — so a slow
+APFS volume, a wedged network mount, or a busy disk shows up as
+`slow save_state[12KB]: 1340ms` before it ever has the chance to escalate
+into a hang.
+
+Wrapped sites:
+
+- `save_state` and `save_scrollback` (both end in `os.fsync`)
+- `load_scrollback` (sync file read up to 2 MB)
+- `_libproc_cwd` and the `_lsof_cwd` fallback on macOS
+
+### Event-loop watchdog
+
+A daemon thread reads a heartbeat the asyncio loop is expected to bump
+twice a second. If the loop falls more than **3 s** behind, the watchdog
+logs at `WARNING` and **automatically calls
+`faulthandler.dump_traceback(all_threads=True)` to stderr** — the same
+per-thread Python stack dump you'd get from `py-spy dump`. The dump
+includes whichever syscall the offending thread is parked in (`fsync`,
+`subprocess.communicate`, `os.write`, …), which is the exact evidence
+needed to find the root cause. It re-warns every 10 s while the stall
+persists.
+
+The watchdog is started automatically by `terminux.app.main()`; no flag
+required.
+
+### Manual stack dump
+
+If you suspect a hang but the watchdog hasn't fired yet, send the process
+a signal yourself for the same dump on demand:
+
+```sh
+# macOS — SIGINFO is what Ctrl-T sends in a normal foreground terminal
+kill -INFO <pid>
+
+# Linux
+kill -USR1 <pid>
+```
+
+`<pid>` comes from `ps aux | grep terminux | grep -v grep`. The dump
+lands on the same stderr stream as the watchdog's output.
+
+### `TERMINUX_PTY_LOG`
+
+When set in the environment, every PTY read is appended to `<path>` as a
+one-line trace: `<epoch.ms> <terminal-id-prefix> <byte_count> <repr of
+first 120 bytes>`. Useful for characterizing what an "idle" TUI actually
+emits when you suspect a sidebar dot is reacting to noise rather than
+real work. Off by default — leaves no trace on disk in normal runs.
+
+```sh
+rm -f /tmp/pty.log
+TERMINUX_PTY_LOG=/tmp/pty.log uv run terminux
+# reproduce the scenario
+tail -n 50 /tmp/pty.log
+```

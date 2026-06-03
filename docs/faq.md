@@ -86,3 +86,28 @@ See [Packaging & distribution](packaging.md).
 
 Only to *build* or change the frontend. The build output is committed to
 `src/terminux/web/static/`, so running from source needs only Python + `uv` (or `pip`).
+
+## terminux froze — what do I do?
+
+A built-in watchdog detects an asyncio-loop stall after **3 seconds** and
+automatically prints per-thread Python tracebacks to stderr (the same dump
+`py-spy dump` would produce). If you're running from the terminal you'll
+see them in place; if you launched from the .app, redirect stderr to a
+file:
+
+```sh
+uv run terminux 2>/tmp/term.log    # watchdog output goes here
+```
+
+To force a dump on demand without waiting for the watchdog:
+
+```sh
+ps aux | grep terminux | grep -v grep    # find the PID
+kill -INFO <pid>                         # macOS
+kill -USR1 <pid>                         # Linux
+```
+
+For a reproducer worth filing as a bug, run with `--debug` (slow-I/O
+warnings + access logs) or `--trace` (every persisted save and cwd lookup
+logged with its duration). Both flags emit ms-precision timestamps. See
+[Debugging knobs](developing.md#debugging-knobs) for the full menu.

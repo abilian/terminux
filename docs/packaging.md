@@ -10,7 +10,7 @@ PyInstaller can't cross-compile, so the Linux bundle is built in a container
 (Ubuntu 24.04 + GTK3/WebKit2GTK + Python 3.12):
 
 ```sh
-make linux         # -> dist/linux/terminux/terminux (PyInstaller onedir)
+make build-linux   # -> dist/linux/terminux/terminux (PyInstaller onedir)
 make docker-run    # run the same image in web mode on :8000
 ```
 
@@ -44,7 +44,7 @@ Linux bundle is unsigned.
 ## macOS (`.app`)
 
 ```sh
-make app           # builds the frontend, then dist/terminux.app
+make build-macos   # builds the frontend, then dist/terminux.app
 open dist/terminux.app
 ```
 
