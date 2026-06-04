@@ -75,6 +75,7 @@ def build_app(*, persist: bool = True) -> Starlette:
         ),
         Route("/api/ui", api.patch_ui, methods=["PATCH"]),
         Route("/api/open-url", api.open_url, methods=["POST"]),
+        Route("/api/paste-paths", api.paste_paths, methods=["POST"]),
         Route("/api/activity/reset", api.reset_activity, methods=["POST"]),
         WebSocketRoute("/pty/{terminal_id}", api.pty_ws),
     ]

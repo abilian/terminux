@@ -93,6 +93,28 @@ uv run terminux --trace      # extreme: log every save/load/cwd lookup
 `--debug` and `--trace` are diagnostics flags — see
 [**Debugging knobs**](docs/developing.md#debugging-knobs).
 
+### Remote mode
+
+Run terminux on a headless server and connect from your laptop:
+
+```sh
+# on the server
+uv run terminux --server --port 8443
+# prints: terminux server listening — connect with:
+#           http://127.0.0.1:8443/?t=abc-def-ghi
+
+# on the laptop (one shell)
+ssh -L 8443:localhost:8443 server.example.com
+
+# on the laptop (another shell)
+uv run terminux --connect http://localhost:8443/?t=abc-def-ghi
+```
+
+Shells, workspaces, and scrollback live on the server — disconnect, sleep
+the laptop, reconnect later, everything's where you left it. See
+[**Remote access**](docs/remote.md) for the full recipe (multi-client,
+firewall guidance, systemd service).
+
 ## Install / package
 
 terminux ships as a self-contained desktop app — no Python or Node required to

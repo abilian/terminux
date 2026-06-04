@@ -345,6 +345,196 @@ def test_open_url_validates_scheme_and_requires_token(server: LiveServer) -> Non
         api.open_url_in_default_app = monkey  # type: ignore[assignment]
 
 
+def test_stress_blocking_pty_write_does_not_freeze_server(  # noqa: PLR0914
+    server: LiveServer, caplog
+) -> None:
+    """Stress regression test for the second observed freeze.
+
+    A blocking ``os.write`` on the PTY master used to be called directly
+    from the asyncio loop thread inside ``_pump_in``. With the fix the
+    write is offloaded via ``asyncio.to_thread``, so a stuck shell can
+    still block one worker thread — but the event loop stays free.
+
+    This test proves three invariants under simulated load:
+
+    1. **Loop liveness** — concurrent ``GET /api/state`` requests complete
+       with low latency while a PTY write is parked.
+    2. **Bounded blast radius** — a second terminal sees its writes go
+       through while the first one is stuck.
+    3. **Watchdog silence** — ``terminux.diagnostics`` never emits its
+       "event loop unresponsive" warning during the scenario.
+
+    Without the fix every HTTP request and every other PTY's pump would
+    grind to a halt for the duration of the slow write, the watchdog
+    would fire at the 3 s mark, and assertion (1) would fail with
+    multi-second latencies.
+    """
+    import logging
+    import threading
+
+    base = server.url
+    ctl = server.controller
+
+    # Two real terminals: ``stuck_tid`` will receive the blocked write,
+    # ``free_tid`` will be exercised concurrently.
+    tab = _req(f"{base}/api/state?t={T}")["workspaces"][0]["tab_ids"][0]
+    stuck_tid = _req(f"{base}/api/tabs/{tab}/spawn?t={T}", "POST", b"{}")["terminal_id"]
+
+    extra_ws = _req(f"{base}/api/workspaces?t={T}", "POST", b"{}")["id"]
+    extra_tab = next(
+        w for w in _req(f"{base}/api/state?t={T}")["workspaces"] if w["id"] == extra_ws
+    )["tab_ids"][0]
+    free_tid = _req(f"{base}/api/tabs/{extra_tab}/spawn?t={T}", "POST", b"{}")[
+        "terminal_id"
+    ]
+
+    stuck = ctl.terminals.get(stuck_tid)
+    free = ctl.terminals.get(free_tid)
+    assert stuck is not None
+    assert free is not None
+
+    # Simulate a kernel PTY buffer full of unread bytes: replace the
+    # stuck terminal's underlying ``_pty.write`` with one that parks for
+    # ``BLOCK_SECONDS``. The free terminal's write stays untouched.
+    block_seconds = 4.0
+    write_started = threading.Event()
+    write_count = [0]
+    original_write = stuck._pty.write
+
+    def slow_write(_data: bytes) -> None:
+        write_count[0] += 1
+        write_started.set()
+        time.sleep(block_seconds)
+
+    stuck._pty.write = slow_write  # type: ignore[method-assign]
+
+    stuck_ws = base.replace("http", "ws") + f"/pty/{stuck_tid}?t={T}"
+    free_ws = base.replace("http", "ws") + f"/pty/{free_tid}?t={T}"
+
+    async def scenario() -> tuple[list[float], int, int]:
+        async with websockets.connect(stuck_ws) as stuck_conn:
+            # Trigger the slow write — server-side, this lands on a
+            # worker thread (via asyncio.to_thread). Without the fix
+            # it would run directly on the event loop thread.
+            await stuck_conn.send(b"x" * 256)
+
+            # Wait until the worker thread is actually inside slow_write,
+            # so the rest of the scenario unambiguously runs during the
+            # blocked window.
+            assert write_started.wait(timeout=2.0), "slow write never reached"
+
+            loop = asyncio.get_running_loop()
+
+            async def state_call() -> float:
+                start = time.monotonic()
+                await loop.run_in_executor(None, _req, f"{base}/api/state?t={T}")
+                return time.monotonic() - start
+
+            # 1. Hammer the HTTP control plane with concurrent state polls
+            #    while the PTY write is parked.
+            latencies = await asyncio.gather(*(state_call() for _ in range(30)))
+
+            # 2. While the first terminal is stuck, the second one's
+            #    write path must still work end-to-end. We can prove
+            #    this end-to-end by connecting to ``free_tid``'s
+            #    WebSocket and sending a frame: if ``_pump_in`` were
+            #    blocked, this send would never be processed.
+            free_writes_accepted = 0
+            async with websockets.connect(free_ws) as free_conn:
+                for _ in range(5):
+                    await free_conn.send(b"echo ok\n")
+                    free_writes_accepted += 1
+
+            return latencies, free_writes_accepted, write_count[0]
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="terminux.diagnostics"):
+        latencies, free_writes, n_writes = asyncio.run(
+            asyncio.wait_for(scenario(), timeout=block_seconds + 10)
+        )
+        # The stuck write is still parked; restore the real write before
+        # cleanup so deletion/teardown doesn't itself block.
+        stuck._pty.write = original_write  # type: ignore[method-assign]
+
+    # Invariant 1: loop stayed responsive. The fix gives single-digit ms
+    # per state call; without the fix latency would balloon past
+    # ``block_seconds``. The budget is set well below ``block_seconds``
+    # but above realistic in-process HTTP latency.
+    assert latencies, "no state calls completed"
+    p99 = max(latencies)
+    assert p99 < block_seconds / 2, (
+        f"p99 /api/state latency was {p99 * 1000:.0f}ms — event loop likely "
+        f"blocked. Latencies (ms): "
+        f"{[round(latency * 1000, 1) for latency in latencies]}"
+    )
+
+    # Invariant 2: the other terminal stayed usable.
+    assert free_writes == 5
+
+    # Sanity: the slow write actually ran (only once — the WebSocket
+    # delivered one frame; if zero, we'd be testing nothing).
+    assert n_writes == 1
+
+    # Invariant 3: the watchdog did not fire. If it did, the loop must
+    # have been blocked for >= STALL_THRESHOLD (3s) — i.e. the fix
+    # regressed and the test should fail loudly.
+    watchdog_warnings = [
+        r for r in caplog.records if "event loop unresponsive" in r.message
+    ]
+    assert not watchdog_warnings, (
+        f"watchdog fired {len(watchdog_warnings)} time(s) — event loop "
+        f"stalled past STALL_THRESHOLD"
+    )
+
+
+def test_paste_paths_endpoint_writes_to_active_terminal(
+    server: LiveServer, tmp_path: Any
+) -> None:
+    """``POST /api/paste-paths`` is the remote-mode equivalent of the
+    local drag-and-drop bridge: the body's paths get shell-quoted and
+    written to the active terminal."""
+    base = server.url
+    ctl = server.controller
+    ws = ctl.state.workspaces[0]
+    ctl.state.tabs[ws.active_tab_id].spawn_cwd = str(tmp_path)
+    _req(f"{base}/api/tabs/{ws.active_tab_id}/spawn?t={T}", "POST", b"{}")
+
+    term = ctl.active_terminal()
+    assert term is not None
+
+    # Capture writes instead of letting them hit the PTY, so we can assert
+    # on the exact byte sequence the handler emits.
+    written: list[bytes] = []
+    term.write = written.append  # type: ignore[method-assign]
+
+    # Token guard first.
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        _req(
+            f"{base}/api/paste-paths",
+            "POST",
+            json.dumps({"paths": ["/a.txt"]}).encode(),
+        )
+    assert exc.value.code == 403
+
+    # Bad body shape.
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        _req(
+            f"{base}/api/paste-paths?t={T}",
+            "POST",
+            json.dumps({"paths": "not-a-list"}).encode(),
+        )
+    assert exc.value.code == 400
+
+    # Happy path — paths get shell-quoted (including the space) and a
+    # trailing space is appended for easy chaining at the prompt.
+    _req(
+        f"{base}/api/paste-paths?t={T}",
+        "POST",
+        json.dumps({"paths": ["/a b/c.txt", "/d.txt"]}).encode(),
+    )
+    assert written == [b"'/a b/c.txt' '/d.txt' "]
+
+
 def test_tab_order_reorders_and_sanitizes(server: LiveServer) -> None:
     base = server.url
     st = _req(f"{base}/api/state?t={T}")

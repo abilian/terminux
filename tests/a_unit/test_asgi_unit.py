@@ -408,6 +408,64 @@ def test_spawn_lock_is_an_asyncio_lock() -> None:
     assert isinstance(ctl.spawn_lock, asyncio.Lock)
 
 
+def test_pump_in_offloads_term_write_off_event_loop() -> None:
+    """Regression test for the second observed freeze.
+
+    A blocking ``os.write`` to the PTY master used to be called directly
+    from the asyncio loop thread inside ``_pump_in``. If the kernel input
+    buffer was full (e.g. a paste outran the shell's reader) the loop
+    parked there and the *entire* server froze. The fix offloads the
+    write via ``asyncio.to_thread``. This test pins that behaviour by
+    proving the call actually lands on a different thread.
+    """
+    import asyncio
+    import threading
+    import types
+
+    from terminux.server.api import _pump_in
+
+    write_thread: list[int | None] = [None]
+
+    def slow_write(_data: bytes) -> None:
+        # Record the thread that actually runs the write — must NOT be
+        # the asyncio loop thread, else a wedged PTY would freeze the loop.
+        write_thread[0] = threading.get_ident()
+
+    term = types.SimpleNamespace(write=slow_write, resize=lambda _c, _r: None)
+
+    class FakeWS:
+        def __init__(self) -> None:
+            self._messages = [
+                {"bytes": b"some-keystroke"},
+                {"type": "websocket.disconnect"},
+            ]
+
+        async def receive(self) -> dict:
+            return self._messages.pop(0)
+
+    class FakeCtl:
+        def __init__(self) -> None:
+            self.input_count = 0
+
+        def note_input(self) -> None:
+            self.input_count += 1
+
+    async def go() -> int | None:
+        ws = FakeWS()
+        ctl = FakeCtl()
+        await asyncio.wait_for(_pump_in(ws, term, ctl), timeout=2)
+        assert ctl.input_count == 1
+        return write_thread[0]
+
+    write_tid = asyncio.run(go())
+    main_tid = threading.get_ident()
+    assert write_tid is not None
+    assert write_tid != main_tid, (
+        "term.write ran on the asyncio thread — a blocking write would freeze "
+        "the entire server. The fix must offload via asyncio.to_thread."
+    )
+
+
 def test_pump_out_emits_dropped_then_exit(monkeypatch) -> None:
     import asyncio
     import types

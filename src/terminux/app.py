@@ -16,20 +16,31 @@ import socket
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
+from urllib.parse import urlparse
 
+import platformdirs
 import uvicorn
 
 from terminux.constants import DOCS_URL
 from terminux.diagnostics import start_watchdog
 from terminux.openurl import open_url_in_default_app
+from terminux.server import auth as auth_mod
 from terminux.server.asgi import AppController, build_app
 from terminux.server.auth import SESSION_TOKEN
 
 _ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 ICON_PNG = _ASSETS_DIR / "icon.png"
 ICON_ICNS = _ASSETS_DIR / "icon.icns"
+
+
+def server_token_path() -> Path:
+    """Where ``--server`` persists its auth token."""
+    return Path(platformdirs.user_data_dir("terminux")) / "server.token"
+
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -104,6 +115,25 @@ def main() -> None:
         action="store_true",
         help="run the server only (no desktop window)",
     )
+    parser.add_argument(
+        "--server",
+        action="store_true",
+        help=(
+            "headless server mode. Same as --no-window but persists the auth "
+            "token to ~/.../terminux/server.token so the URL is stable across "
+            "restarts. Intended for remote use via `terminux --connect URL`."
+        ),
+    )
+    parser.add_argument(
+        "--connect",
+        metavar="URL",
+        default=None,
+        help=(
+            "open the desktop window pointed at a remote terminux server "
+            "(e.g. http://localhost:8443/?t=abc-def-ghi). Skips spawning a "
+            "local backend. Use an SSH tunnel for security."
+        ),
+    )
     parser.add_argument("--port", type=int, default=0, help="bind port (0 = ephemeral)")
     parser.add_argument(
         "--host",
@@ -133,6 +163,18 @@ def main() -> None:
     _install_freeze_diagnostics()
     start_watchdog()
 
+    # ----- client mode: no local backend, just a window onto a remote ---
+    if args.connect:
+        _run_connected(args.connect)
+        return
+
+    # ----- server side: persist the token if we're in --server / --no-window
+    headless = args.server or args.no_window
+    if args.server:
+        token = auth_mod.load_or_create_persistent_token(server_token_path())
+    else:
+        token = SESSION_TOKEN
+
     port = args.port or _free_port()
     app = build_app(persist=True)
     config = uvicorn.Config(
@@ -151,10 +193,15 @@ def main() -> None:
         time.sleep(0.02)
 
     shown_host = "127.0.0.1" if args.host in {"0.0.0.0", "::"} else args.host  # noqa: S104
-    url = f"http://{shown_host}:{port}/?t={SESSION_TOKEN}"
+    url = f"http://{shown_host}:{port}/?t={token}"
     log.info("terminux server ready at %s", url)
+    if args.server:
+        # Print a prominent banner with the connect URL so SSH-tunnel users
+        # can copy it without grepping the log.
+        sys.stderr.write(f"\nterminux server listening — connect with:\n  {url}\n\n")
+        sys.stderr.flush()
 
-    if args.no_window:
+    if headless:
         with contextlib.suppress(KeyboardInterrupt):
             thread.join()
         return
@@ -290,6 +337,82 @@ def _run_windowed(url: str, ctl: AppController, server: uvicorn.Server) -> None:
     # ``webview`` is a real module; the cast is purely to tell the static
     # checker that we'll only touch ``.active_window`` on it (which it
     # does have, but the module stubs don't declare).
+    webview.start(
+        menu=_build_menu(cast("_WebviewModuleLike", webview)),
+        icon=str(ICON_PNG) if ICON_PNG.exists() else None,
+    )
+
+
+# Default window geometry for ``--connect`` mode. No per-client persistence
+# (intentional v1 scope): every connection opens at this size.
+_CONNECT_DEFAULT_W = 1100
+_CONNECT_DEFAULT_H = 720
+
+
+def _post_paste_paths(server_url: str, paths: list[str]) -> None:
+    """POST dropped file paths to a remote terminux via /api/paste-paths.
+
+    Mirrors the local ``ctl.paste_paths`` call done in ``_run_windowed``,
+    so file drag-and-drop behaves the same in ``--connect`` mode. The
+    request includes the same auth token from the server URL.
+    """
+    parsed = urlparse(server_url)
+    paste_url = f"{parsed.scheme}://{parsed.netloc}/api/paste-paths"
+    if parsed.query:
+        paste_url += f"?{parsed.query}"
+    body = json.dumps({"paths": paths}).encode("utf-8")
+    req = urllib.request.Request(  # noqa: S310 — fixed scheme/path, body is JSON
+        paste_url,
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=2):  # noqa: S310
+            pass
+    except (urllib.error.URLError, OSError) as exc:
+        log.warning("paste-paths POST to %s failed: %s", paste_url, exc)
+
+
+def _run_connected(remote_url: str) -> None:
+    """Open a pywebview window pointed at a remote terminux server.
+
+    Skips spawning a local backend — the entire frontend (xterm.js, the
+    sidebar, persistence) is served by the remote. The only local pieces
+    are the window chrome, the native menu (whose actions route through
+    the frontend's command bus via ``window.terminux.invoke``), and the
+    file-drop handler (which POSTs to ``/api/paste-paths`` on the remote
+    rather than calling a local controller).
+    """
+    _disable_macos_press_and_hold()
+    import webview  # noqa: PLC0415  (heavy GUI import; only when windowing)
+    from webview.dom import DOMEventHandler  # noqa: PLC0415
+
+    window = webview.create_window(
+        "terminux",
+        remote_url,
+        width=_CONNECT_DEFAULT_W,
+        height=_CONNECT_DEFAULT_H,
+        confirm_close=True,
+    )
+    _set_macos_dock_icon()
+    if window is None:
+        msg = "failed to create application window"
+        raise RuntimeError(msg)
+    win = window
+
+    def _on_drop(event: dict[str, object]) -> None:
+        paths = _drop_paths(event)
+        if paths:
+            _post_paste_paths(remote_url, paths)
+
+    def _register_drop() -> None:
+        win.dom.document.on("drop", DOMEventHandler(_on_drop, prevent_default=True))
+
+    win.events.loaded += _register_drop
+    # No close handler beyond pywebview's default — the remote server keeps
+    # running, and there's no local controller to flush.
+
     webview.start(
         menu=_build_menu(cast("_WebviewModuleLike", webview)),
         icon=str(ICON_PNG) if ICON_PNG.exists() else None,

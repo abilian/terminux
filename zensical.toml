@@ -19,6 +19,7 @@ nav = [
   { "Workspaces & tabs" = "workspaces-and-tabs.md" },
   { "Keyboard shortcuts" = "keyboard-shortcuts.md" },
   { "Shell integration" = "shell-integration.md" },
+  { "Remote access" = "remote.md" },
   { "Packaging & distribution" = "packaging.md" },
   { "Architecture" = "architecture.md" },
   { "Developing" = "developing.md" },

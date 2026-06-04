@@ -87,6 +87,15 @@ See [Packaging & distribution](packaging.md).
 Only to *build* or change the frontend. The build output is committed to
 `src/terminux/web/static/`, so running from source needs only Python + `uv` (or `pip`).
 
+## Can I run terminux on a server and connect from my laptop?
+
+Yes — run `terminux --server` on the remote box and `terminux --connect URL`
+on your laptop. The shells live on the server (long-running builds survive
+your laptop sleeping, switching Wi-Fi, etc.); the laptop opens a native
+window pointed at the server's URL. The recommended setup uses an SSH
+tunnel to avoid exposing the server to the open internet. See
+[Remote access](remote.md) for the full recipe.
+
 ## terminux froze — what do I do?
 
 A built-in watchdog detects an asyncio-loop stall after **3 seconds** and

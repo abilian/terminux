@@ -24,7 +24,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from terminux.core.persistence import SCROLLBACK_MAX_BYTES
 from terminux.openurl import open_url_in_default_app
-from terminux.server.auth import SESSION_TOKEN, token_ok
+from terminux.server.auth import SESSION_TOKEN, check_auth
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -38,8 +38,16 @@ WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 STATIC_DIR = WEB_DIR / "static"  # Vite build output (see frontend/)
 
 
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client is not None else "unknown"
+
+
+def _ws_client_ip(ws: WebSocket) -> str:
+    return ws.client.host if ws.client is not None else "unknown"
+
+
 def _deny(request: Request) -> Response | None:
-    if not token_ok(request.query_params.get("t")):
+    if not check_auth(request.query_params.get("t"), _client_ip(request)):
         return PlainTextResponse("forbidden", status_code=403)
     return None
 
@@ -308,6 +316,26 @@ class Api:
             return JSONResponse({"error": "rejected"}, status_code=400)
         return JSONResponse({"ok": True})
 
+    async def paste_paths(self, request: Request) -> Response:
+        """Paste shell-quoted paths into the currently active terminal.
+
+        Used by the file-drop handler. In desktop mode the local pywebview
+        bridge calls ``ctl.paste_paths`` directly; in ``--connect`` mode
+        the client POSTs here so the same affordance works against a
+        remote backend.
+        """
+        if (deny := _deny(request)) is not None:
+            return deny
+        body: dict[str, Any] = await request.json()
+        raw = body.get("paths")
+        if not isinstance(raw, list):
+            return JSONResponse({"error": "paths must be a list"}, status_code=400)
+        paths = [str(p) for p in raw]
+        # ``paste_paths`` writes via ``os.write`` to a PTY master, which
+        # can block briefly under input-buffer backpressure — offload it.
+        await asyncio.to_thread(self.ctl.paste_paths, paths)
+        return JSONResponse({"ok": True})
+
     async def spawn(self, request: Request) -> Response:
         if (deny := _deny(request)) is not None:
             return deny
@@ -330,7 +358,7 @@ class Api:
     # ----- data plane ---------------------------------------------------
 
     async def pty_ws(self, ws: WebSocket) -> None:
-        if not token_ok(ws.query_params.get("t")):
+        if not check_auth(ws.query_params.get("t"), _ws_client_ip(ws)):
             await ws.close(code=4403)
             return
         term = self.ctl.terminals.get(ws.path_params["terminal_id"])
@@ -371,10 +399,19 @@ async def _pump_in(ws: WebSocket, term: Terminal, ctl: AppController) -> None:
             # Real keystrokes from the user — credit the active workspace
             # with active-session time until idle silences it.
             ctl.note_input()
-            term.write(data)
+            # ``term.write`` ends in a blocking ``os.write`` to the PTY
+            # master fd. A paste large enough to fill the kernel's input
+            # buffer (~4 KB on macOS) before the shell drains it would
+            # otherwise park the asyncio loop thread inside that write
+            # until the shell catches up — freezing the *entire* server.
+            # Offloading to a worker thread limits the blast radius of a
+            # stuck shell to that one terminal; the loop stays free.
+            await asyncio.to_thread(term.write, data)
             continue
         text = message.get("text")
         if text is not None:
             msg = json.loads(text)
             if msg.get("type") == "resize":
+                # ``resize`` is a ``TIOCSWINSZ`` ioctl — non-blocking, no
+                # offload needed.
                 term.resize(int(msg["cols"]), int(msg["rows"]))
