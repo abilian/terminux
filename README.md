@@ -2,14 +2,14 @@
 
 # terminux
 
-### A fast, reliable, cross-platform terminal — organized the way you actually work.
+### A fast, reliable, cross-platform terminal, organized the way you actually work.
 
 **Workspaces on the left. Tabbed terminals in the middle. Everything where you left it.**
 
 [![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey.svg)](#-install--package)
-[![Status](https://img.shields.io/badge/status-v1%20preview-orange.svg)](#-status--v1-preview)
-[![License](https://img.shields.io/badge/license-see%20repo-green.svg)](https://github.com/abilian/terminux)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey.svg)](#install--package)
+[![Status](https://img.shields.io/badge/status-0.7%20preview-orange.svg)](#status-07-preview)
+[![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)](LICENSE)
 
 <br/>
 
@@ -21,15 +21,9 @@
 
 ## Why terminux?
 
-You don't have one project. You have *six*. Each one is a different directory, a
-different mental context, a different set of running shells. terminux gives each
-of them a home — a **workspace** — and keeps them alive and arranged exactly how
-you left them, even across restarts.
+You don't have one project. You have *six*. Each one is a different directory, a different mental context, a different set of running shells. terminux gives each of them a home (a **workspace**) and keeps them alive and arranged exactly how you left them, even across restarts.
 
-It's the workspace UX of [cmux](https://github.com/) on a clean, auditable
-two-process architecture inspired by terax — rebuilt in **Python** for
-**reliability over features**. No accounts. No telemetry. No AI. Just a terminal
-that respects your flow.
+It's the workspace UX of cmux on a clean, auditable two-process architecture inspired by terax. Rebuilt in **Python** for **reliability over features**. No accounts. No telemetry. No AI. Just a terminal that respects your flow.
 
 ```sh
 uv sync && make frontend
@@ -40,41 +34,22 @@ That's it. You're in.
 
 ## ✨ What you get
 
-- **Workspaces sidebar** — a persistent list of named workspaces. Names track
-  the first tab's working directory automatically (until you pin one).
-- **Tabbed terminals** — every workspace has its own tabs, each a real PTY
-  shell. Switch freely; background tabs keep streaming, no jank.
-- **Survives restarts** — workspaces, tabs, window geometry, font size, each
-  shell's working directory, and *the visible scrollback of every tab* all
-  come back. Fresh shells, same layout, same view you left.
-- **Keyboard-first** — sidebar shows a keycap on each of the first nine
-  workspaces; jump straight there with `Ctrl+Shift+1..9` on Linux
-  (`Cmd+1..9` on macOS). Plus a fuzzy quick-switcher, find-in-terminal,
-  font zoom, and more.
-- **Platform-respecting shortcuts** — Linux uses `Ctrl+Shift+<key>` for app
-  shortcuts (matching GNOME Terminal, Konsole, Alacritty, Ghostty, kitty),
-  so raw `Ctrl+P` / `Ctrl+B` / `Ctrl+F` flow straight to your shell. macOS
-  uses `Cmd` for the same job; raw `Ctrl` is left alone.
-- **Clickable URLs & iTerm2-style copy** — modifier-click opens links;
-  optional auto-copy on selection, persisted, off by default.
-- **Working vs ready** — two-color sidebar dot: **amber** while a
-  foreground task is actively producing output (idle TUIs and parked
-  prompts don't count); **green** once that task has finished — driven
-  by `BEL` / `OSC 9` / `OSC 133;D` (opt-in [shell integration](docs/shell-integration.md))
-  or a kernel-level busy→idle transition. Plain output by itself
-  never falsely promotes to green. Reads at a glance like a CI traffic
-  light.
-- **Drag & drop** — reorder workspaces and tabs with live drop feedback
-  (works even in WKWebView, where HTML5 DnD doesn't). Drop a file to paste its
-  shell-quoted path.
-- **Local-first & hardened** — loopback-only by default, per-session auth
-  token, CSP and security headers, atomic versioned persistence.
+- **Workspaces sidebar:** a persistent list of named workspaces. Names track the first tab's working directory automatically (until you pin one).
+- **Tabbed terminals:** every workspace has its own tabs, each a real PTY shell. Switch freely; background tabs keep streaming, no jank.
+- **Survives restarts:** workspaces, tabs, window geometry, font size, each shell's working directory, and *the visible scrollback of every tab* all come back. Fresh shells, same layout, same view you left.
+- **Remote access:** run the backend on a server, connect from your laptop with `--connect`. Shells and long-running builds survive lid-closes, network hops, and device switches. See [**Remote access**](docs/remote.md).
+- **Keyboard-first:** sidebar shows a keycap on each of the first nine workspaces; jump straight there with `Ctrl+Shift+1..9` on Linux (`Cmd+1..9` on macOS). Plus a fuzzy quick-switcher, find-in-terminal, font zoom, and more.
+- **Platform-respecting shortcuts:** Linux uses `Ctrl+Shift+<key>` for app shortcuts (matching GNOME Terminal, Konsole, Alacritty, Ghostty, kitty), so raw `Ctrl+P` / `Ctrl+B` / `Ctrl+F` flow straight to your shell. macOS uses `Cmd` for the same job; raw `Ctrl` is left alone.
+- **Clickable URLs & iTerm2-style copy:** modifier-click opens links; optional auto-copy on selection, persisted, off by default.
+- **Working vs ready:** a two-color sidebar dot reads like a CI traffic light — **amber** while a foreground task is actively working (idle TUIs and parked prompts don't count), **green** once it finishes. Works out of the box; opt-in [shell integration](docs/shell-integration.md) makes it more precise. Plain output by itself never falsely promotes to green.
+- **Drag & drop:** reorder workspaces and tabs with live drop feedback. Drop a file to paste its shell-quoted path.
+- **Local-first & hardened:** loopback-only by default, per-session auth token, CSP and security headers, atomic versioned persistence.
 
 <div align="center">
 
 <img src="docs/images/quick-switcher.png" alt="The fuzzy quick switcher (Ctrl+Shift+P / Cmd+P) jumping between workspaces and tabs" width="800"/>
 
-<sub>The fuzzy quick switcher (<code>Ctrl+Shift+P</code> on Linux, <code>Cmd+P</code> on macOS) — jump to any workspace or tab.</sub>
+<sub>The fuzzy quick switcher (<code>Ctrl+Shift+P</code> on Linux, <code>Cmd+P</code> on macOS): jump to any workspace or tab.</sub>
 
 </div>
 
@@ -84,14 +59,12 @@ That's it. You're in.
 uv sync
 make frontend                # build the web UI (needs Node; first run only)
 uv run terminux              # desktop window (pywebview)
-uv run terminux --no-window  # server only — open the printed URL in a browser
+uv run terminux --no-window  # server only; open the printed URL in a browser
 uv run terminux --debug      # verbose logs + slow-op warnings
 uv run terminux --trace      # extreme: log every save/load/cwd lookup
 ```
 
-`--no-window` is the dev/test path and a preview of the future **web mode**.
-`--debug` and `--trace` are diagnostics flags — see
-[**Debugging knobs**](docs/developing.md#debugging-knobs).
+`--no-window` serves the same UI to any browser — handy for development and for running terminux where no display is available. `--debug` and `--trace` are diagnostics flags; see [**Debugging knobs**](docs/developing.md#debugging-knobs).
 
 ### Remote mode
 
@@ -110,15 +83,11 @@ ssh -L 8443:localhost:8443 server.example.com
 uv run terminux --connect http://localhost:8443/?t=abc-def-ghi
 ```
 
-Shells, workspaces, and scrollback live on the server — disconnect, sleep
-the laptop, reconnect later, everything's where you left it. See
-[**Remote access**](docs/remote.md) for the full recipe (multi-client,
-firewall guidance, systemd service).
+Shells, workspaces, and scrollback live on the server: disconnect, sleep the laptop, reconnect later, everything's where you left it. See [**Remote access**](docs/remote.md) for the full recipe (multi-client, firewall guidance, systemd service).
 
 ## Install / package
 
-terminux ships as a self-contained desktop app — no Python or Node required to
-run the bundle.
+terminux ships as a self-contained desktop app; no Python or Node required to run the bundle.
 
 ```sh
 make build-linux  # Linux bundle (built in Docker) → dist/linux/terminux/terminux
@@ -126,50 +95,42 @@ make docker-run   # run headless web mode on :8000
 make build-macos  # macOS .app → dist/terminux.app
 ```
 
-Full platform notes (signing, Gatekeeper, X11, architectures) live in the
-[**documentation**](#-documentation).
+Full platform notes (signing, Gatekeeper, X11, architectures) live in the [**documentation**](#documentation).
 
 ## Documentation
 
 Docs are built with [Zensical](https://zensical.org/) and live in `docs/`.
 
 ```sh
-uv run zensical serve    # live preview at http://127.0.0.1:8000
-uv run zensical build    # static site → site/
+make docs-serve    # live preview at http://127.0.0.1:8000
+make docs          # static site → site/
 ```
 
-Start with [`docs/index.md`](docs/index.md). The original vision, functional
-spec, and technical spec are in [`notes/`](notes/).
+Start with [`docs/index.md`](docs/index.md). The original vision, functional spec, and technical spec are in [`notes/`](notes/).
 
 ## Develop
 
 ```sh
 make frontend        # build TS/Vite UI → src/terminux/web/static
+make frontend-dev    # live Vite dev server against a --no-window backend
 make frontend-test   # vitest unit tests (pure TS logic)
 make test            # pytest: unit, integration, e2e (Playwright)
 make lint            # ruff + ty + pyrefly + mypy
 make format
 ```
 
-The e2e tier drives the served UI with a real browser (no pywebview); install
-it once with `uv run playwright install chromium`.
+The e2e tier drives the served UI with a real browser (no pywebview); install it once with `uv run playwright install chromium`.
 
-## Status — 0.5 preview
+## Status: 0.7 preview
 
-**Works today:** workspaces sidebar (create / rename / reorder / close, auto
-status dot), tabs with multiple live terminals, real PTY shells over a
-per-terminal WebSocket, background streaming, structure persisted to disk
-(fresh shells on restart), per-session loopback token, macOS & Linux bundles.
+**Works today:** workspaces sidebar (create / rename / reorder / close, working/ready dot), tabs with multiple live terminals, real PTY shells streaming in the background, layout *and scrollback* restored across restarts (always with fresh shells), remote mode (`--server` / `--connect`), self-diagnosing freeze watchdog, macOS & Linux bundles.
 
-**Not yet:** split panes, client/server detach, Windows PTY.
+**Not yet:** split panes, Windows PTY, multi-user.
 
 ## Architecture in one breath
 
-A Vite/TypeScript xterm.js web UI runs in a sandboxed pywebview window and talks
-to a loopback Starlette/uvicorn backend that owns the PTYs and streams raw bytes
-over per-terminal WebSockets. The frontend build output is committed to
-`src/terminux/web/static/`, so the Python package runs with no Node toolchain.
+A Vite/TypeScript xterm.js web UI runs in a sandboxed pywebview window and talks to a loopback Starlette/uvicorn backend that owns the PTYs and streams raw bytes over per-terminal WebSockets. The frontend build output is committed to `src/terminux/web/static/`, so the Python package runs with no Node toolchain.
 
 <div align="center">
-<sub>Built for people who keep too many terminals open. — <a href="https://github.com/abilian/terminux">abilian/terminux</a></sub>
+<sub>Built for people who keep too many terminals open. <a href="https://github.com/abilian/terminux">abilian/terminux</a></sub>
 </div>
