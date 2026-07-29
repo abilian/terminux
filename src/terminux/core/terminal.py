@@ -246,6 +246,8 @@ class Terminal:
     def _on_readable(self) -> None:
         try:
             data = os.read(self._pty.fd, READ_CHUNK)
+        except BlockingIOError:
+            return  # spurious wakeup; fd is non-blocking, nothing to read
         except OSError:
             data = b""  # EIO on Linux when the child exits
         if not data:

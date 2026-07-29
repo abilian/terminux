@@ -11,6 +11,7 @@ import ctypes
 import ctypes.util
 import logging
 import os
+import select
 import shutil
 import signal
 import subprocess  # noqa: S404  (fixed argv to `lsof`, no shell, resolved path)
@@ -68,6 +69,11 @@ class UnixPty:
             env=env,
             dimensions=(rows, cols),
         )
+        # The master fd must never park a thread inside the kernel: the
+        # asyncio loop reads it directly (a spurious kqueue wakeup on a
+        # blocking fd would freeze the whole server — observed in the
+        # field), and ``write`` below handles EAGAIN itself.
+        os.set_blocking(self._proc.fd, False)
 
     @property
     def fd(self) -> int:
@@ -78,8 +84,20 @@ class UnixPty:
         return int(self._proc.pid)
 
     def write(self, data: bytes) -> None:
+        fd = self._proc.fd
+        view = memoryview(data)
         with contextlib.suppress(OSError):
-            os.write(self._proc.fd, data)
+            while view:
+                try:
+                    n = os.write(fd, view)
+                except BlockingIOError:
+                    # Kernel input queue full (large paste into a program
+                    # that isn't reading). Runs on a worker thread (see
+                    # server ``_pump_in``), so waiting parks only this
+                    # terminal's writer, never the loop.
+                    select.select([], [fd], [])
+                    continue
+                view = view[n:]
 
     def resize(self, cols: int, rows: int) -> None:
         with contextlib.suppress(OSError, ValueError):

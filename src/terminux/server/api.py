@@ -399,13 +399,12 @@ async def _pump_in(ws: WebSocket, term: Terminal, ctl: AppController) -> None:
             # Real keystrokes from the user — credit the active workspace
             # with active-session time until idle silences it.
             ctl.note_input()
-            # ``term.write`` ends in a blocking ``os.write`` to the PTY
-            # master fd. A paste large enough to fill the kernel's input
-            # buffer (~4 KB on macOS) before the shell drains it would
-            # otherwise park the asyncio loop thread inside that write
-            # until the shell catches up — freezing the *entire* server.
-            # Offloading to a worker thread limits the blast radius of a
-            # stuck shell to that one terminal; the loop stays free.
+            # ``term.write`` may wait for PTY input-queue space (the fd is
+            # non-blocking, but a paste large enough to fill the kernel's
+            # input buffer — ~4 KB on macOS — makes it select() until the
+            # shell drains). Offloading to a worker thread limits the blast
+            # radius of a stuck shell to that one terminal; the loop stays
+            # free.
             await asyncio.to_thread(term.write, data)
             continue
         text = message.get("text")
