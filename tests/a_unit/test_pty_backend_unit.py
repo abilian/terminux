@@ -188,6 +188,28 @@ def test_unixpty_write_and_resize_swallow_oserror(monkeypatch) -> None:
     pty.resize(80, 24)  # OSError suppressed
 
 
+def test_unixpty_write_retries_on_eagain_and_partial(monkeypatch) -> None:
+    p = _FakeProc()
+    p.fd = 9
+    attempts: list[bytes] = []
+    waited: list[list[int]] = []
+
+    def fake_write(_fd: int, view) -> int:
+        attempts.append(bytes(view))
+        if len(attempts) == 1:
+            raise BlockingIOError
+        return 2  # partial write: two bytes per call
+
+    monkeypatch.setattr(pty_backend.os, "write", fake_write)
+    monkeypatch.setattr(
+        pty_backend.select, "select", lambda _r, w, _x: waited.append(w) or ([], w, [])
+    )
+    _unixpty(p).write(b"abcd")
+    # EAGAIN → wait for writability once, then drain in partial chunks.
+    assert waited == [[9]]
+    assert attempts == [b"abcd", b"abcd", b"cd"]
+
+
 def test_spawn_pty_unix_smoke() -> None:
     from pathlib import Path
 
@@ -195,5 +217,8 @@ def test_spawn_pty_unix_smoke() -> None:
     try:
         assert pty.is_alive() is True
         assert isinstance(pty.fd, int)
+        # The loop reads this fd directly; a blocking fd + spurious wakeup
+        # would park the whole server (see notes/05-lessons-learned.md).
+        assert os.get_blocking(pty.fd) is False
     finally:
         pty.terminate()

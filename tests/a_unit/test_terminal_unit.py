@@ -112,6 +112,23 @@ def test_on_readable_feeds_subscribers_and_trims_backlog(monkeypatch) -> None:
     assert seen == [1]
 
 
+def test_on_readable_spurious_wakeup_is_noop(monkeypatch) -> None:
+    t = _bare_terminal(_FakeLoop(), _FakePty())
+    sub = t.subscribe()
+    exited = []
+    t.on_exit = lambda code: exited.append(code)
+
+    def eagain(*_a: object) -> bytes:
+        raise BlockingIOError
+
+    monkeypatch.setattr(term_mod.os, "read", eagain)
+    t._on_readable()
+    # EAGAIN is not EOF: the tab must stay open and subscribers untouched.
+    assert t._exited is False
+    assert exited == []
+    assert sub._pending == bytearray()
+
+
 def test_on_readable_detects_bell_and_osc9(monkeypatch) -> None:
     t = _bare_terminal(_FakeLoop(), _FakePty())
     t.subscribe()
