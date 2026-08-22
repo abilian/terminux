@@ -21,7 +21,7 @@ export function installDragAndDrop(): void {
     const text = dt.getData("text/plain");
     if (!text) return;
     const s = activeSession();
-    if (s && s.ws.readyState === 1) {
+    if (s?.ws && s.ws.readyState === 1) {
       s.ws.send(enc.encode(text));
       s.term.focus();
     }

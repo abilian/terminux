@@ -145,3 +145,13 @@ def test_sidebar_toggle_shortcut(page: Page, app_url: str) -> None:
     expect(sidebar).to_be_hidden()
     page.keyboard.press(f"{APP_MOD}+b")
     expect(sidebar).to_be_visible()
+
+
+def test_terminal_reconnects_after_socket_drop(page: Page, app_url: str) -> None:
+    """Severing the PTY websocket must not kill the tab: the frontend
+    auto-reconnects, the backend replays its backlog, and typing works."""
+    page.goto(app_url)
+    expect(page.locator(".xterm")).to_be_visible(timeout=UI)
+    assert _run_in_terminal(page, "echo before_drop_marker", "before_drop_marker")
+    page.evaluate("[...window.__terminux.sessions.values()][0].ws.close()")
+    assert _run_in_terminal(page, "echo after_drop_marker", "after_drop_marker")

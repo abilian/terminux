@@ -114,11 +114,129 @@ function discardScrollback(tid: string): void {
 export function disposeSession(tid: string): void {
   const s = sessions.get(tid);
   if (s) {
-    s.ws.close();
+    s.disposed = true; // stops any in-flight reconnect loop
+    s.ws?.close();
     s.term.dispose();
     s.host.remove();
     sessions.delete(tid);
   }
+}
+
+// Reconnect backoff bounds. Retry forever: the backend keeps a per-terminal
+// backlog precisely so a re-attach can replay recent output, and remote
+// mode's promise ("sleep the laptop, reconnect later") depends on it.
+const RECONNECT_MIN_MS = 500;
+const RECONNECT_MAX_MS = 5000;
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+function sendInput(sess: Session, data: string): void {
+  const w = sess.ws;
+  if (w && w.readyState === 1) w.send(enc.encode(data));
+}
+
+/**
+ * Spawn (or re-acquire) the tab's PTY and attach a fresh WebSocket.
+ *
+ * Resolves "ok" once the socket is open, "gone" when the tab no longer
+ * exists server-side, "fail" on any transient error (caller retries).
+ * With `reset` the xterm buffer is cleared right before the server
+ * replays its backlog, so a reconnect repaints instead of duplicating.
+ */
+async function connect(
+  tid: string,
+  sess: Session,
+  reset: boolean,
+): Promise<"ok" | "gone" | "fail"> {
+  let terminalId: string;
+  try {
+    const r = await api(`/tabs/${tid}/spawn`, {
+      method: "POST",
+      body: JSON.stringify({ cols: sess.term.cols, rows: sess.term.rows }),
+    });
+    if (r.status === 404) return "gone";
+    if (!r.ok) return "fail";
+    terminalId = ((await r.json()) as { terminal_id: string }).terminal_id;
+  } catch {
+    return "fail";
+  }
+
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(
+    `${proto}://${location.host}/pty/${terminalId}?t=${window.TERMINUX_TOKEN}`,
+  );
+  ws.binaryType = "arraybuffer";
+  sess.ws = ws;
+
+  let kittyCarry = "";
+  ws.onmessage = (ev: MessageEvent): void => {
+    if (typeof ev.data === "string") {
+      const msg = JSON.parse(ev.data) as { type: string; code?: number | null };
+      if (msg.type === "exit") {
+        const code = msg.code != null ? ` with code ${msg.code}` : "";
+        sess.exited = true;
+        sess.term.write(
+          `\r\n\x1b[2m[process exited${code} — press Enter to restart]\x1b[0m\r\n`,
+        );
+        void refresh();
+      } else if (msg.type === "dropped") {
+        sess.term.write(
+          "\r\n\x1b[2m[output dropped — terminal fell behind]\x1b[0m\r\n",
+        );
+      }
+      return;
+    }
+    const u8 = new Uint8Array(ev.data as ArrayBuffer);
+    kittyCarry = sess.kitty.scan(kittyCarry + binStr(u8), (d) =>
+      sendInput(sess, d),
+    );
+    sess.term.write(u8);
+    sess.dirty = true;
+  };
+
+  const opened = await new Promise<boolean>((resolve) => {
+    ws.onopen = (): void => resolve(true);
+    ws.onclose = (): void => resolve(false); // refused before opening
+  });
+  if (!opened) return "fail";
+
+  // From here on, a close means the connection was lost mid-flight.
+  ws.onclose = (): void => {
+    if (!sess.disposed && !sess.exited) void reconnectLoop(tid, sess);
+  };
+  if (reset) sess.term.reset(); // the replayed backlog repaints from scratch
+  sess.fit.fit();
+  ws.send(
+    JSON.stringify({
+      type: "resize",
+      cols: sess.term.cols,
+      rows: sess.term.rows,
+    }),
+  );
+  return "ok";
+}
+
+async function reconnectLoop(tid: string, sess: Session): Promise<void> {
+  if (sess.reconnecting) return;
+  sess.reconnecting = true;
+  sess.term.write("\r\n\x1b[2m[connection lost — reconnecting…]\x1b[0m\r\n");
+  let backoff = RECONNECT_MIN_MS;
+  while (!sess.disposed && !sess.exited) {
+    await sleep(backoff);
+    if (sess.disposed || sess.exited) break;
+    const res = await connect(tid, sess, true);
+    if (res === "ok") break;
+    if (res === "gone") {
+      // Tab deleted server-side while we were away; drop the local session
+      // and let the next state refresh reconcile the UI.
+      disposeSession(tid);
+      void refresh();
+      break;
+    }
+    backoff = Math.min(backoff * 2, RECONNECT_MAX_MS);
+  }
+  sess.reconnecting = false;
 }
 
 async function openTerminal(tid: string, restore = true): Promise<void> {
@@ -181,30 +299,17 @@ async function openTerminal(tid: string, restore = true): Promise<void> {
   term.open(host);
   fit.fit();
 
-  const r = await api(`/tabs/${tid}/spawn`, {
-    method: "POST",
-    body: JSON.stringify({ cols: term.cols, rows: term.rows }),
-  });
-  const { terminal_id } = (await r.json()) as { terminal_id: string };
-
-  const proto = location.protocol === "https:" ? "wss" : "ws";
-  const ws = new WebSocket(
-    `${proto}://${location.host}/pty/${terminal_id}?t=${window.TERMINUX_TOKEN}`,
-  );
-  ws.binaryType = "arraybuffer";
-  const kitty = createKitty();
-  let kittyCarry = "";
-  const sendInput = (s: string): void => {
-    if (ws.readyState === 1) ws.send(enc.encode(s));
-  };
   const sess: Session = {
     term,
     fit,
     search,
     serialize,
-    ws,
+    ws: null,
     host,
     exited: false,
+    disposed: false,
+    reconnecting: false,
+    kitty: createKitty(),
     dirty: false,
   };
   sessions.set(tid, sess);
@@ -229,38 +334,11 @@ async function openTerminal(tid: string, restore = true): Promise<void> {
     }).then(() => poll()); // render-only refresh, no focus steal
   });
 
-  ws.onmessage = (ev: MessageEvent): void => {
-    if (typeof ev.data === "string") {
-      const msg = JSON.parse(ev.data) as { type: string; code?: number | null };
-      if (msg.type === "exit") {
-        const code = msg.code != null ? ` with code ${msg.code}` : "";
-        sess.exited = true;
-        term.write(
-          `\r\n\x1b[2m[process exited${code} — press Enter to restart]\x1b[0m\r\n`,
-        );
-        void refresh();
-      } else if (msg.type === "dropped") {
-        term.write(
-          "\r\n\x1b[2m[output dropped — terminal fell behind]\x1b[0m\r\n",
-        );
-      }
-      return;
-    }
-    const u8 = new Uint8Array(ev.data as ArrayBuffer);
-    kittyCarry = kitty.scan(kittyCarry + binStr(u8), sendInput);
-    term.write(u8);
-    sess.dirty = true;
-  };
-  ws.onopen = (): void => {
-    fit.fit();
-    ws.send(
-      JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }),
-    );
-  };
-  term.onData((d: string) => sendInput(d));
+  term.onData((d: string) => sendInput(sess, d));
   term.onResize(({ cols, rows }: { cols: number; rows: number }) => {
-    if (ws.readyState === 1)
-      ws.send(JSON.stringify({ type: "resize", cols, rows }));
+    const w = sess.ws;
+    if (w && w.readyState === 1)
+      w.send(JSON.stringify({ type: "resize", cols, rows }));
   });
 
   // macOS editing chords first (own every event type so the webview can't
@@ -278,7 +356,7 @@ async function openTerminal(tid: string, restore = true): Promise<void> {
     if (edit !== null) {
       if (e.type === "keydown") {
         e.preventDefault();
-        sendInput(edit);
+        sendInput(sess, edit);
       }
       return false;
     }
@@ -286,11 +364,18 @@ async function openTerminal(tid: string, restore = true): Promise<void> {
     const modified = e.shiftKey || e.altKey || e.ctrlKey || e.metaKey;
     if (!modified) return true; // plain Enter → xterm's default CR (submit)
     if (e.type !== "keydown") return false;
-    const seq = kitty.encodeEnter(e) ?? (e.shiftKey ? "\n" : null);
+    const seq = sess.kitty.encodeEnter(e) ?? (e.shiftKey ? "\n" : null);
     if (seq === null) return false;
-    sendInput(seq);
+    sendInput(sess, seq);
     return false;
   });
+
+  const res = await connect(tid, sess, false);
+  if (res === "gone") {
+    disposeSession(tid);
+    return;
+  }
+  if (res === "fail") void reconnectLoop(tid, sess); // keep trying quietly
 }
 
 async function restartTerminal(tid: string): Promise<void> {

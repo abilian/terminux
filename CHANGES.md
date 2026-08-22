@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **A stale browser tab can no longer lock you out.** Requests with an outdated code from your own machine could trip the brute-force guard and block the real window for a minute at a time. Local connections are now exempt from the lockout, which still protects servers exposed to a network.
 - **Starting on a port that's already in use now fails with a clear error** instead of hanging forever with no output.
 - **Access codes no longer appear in request logs** when running with `--debug` or `--trace`.
+- **Terminals now reconnect automatically.** A lost connection — a backend stall, a network blip, a laptop waking from sleep — used to leave tabs permanently dead even though the shells were fine; the only cure was reopening the app. Each terminal now shows "[connection lost — reconnecting…]", redials with backoff until the server answers, and repaints from the server's output buffer. This is what makes remote mode's "disconnect and come back later" actually hold.
 
 ### Internal
 

@@ -7,6 +7,7 @@ import type { SerializeAddon } from "@xterm/addon-serialize";
 import type { Terminal } from "@xterm/xterm";
 
 import { api } from "./api";
+import type { Kitty } from "./kitty";
 import { reconcile } from "./reconcile";
 import type { StateView, WorkspaceView } from "./types";
 
@@ -15,9 +16,19 @@ export interface Session {
   fit: FitAddon;
   search: SearchAddon;
   serialize: SerializeAddon;
-  ws: WebSocket;
+  // Live PTY socket; null while (re)connecting. Reassigned on every
+  // reconnect — always read the current value, never capture it.
+  ws: WebSocket | null;
   host: HTMLDivElement;
   exited: boolean;
+  // Set by disposeSession — tells an in-flight reconnect loop to stop.
+  disposed: boolean;
+  // True while the reconnect loop owns this session's connection.
+  reconnecting: boolean;
+  // Stateful kitty-protocol codec: scans output to learn the app's keyboard
+  // mode, encodes Enter accordingly. One per session — the learned state
+  // must survive websocket reconnects.
+  kitty: Kitty;
   // Marked when PTY output arrives; the periodic save loop clears it after
   // persisting the buffer.
   dirty: boolean;
