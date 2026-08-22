@@ -202,7 +202,7 @@ def main() -> None:
         # No watchdog here: it monitors the local server's asyncio
         # heartbeat, and client mode runs no local server — arming it
         # would warn every 10 s about a loop that doesn't exist.
-        _run_connected(args.connect)
+        _run_connected(args.connect, debug=args.debug or args.trace)
         return
 
     start_watchdog()
@@ -244,7 +244,7 @@ def main() -> None:
             thread.join()
         return
 
-    _run_windowed(url, app.state.controller, server)
+    _run_windowed(url, app.state.controller, server, debug=args.debug or args.trace)
 
 
 def _drop_paths(event: dict[str, object]) -> list[str]:
@@ -319,7 +319,9 @@ def _set_macos_dock_icon() -> None:
         NSApplication.sharedApplication().setApplicationIconImage_(image)
 
 
-def _run_windowed(url: str, ctl: AppController, server: uvicorn.Server) -> None:
+def _run_windowed(
+    url: str, ctl: AppController, server: uvicorn.Server, *, debug: bool = False
+) -> None:
     _disable_macos_press_and_hold()
     import webview  # noqa: PLC0415  (heavy GUI import; only when windowing)
     from webview.dom import DOMEventHandler  # noqa: PLC0415
@@ -378,6 +380,9 @@ def _run_windowed(url: str, ctl: AppController, server: uvicorn.Server) -> None:
     webview.start(
         menu=_build_menu(cast("_WebviewModuleLike", webview)),
         icon=str(ICON_PNG) if ICON_PNG.exists() else None,
+        # --debug: enables pywebview's web inspector (right-click ->
+        # Inspect Element) so frontend errors are debuggable in-window.
+        debug=debug,
     )
 
 
@@ -412,7 +417,7 @@ def _post_paste_paths(server_url: str, paths: list[str]) -> None:
         log.warning("paste-paths POST to %s failed: %s", paste_url, exc)
 
 
-def _run_connected(remote_url: str) -> None:
+def _run_connected(remote_url: str, *, debug: bool = False) -> None:
     """Open a pywebview window pointed at a remote terminux server.
 
     Skips spawning a local backend — the entire frontend (xterm.js, the
@@ -454,6 +459,9 @@ def _run_connected(remote_url: str) -> None:
     webview.start(
         menu=_build_menu(cast("_WebviewModuleLike", webview)),
         icon=str(ICON_PNG) if ICON_PNG.exists() else None,
+        # --debug: enables pywebview's web inspector (right-click ->
+        # Inspect Element) so frontend errors are debuggable in-window.
+        debug=debug,
     )
 
 

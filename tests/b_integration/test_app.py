@@ -179,7 +179,7 @@ def test_main_windowed_create_window_none(monkeypatch) -> None:
     _patch_common(monkeypatch)
     fake_webview = types.ModuleType("webview")
     fake_webview.create_window = lambda *a, **k: None  # type: ignore[attr-defined]
-    fake_webview.start = lambda: None  # type: ignore[attr-defined]
+    fake_webview.start = lambda **_k: None  # type: ignore[attr-defined]
     fake_dom = types.ModuleType("webview.dom")
     fake_dom.DOMEventHandler = lambda *a, **k: None  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "webview", fake_webview)

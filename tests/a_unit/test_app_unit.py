@@ -32,7 +32,9 @@ def test_connect_mode_does_not_arm_watchdog(monkeypatch) -> None:
     monkeypatch.setattr(app_mod, "start_watchdog", lambda: calls.append("watchdog"))
     monkeypatch.setattr(app_mod, "_install_freeze_diagnostics", lambda: None)
     monkeypatch.setattr(
-        app_mod, "_run_connected", lambda url: calls.append(f"connect:{url}")
+        app_mod,
+        "_run_connected",
+        lambda url, **_k: calls.append(f"connect:{url}"),
     )
     monkeypatch.setattr(
         "sys.argv", ["terminux", "--connect", "http://localhost:8443/?t=abc-def-ghi"]
