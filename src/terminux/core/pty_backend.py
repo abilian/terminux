@@ -17,7 +17,7 @@ import signal
 import subprocess  # noqa: S404  (fixed argv to `lsof`, no shell, resolved path)
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast
 
 from terminux.diagnostics import time_op
 
@@ -27,9 +27,12 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-@runtime_checkable
 class PtyBackend(Protocol):
-    """OS-agnostic PTY interface used by ``core.terminal``."""
+    """OS-agnostic PTY interface used by ``core.terminal``.
+
+    Implementations keep ``fd`` non-blocking (see ``UnixPty``); the
+    Windows/ConPTY implementation slots in here — technical spec §10.
+    """
 
     @property
     def fd(self) -> int: ...

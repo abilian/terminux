@@ -19,10 +19,10 @@ import time
 import uuid
 from typing import TYPE_CHECKING
 
-from terminux.core.pty_backend import PtyBackend, spawn_pty
-
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from terminux.core.pty_backend import PtyBackend
 
 log = logging.getLogger(__name__)
 
@@ -217,13 +217,16 @@ class Subscriber:
 
 
 class Terminal:
-    """Owns one PTY child and fans its output out to subscribers."""
+    """Owns one PTY child and fans its output out to subscribers.
 
-    def __init__(
-        self, argv: list[str], cwd: str, cols: int = 80, rows: int = 24
-    ) -> None:
+    Takes an already-spawned ``PtyBackend`` so the fork/exec can run in a
+    worker thread; construction itself must happen on the event-loop
+    thread (it registers the ``add_reader``).
+    """
+
+    def __init__(self, pty: PtyBackend) -> None:
         self.id = uuid.uuid4().hex
-        self._pty: PtyBackend = spawn_pty(argv, cwd, cols, rows)
+        self._pty = pty
         self._loop = asyncio.get_running_loop()
         self._backlog = bytearray()
         self._subscribers: set[Subscriber] = set()
@@ -377,8 +380,9 @@ class TerminalRegistry:
     def __init__(self) -> None:
         self._terminals: dict[str, Terminal] = {}
 
-    def create(self, argv: list[str], cwd: str, cols: int, rows: int) -> Terminal:
-        term = Terminal(argv, cwd, cols, rows)
+    def adopt(self, pty: PtyBackend) -> Terminal:
+        """Wrap an already-spawned PTY in a Terminal and register it."""
+        term = Terminal(pty)
         self._terminals[term.id] = term
         return term
 

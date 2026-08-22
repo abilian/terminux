@@ -355,7 +355,9 @@ def test_terminal_constructor_registers_reader() -> None:
     async def scenario() -> None:
         from pathlib import Path
 
-        t = Terminal(["/bin/sh", "-c", "exit 0"], str(Path.cwd()), 80, 24)
+        from terminux.core.pty_backend import spawn_pty
+
+        t = Terminal(spawn_pty(["/bin/sh", "-c", "exit 0"], str(Path.cwd()), 80, 24))
         t.close()
 
     asyncio.run(scenario())

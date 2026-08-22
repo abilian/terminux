@@ -19,8 +19,9 @@ from terminux.core.persistence import (
     load_scrollback,
     load_state,
     save_scrollback,
-    save_state,
+    save_state_json,
 )
+from terminux.core.pty_backend import PtyBackend, spawn_pty
 from terminux.core.shellprobe import default_cwd, default_shell
 from terminux.core.terminal import Terminal, TerminalRegistry
 
@@ -52,7 +53,14 @@ def _shell_quote(path: str) -> str:
 
 
 class AppController:
-    """Owns AppState + live terminals. All access is on the server event loop."""
+    """Owns AppState + live terminals.
+
+    Locking rule: every public method takes ``self.lock`` itself (it's a
+    reentrant lock, so nested calls are free) and holds it only around
+    in-memory work — never across disk I/O, fsync, or a fork. Handlers
+    running in worker threads may also take the lock around multi-step
+    mutations; the reentrancy makes both compose.
+    """
 
     def __init__(self, *, persist: bool = True) -> None:
         self._persist = persist
@@ -81,9 +89,13 @@ class AppController:
     def save(self) -> None:
         if not self._persist:
             return
+        # Snapshot under the lock (microseconds), write + fsync outside it:
+        # a lock held across fsync stalls everyone waiting on it — including
+        # the event loop via ``ensure_terminal`` — for the fsync duration.
         with self.lock:
             self._snapshot_cwds()
-            save_state(self.state)
+            payload = self.state.to_json()
+        save_state_json(payload)
 
     def save_scrollback(self, tab_id: str, content: str) -> None:
         if not self._persist or not self.state.ui.scrollback_persist:
@@ -125,13 +137,15 @@ class AppController:
             self._active_seconds[ws_id] = self._active_seconds.get(ws_id, 0.0) + dt
 
     def active_seconds(self, ws_id: str) -> int:
-        return int(self._active_seconds.get(ws_id, 0.0))
+        with self.lock:
+            return int(self._active_seconds.get(ws_id, 0.0))
 
     def reset_activity(self) -> None:
         """Clear all per-workspace counters and start a fresh session."""
-        self._active_seconds.clear()
-        self._last_input_at = None
-        self._session_started_at = time.time()
+        with self.lock:
+            self._active_seconds.clear()
+            self._last_input_at = None
+            self._session_started_at = time.time()
 
     @property
     def session_started_at(self) -> float:
@@ -154,7 +168,17 @@ class AppController:
                 if live:
                     tab.last_cwd = live
 
-    def ensure_terminal(self, tab_id: str, cols: int, rows: int) -> Terminal | None:
+    async def ensure_terminal(
+        self, tab_id: str, cols: int, rows: int
+    ) -> Terminal | None:
+        """Return the tab's live terminal, spawning a fresh shell if needed.
+
+        Two-phase: the fork/exec/disk work runs in a worker thread so it
+        can never stall the event loop; only the ``add_reader``
+        registration (which must happen on the loop) runs here. Callers
+        serialize through ``spawn_lock``, so the unlocked gap between the
+        phases sees no concurrent spawn for the same tab.
+        """
         with self.lock:
             tab = self.state.tabs.get(tab_id)
             if tab is None:
@@ -163,10 +187,21 @@ class AppController:
                 existing = self.terminals.get(tab.terminal_id)
                 if existing is not None and not existing.exited:
                     return existing
-            cwd = tab.spawn_cwd or default_cwd()
+            spawn_cwd = tab.spawn_cwd
+
+        def _spawn() -> PtyBackend:
+            cwd = spawn_cwd or default_cwd()
             if not Path(cwd).is_dir():  # e.g. a restored dir since deleted
                 cwd = default_cwd()
-            term = self.terminals.create(default_shell(), cwd, cols, rows)
+            return spawn_pty(default_shell(), cwd, cols, rows)
+
+        pty = await asyncio.to_thread(_spawn)
+        with self.lock:
+            tab = self.state.tabs.get(tab_id)
+            if tab is None:  # tab closed while the shell was spawning
+                pty.terminate()
+                return None
+            term = self.terminals.adopt(pty)
             tab.terminal_id = term.id
             term.on_activity = lambda: self._mark_activity(tab_id)
             term.on_attention = lambda: self._mark_ready(tab_id)

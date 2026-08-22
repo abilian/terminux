@@ -27,7 +27,7 @@ async def _drain(sub, needle: bytes, timeout: float = 6.0) -> bytes:
 
 def test_terminal_echo_and_backlog_replay() -> None:
     async def scenario() -> None:
-        term = Terminal(["/bin/sh"], str(Path.cwd()), 80, 24)
+        term = Terminal(spawn_pty(["/bin/sh"], str(Path.cwd()), 80, 24))
         s1 = term.subscribe()
         term.write(b"echo hello_terminux\n")
         out = await _drain(s1, b"hello_terminux")
@@ -46,7 +46,7 @@ def test_terminal_echo_and_backlog_replay() -> None:
 def test_terminal_exit_detection() -> None:
     async def scenario() -> int | None:
         codes: list[int | None] = []
-        term = Terminal(["/bin/sh", "-c", "exit 7"], str(Path.cwd()), 80, 24)
+        term = Terminal(spawn_pty(["/bin/sh", "-c", "exit 7"], str(Path.cwd()), 80, 24))
         term.on_exit = codes.append
         deadline = time.time() + 6
         while not term.exited and time.time() < deadline:
@@ -66,12 +66,12 @@ def test_terminal_exit_detection() -> None:
 def test_terminal_registry() -> None:
     async def scenario() -> None:
         reg = TerminalRegistry()
-        t = reg.create(["/bin/sh"], str(Path.cwd()), 80, 24)
+        t = reg.adopt(spawn_pty(["/bin/sh"], str(Path.cwd()), 80, 24))
         assert reg.get(t.id) is t
         reg.close(t.id)
         assert reg.get(t.id) is None
         reg.close("missing")  # no-op
-        reg.create(["/bin/sh"], str(Path.cwd()), 80, 24)
+        reg.adopt(spawn_pty(["/bin/sh"], str(Path.cwd()), 80, 24))
         reg.close_all()
 
     asyncio.run(scenario())

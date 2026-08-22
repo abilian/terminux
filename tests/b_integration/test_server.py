@@ -61,7 +61,7 @@ def test_endpoints_require_token(server: LiveServer, path: str, method: str) -> 
 
 
 def test_index_serves_built_bundle_with_token(server: LiveServer) -> None:
-    index = _get(f"{server.url}/").decode()
+    index = _get(f"{server.url}/?t={T}").decode()
     assert "<title>terminux</title>" in index
     # The placeholder is replaced with the live session token.
     assert "__TOKEN__" not in index
@@ -76,7 +76,7 @@ def test_index_serves_built_bundle_with_token(server: LiveServer) -> None:
 
 
 def test_security_headers_present(server: LiveServer) -> None:
-    with urllib.request.urlopen(f"{server.url}/") as r:  # noqa: S310
+    with urllib.request.urlopen(f"{server.url}/?t={T}") as r:  # noqa: S310
         headers = r.headers
     csp = headers.get("Content-Security-Policy")
     assert csp is not None
@@ -732,3 +732,21 @@ def test_paste_inherit_and_active_terminal(server: LiveServer, tmp_path: Any) ->
     ctl.paste_paths(["/a b/c.txt", "/d.txt"])
     ctl.paste_paths([])  # no-op, must not write
     assert written == [b"'/a b/c.txt' '/d.txt' "]
+
+
+def test_index_requires_token_but_assets_are_public(server: LiveServer) -> None:
+    """GET / embeds the session token in the HTML, so it must be gated —
+    an unauthenticated fetch of / would hand out the token and defeat
+    the auth entirely in web/remote mode. The content-hashed bundle
+    stays public (the page needs it before any JS runs)."""
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        urllib.request.urlopen(f"{server.url}/")  # noqa: S310
+    assert exc.value.code == 403
+
+    html = _get(f"{server.url}/?t={T}").decode()
+    assert T in html  # the authed load still receives the injected token
+
+    # /assets/* skips auth: a missing file 404s instead of 403ing.
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        urllib.request.urlopen(f"{server.url}/assets/nope.js")  # noqa: S310
+    assert exc.value.code == 404

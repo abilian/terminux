@@ -225,7 +225,12 @@ class AppState:
         return next((w for w in self.workspaces if w.id == ws_id), None)
 
     def remove_workspace(self, ws_id: str) -> list[str]:
-        """Remove a workspace; return the ids of its tabs (caller kills terminals)."""
+        """Remove a workspace; return the ids of its tabs (caller kills terminals).
+
+        Upholds the "≥ 1 workspace with ≥ 1 tab" invariant itself: removing
+        the last workspace respawns the default one, so no caller can ever
+        observe an empty state.
+        """
         ws = self.get_workspace(ws_id)
         if ws is None:
             return []
@@ -233,11 +238,18 @@ class AppState:
         for tid in tab_ids:
             self.tabs.pop(tid, None)
         self.workspaces = [w for w in self.workspaces if w.id != ws_id]
+        self.ensure_baseline()
         if self.active_workspace_id == ws_id:
-            self.active_workspace_id = (
-                self.workspaces[0].id if self.workspaces else None
-            )
+            self.active_workspace_id = self.workspaces[0].id
         return tab_ids
+
+    def ensure_baseline(self) -> None:
+        """Guarantee ≥ 1 workspace with ≥ 1 tab — the always-valid floor."""
+        if self.workspaces:
+            return
+        ws = self.add_workspace(name="workspace 1")
+        self.add_tab(ws.id)
+        self.set_active_workspace(ws.id)
 
     def set_active_workspace(self, ws_id: str) -> None:
         if self.get_workspace(ws_id) is None:
@@ -364,9 +376,7 @@ class AppState:
         # drop orphan tabs not referenced by any workspace
         referenced = {tid for ws in self.workspaces for tid in ws.tab_ids}
         self.tabs = {tid: t for tid, t in self.tabs.items() if tid in referenced}
-        if not self.workspaces:
-            ws = self.add_workspace(name="workspace 1")
-            self.add_tab(ws.id)
+        self.ensure_baseline()
         if self.get_workspace(self.active_workspace_id or "") is None:
             self.active_workspace_id = self.workspaces[0].id
         return self

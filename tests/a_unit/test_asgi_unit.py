@@ -62,8 +62,10 @@ def test_inherit_cwd_none_branches() -> None:
 
 
 def test_ensure_terminal_unknown_tab_returns_none() -> None:
+    import asyncio
+
     ctl = AppController(persist=False)
-    assert ctl.ensure_terminal("no-such-tab", 80, 24) is None
+    assert asyncio.run(ctl.ensure_terminal("no-such-tab", 80, 24)) is None
 
 
 def test_mark_activity_only_flags_the_tab_now() -> None:
@@ -203,23 +205,25 @@ def test_busy_to_idle_transition_flags_ready() -> None:
 
 
 def test_persist_true_loads_and_saves(monkeypatch) -> None:
-    # AppController binds load_state/save_state at import time in
+    # AppController binds load_state/save_state_json at import time in
     # terminux.server.controller — that's the module to monkeypatch.
     from terminux.server import controller
 
-    saved: list[AppState] = []
+    saved: list[dict] = []
     monkeypatch.setattr(controller, "load_state", AppState.default)
-    monkeypatch.setattr(controller, "save_state", lambda s: saved.append(s))
+    monkeypatch.setattr(controller, "save_state_json", lambda p: saved.append(p))
     ctl = AppController(persist=True)
     ctl.save()
-    assert saved and saved[0] is ctl.state
+    # save() serializes under the lock and writes outside it, so the hook
+    # receives the JSON snapshot, not the live AppState.
+    assert saved and saved[0] == ctl.state.to_json()
 
 
 def test_save_snapshots_live_cwd_so_it_persists(monkeypatch) -> None:
     from terminux.server import controller
 
     monkeypatch.setattr(controller, "load_state", AppState.default)
-    monkeypatch.setattr(controller, "save_state", lambda _s: None)
+    monkeypatch.setattr(controller, "save_state_json", lambda _p: None)
     ctl = AppController(persist=True)
     tab = ctl.state.tabs[ctl.state.workspaces[0].active_tab_id]
     tab.terminal_id = "term-1"

@@ -1,10 +1,19 @@
 """HTTP and WebSocket route handlers.
 
 A thin Starlette-shaped shell over ``AppController``. Every method
-either deny-checks the session token, mutates state under
-``ctl.lock``, and shapes the result into a JSON / plaintext response,
-or — for the PTY data plane — pumps bytes between an xterm WebSocket
-and the underlying ``Terminal`` subscriber.
+mutates state under ``ctl.lock`` and shapes the result into a JSON /
+plaintext response, or — for the PTY data plane — pumps bytes between
+an xterm WebSocket and the underlying ``Terminal`` subscriber.
+
+Auth: HTTP routes are token-gated centrally in
+``SecurityHeadersMiddleware`` (fail-closed); only the WebSocket route
+checks the token here, because ``BaseHTTPMiddleware`` never sees
+WebSocket connections.
+
+Locking: handlers hold ``ctl.lock`` only around in-memory mutation and
+call ``ctl.save()`` *after* releasing it — ``save()`` snapshots under
+its own brief lock and runs the disk write (fsync!) unlocked, so no
+lock is ever held across disk I/O.
 """
 
 from __future__ import annotations
@@ -24,7 +33,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from terminux.core.persistence import SCROLLBACK_MAX_BYTES
 from terminux.openurl import open_url_in_default_app
-from terminux.server.auth import SESSION_TOKEN, check_auth
+from terminux.server.auth import SESSION_TOKEN, check_auth, client_ip
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -37,19 +46,16 @@ if TYPE_CHECKING:
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 STATIC_DIR = WEB_DIR / "static"  # Vite build output (see frontend/)
 
+# Clamp bounds for client-supplied UI prefs.
+SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX = 120, 600
+FONT_SIZE_MIN, FONT_SIZE_MAX = 6, 32
+WIN_DIM_MIN = 200  # px; smaller would make the window unrecoverable
 
-def _client_ip(request: Request) -> str:
-    return request.client.host if request.client is not None else "unknown"
-
-
-def _ws_client_ip(ws: WebSocket) -> str:
-    return ws.client.host if ws.client is not None else "unknown"
-
-
-def _deny(request: Request) -> Response | None:
-    if not check_auth(request.query_params.get("t"), _client_ip(request)):
-        return PlainTextResponse("forbidden", status_code=403)
-    return None
+# Reject scrollback uploads well past the on-disk cap up front; anything
+# under this still gets tail-trimmed to SCROLLBACK_MAX_BYTES by the
+# persistence helper. The 2x headroom tolerates a client whose local
+# buffer briefly overshoots the cap between captures.
+SCROLLBACK_REJECT_BYTES = SCROLLBACK_MAX_BYTES * 2
 
 
 class Api:
@@ -67,26 +73,22 @@ class Api:
 
     # ----- control plane ------------------------------------------------
 
-    def get_state(self, request: Request) -> Response:
-        return _deny(request) or JSONResponse(self.ctl.state_view())
+    def get_state(self, _request: Request) -> Response:
+        return JSONResponse(self.ctl.state_view())
 
-    def create_workspace(self, request: Request) -> Response:
-        if (deny := _deny(request)) is not None:
-            return deny
+    def create_workspace(self, _request: Request) -> Response:
         # Display name tracks the shell's cwd (see _workspace_label); the
         # numbered name is just the fallback before a shell/cwd is known.
         with self.ctl.lock:
             ws = self.ctl.state.add_workspace()
             self.ctl.state.add_tab(ws.id)
             self.ctl.state.set_active_workspace(ws.id)
-            self.ctl.save()
+        self.ctl.save()
         return JSONResponse({"id": ws.id})
 
     async def patch_workspace(  # noqa: C901 — nested ``_apply`` inflates the count
         self, request: Request
     ) -> Response:
-        if (deny := _deny(request)) is not None:
-            return deny
         body: dict[str, Any] = await request.json()
         ws_id = request.path_params["ws_id"]
 
@@ -110,9 +112,11 @@ class Api:
                         if tab is not None:
                             tab.has_unseen_output = False
                 if "order" in body:
-                    order = [str(x) for x in body["order"]]
+                    # Unlisted workspaces (a stale client) sort after the
+                    # listed ones, preserving their relative order.
+                    pos = {str(x): i for i, x in enumerate(body["order"])}
                     self.ctl.state.workspaces.sort(
-                        key=lambda w: order.index(w.id) if w.id in order else 1_000_000,
+                        key=lambda w: pos.get(w.id, len(pos)),
                     )
                 if "tab_order" in body:
                     want = [str(x) for x in body["tab_order"]]
@@ -120,21 +124,20 @@ class Api:
                     # client omitted so no tab is ever lost on a stale reorder.
                     ordered = [t for t in want if t in ws.tab_ids]
                     ws.tab_ids = ordered + [t for t in ws.tab_ids if t not in ordered]
-                self.ctl.save()
-                return True
+            self.ctl.save()
+            return True
 
         if not await asyncio.to_thread(_apply):
             return JSONResponse({"error": "not found"}, status_code=404)
         return JSONResponse({"ok": True})
 
     def delete_workspace(self, request: Request) -> Response:
-        if (deny := _deny(request)) is not None:
-            return deny
         ws_id = request.path_params["ws_id"]
         with self.ctl.lock:
             # Collect terminal ids and tab ids BEFORE removal — remove_workspace
             # drops the tabs from state, so we need the references first (and a
             # deliberate close also drops the saved scrollback for each tab).
+            # remove_workspace itself guarantees ≥ 1 workspace remains.
             ws = self.ctl.state.get_workspace(ws_id)
             tab_ids: list[str] = list(ws.tab_ids) if ws is not None else []
             term_ids = [
@@ -148,28 +151,20 @@ class Api:
                 self.ctl.terminals.close(term_id)
             for tid in tab_ids:
                 self.ctl.delete_scrollback(tid)
-            if not self.ctl.state.workspaces:
-                ws = self.ctl.state.add_workspace(name="workspace 1")
-                self.ctl.state.add_tab(ws.id)
-                self.ctl.state.set_active_workspace(ws.id)
-            self.ctl.save()
+        self.ctl.save()
         return JSONResponse({"ok": True})
 
     def create_tab(self, request: Request) -> Response:
-        if (deny := _deny(request)) is not None:
-            return deny
         ws_id = request.path_params["ws_id"]
         with self.ctl.lock:
             spawn_cwd = self.ctl.inherit_cwd(ws_id)
             tab = self.ctl.state.add_tab(ws_id, spawn_cwd=spawn_cwd)
-            if tab is None:
-                return JSONResponse({"error": "not found"}, status_code=404)
-            self.ctl.save()
+        if tab is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        self.ctl.save()
         return JSONResponse({"id": tab.id})
 
     async def patch_tab(self, request: Request) -> Response:
-        if (deny := _deny(request)) is not None:
-            return deny
         body: dict[str, Any] = await request.json()
         tab_id = request.path_params["tab_id"]
 
@@ -185,25 +180,28 @@ class Api:
                 elif "osc_title" in body and not tab.user_set_title:
                     # OSC 0/2 from the shell — tracks unless the user pinned a name.
                     tab.title = str(body["osc_title"]).strip() or tab.title
-                self.ctl.save()
-                return True
+            self.ctl.save()
+            return True
 
         if not await asyncio.to_thread(_apply):
             return JSONResponse({"error": "not found"}, status_code=404)
         return JSONResponse({"ok": True})
 
-    async def patch_ui(self, request: Request) -> Response:  # noqa: C901
-        if (deny := _deny(request)) is not None:
-            return deny
+    async def patch_ui(self, request: Request) -> Response:
         body: dict[str, Any] = await request.json()
 
         def _apply() -> None:
             with self.ctl.lock:
                 ui = self.ctl.state.ui
                 if "sidebar_width" in body:
-                    ui.sidebar_width = max(120, min(600, int(body["sidebar_width"])))
+                    ui.sidebar_width = max(
+                        SIDEBAR_WIDTH_MIN,
+                        min(SIDEBAR_WIDTH_MAX, int(body["sidebar_width"])),
+                    )
                 if "font_size" in body:
-                    ui.font_size = max(6, min(32, int(body["font_size"])))
+                    ui.font_size = max(
+                        FONT_SIZE_MIN, min(FONT_SIZE_MAX, int(body["font_size"]))
+                    )
                 for k in (
                     "sidebar_collapsed",
                     "copy_on_select",
@@ -214,18 +212,16 @@ class Api:
                         setattr(ui, k, bool(body[k]))
                 for k in ("win_w", "win_h"):
                     if k in body:
-                        setattr(ui, k, max(200, int(body[k])))
+                        setattr(ui, k, max(WIN_DIM_MIN, int(body[k])))
                 for k in ("win_x", "win_y"):
                     if k in body:
                         setattr(ui, k, None if body[k] is None else int(body[k]))
-                self.ctl.save()
+            self.ctl.save()
 
         await asyncio.to_thread(_apply)
         return JSONResponse({"ok": True})
 
     def delete_tab(self, request: Request) -> Response:
-        if (deny := _deny(request)) is not None:
-            return deny
         tab_id = request.path_params["tab_id"]
         with self.ctl.lock:
             tab = self.ctl.state.tabs.get(tab_id)
@@ -235,12 +231,10 @@ class Api:
             # Deliberate close drops the captured scrollback too; restart-in-place
             # uses the dedicated DELETE /scrollback endpoint.
             self.ctl.delete_scrollback(tab_id)
-            self.ctl.save()
+        self.ctl.save()
         return JSONResponse({"ok": True})
 
     async def get_scrollback(self, request: Request) -> Response:
-        if (deny := _deny(request)) is not None:
-            return deny
         tab_id = request.path_params["tab_id"]
 
         def _load() -> str | None:  # None signals "tab not found"
@@ -255,13 +249,9 @@ class Api:
         return PlainTextResponse(content)
 
     async def put_scrollback(self, request: Request) -> Response:
-        if (deny := _deny(request)) is not None:
-            return deny
         tab_id = request.path_params["tab_id"]
         body = await request.body()
-        if len(body) > SCROLLBACK_MAX_BYTES * 2:
-            # Reject obviously-oversized payloads up front; the helper still
-            # tail-trims to the on-disk cap.
+        if len(body) > SCROLLBACK_REJECT_BYTES:
             return JSONResponse({"error": "too large"}, status_code=413)
         decoded = body.decode("utf-8", errors="replace")
 
@@ -280,32 +270,20 @@ class Api:
         return JSONResponse({"ok": True})
 
     async def delete_scrollback(self, request: Request) -> Response:
-        if (deny := _deny(request)) is not None:
-            return deny
         tab_id = request.path_params["tab_id"]
         await asyncio.to_thread(self.ctl.delete_scrollback, tab_id)
         return JSONResponse({"ok": True})
 
-    async def reset_activity(self, request: Request) -> Response:
-        if (deny := _deny(request)) is not None:
-            return deny
-
-        def _apply() -> None:
-            # ctl.reset_activity itself is in-memory only, but it still
-            # competes for ``ctl.lock`` — taking the lock from a worker
-            # thread keeps the asyncio loop free if the lock is contested.
-            with self.ctl.lock:
-                self.ctl.reset_activity()
-
-        await asyncio.to_thread(_apply)
+    async def reset_activity(self, _request: Request) -> Response:
+        # In-memory only, but it competes for ``ctl.lock`` — run it in a
+        # worker thread so the asyncio loop stays free if the lock is held.
+        await asyncio.to_thread(self.ctl.reset_activity)
         return JSONResponse({"ok": True})
 
     async def open_url(  # noqa: PLR6301 — uniform Route handler shape across Api
         self,
         request: Request,
     ) -> Response:
-        if (deny := _deny(request)) is not None:
-            return deny
         body: dict[str, Any] = await request.json()
         url = str(body.get("url", "")).strip()
         if not url:
@@ -324,8 +302,6 @@ class Api:
         the client POSTs here so the same affordance works against a
         remote backend.
         """
-        if (deny := _deny(request)) is not None:
-            return deny
         body: dict[str, Any] = await request.json()
         raw = body.get("paths")
         if not isinstance(raw, list):
@@ -337,16 +313,13 @@ class Api:
         return JSONResponse({"ok": True})
 
     async def spawn(self, request: Request) -> Response:
-        if (deny := _deny(request)) is not None:
-            return deny
         body: dict[str, Any] = await request.json()
         # Serialize PTY creation: concurrent openpty+spawn can stall output
-        # pipes under rapid tab creation (technical spec §8). NOTE: we do
-        # *not* offload ensure_terminal to a worker thread — ``Terminal``
-        # constructs an asyncio reader via ``add_reader`` which requires
-        # the running loop to be in the calling thread.
+        # pipes under rapid tab creation (technical spec §8). The fork/exec
+        # itself runs in a worker thread inside ensure_terminal; only the
+        # ``add_reader`` registration happens here on the loop.
         async with self.ctl.spawn_lock:
-            term = self.ctl.ensure_terminal(
+            term = await self.ctl.ensure_terminal(
                 request.path_params["tab_id"],
                 int(body.get("cols", 80)),
                 int(body.get("rows", 24)),
@@ -358,7 +331,7 @@ class Api:
     # ----- data plane ---------------------------------------------------
 
     async def pty_ws(self, ws: WebSocket) -> None:
-        if not check_auth(ws.query_params.get("t"), _ws_client_ip(ws)):
+        if not check_auth(ws.query_params.get("t"), client_ip(ws)):
             await ws.close(code=4403)
             return
         term = self.ctl.terminals.get(ws.path_params["terminal_id"])

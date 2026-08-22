@@ -30,7 +30,15 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from starlette.requests import HTTPConnection
+
 log = logging.getLogger(__name__)
+
+
+def client_ip(conn: HTTPConnection) -> str:
+    """Peer IP of an HTTP request or WebSocket (both are HTTPConnections)."""
+    return conn.client.host if conn.client is not None else "unknown"
+
 
 _ALPHABET = string.ascii_lowercase
 _GROUPS = 3
@@ -41,6 +49,13 @@ TOKEN_RE = re.compile(
 
 MAX_FAILURES = 10
 LOCKOUT_SECONDS = 60.0
+
+# Loopback clients are exempt from the lockout: they all share one IP, so a
+# single stale client (e.g. a browser tab from a previous session polling
+# with the old token) would lock out the legitimate desktop window — a
+# self-DoS. The lockout defends *network* exposure; a local attacker can
+# read the token from the process listing anyway.
+_LOOPBACK_IPS = frozenset({"127.0.0.1", "::1"})
 
 
 def _new_token() -> str:
@@ -79,8 +94,11 @@ def check_auth(supplied: str | None, client_ip: str) -> bool:
 
     Returns ``False`` if the token is wrong OR the IP is currently locked
     out for too many recent failures. Successful auth clears the IP's
-    failure history.
+    failure history. Loopback IPs skip the lockout entirely (see
+    ``_LOOPBACK_IPS``).
     """
+    if client_ip in _LOOPBACK_IPS:
+        return token_ok(supplied)
     now = time.monotonic()
     with _attempts_lock:
         attempts = _purge_old(_failed_attempts.get(client_ip, []), now)

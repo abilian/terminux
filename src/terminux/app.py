@@ -11,6 +11,7 @@ import contextlib
 import faulthandler
 import json
 import logging
+import re
 import signal
 import socket
 import sys
@@ -72,6 +73,22 @@ def _serve(server: uvicorn.Server) -> None:
     server.run()
 
 
+def _wait_until_started(
+    server: uvicorn.Server, thread: threading.Thread, bind: str
+) -> None:
+    """Block until uvicorn is accepting connections.
+
+    If the server thread dies first (port already in use, bad bind
+    address), exit with an error instead of spinning forever on a
+    ``started`` flag that will never flip.
+    """
+    while not server.started:
+        if not thread.is_alive():
+            msg = f"server failed to start on {bind} — is the port already in use?"
+            raise SystemExit(msg)
+        time.sleep(0.02)
+
+
 def _install_freeze_diagnostics() -> None:
     """Dump every thread's Python traceback to stderr on SIGUSR1 (or SIGINFO
     on BSDs / macOS, raised by Ctrl-T at a terminal). The next time the
@@ -106,6 +123,24 @@ def _configure_logging(*, debug: bool, trace: bool) -> None:
         logging.basicConfig(
             level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
         )
+    # Every request URL carries ``?t=<token>``; without this, enabling
+    # access logs (--debug/--trace) would write the token — persistent in
+    # --server mode — into the logs on every line.
+    logging.getLogger("uvicorn.access").addFilter(_RedactTokenFilter())
+
+
+class _RedactTokenFilter(logging.Filter):
+    """Scrub ``t=<token>`` from uvicorn access-log lines."""
+
+    _TOKEN = re.compile(r"([?&]t=)[^&\s\"]+")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(
+                self._TOKEN.sub(r"\1***", a) if isinstance(a, str) else a
+                for a in record.args
+            )
+        return True
 
 
 def main() -> None:
@@ -161,12 +196,16 @@ def main() -> None:
 
     _configure_logging(debug=args.debug or args.trace, trace=args.trace)
     _install_freeze_diagnostics()
-    start_watchdog()
 
     # ----- client mode: no local backend, just a window onto a remote ---
     if args.connect:
+        # No watchdog here: it monitors the local server's asyncio
+        # heartbeat, and client mode runs no local server — arming it
+        # would warn every 10 s about a loop that doesn't exist.
         _run_connected(args.connect)
         return
+
+    start_watchdog()
 
     # ----- server side: persist the token if we're in --server / --no-window
     headless = args.server or args.no_window
@@ -189,8 +228,7 @@ def main() -> None:
 
     thread = threading.Thread(target=_serve, args=(server,), daemon=True)
     thread.start()
-    while not server.started:
-        time.sleep(0.02)
+    _wait_until_started(server, thread, f"{args.host}:{port}")
 
     shown_host = "127.0.0.1" if args.host in {"0.0.0.0", "::"} else args.host  # noqa: S104
     url = f"http://{shown_host}:{port}/?t={token}"

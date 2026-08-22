@@ -15,6 +15,7 @@ import os
 import re
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import platformdirs
 
@@ -52,6 +53,22 @@ def _scrollback_file(tab_id: str, base: Path | None = None) -> Path | None:
     return scrollback_dir(base) / f"{tab_id}.ansi"
 
 
+def _atomic_write(path: Path, data: bytes, *, prefix: str, label: str) -> None:
+    """Write ``data`` to ``path`` atomically (temp file + fsync + replace)."""
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=prefix, suffix=".tmp")
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        tmp_path.replace(path)
+    except OSError:
+        log.exception("failed to persist %s", label)
+        with contextlib.suppress(OSError):
+            tmp_path.unlink(missing_ok=True)
+
+
 def save_scrollback(tab_id: str, content: str, base: Path | None = None) -> None:
     """Atomically persist a tab's serialized buffer, bounded to SCROLLBACK_MAX_BYTES.
 
@@ -65,22 +82,9 @@ def save_scrollback(tab_id: str, content: str, base: Path | None = None) -> None
     if len(data) > SCROLLBACK_MAX_BYTES:
         data = data[-SCROLLBACK_MAX_BYTES:]
     with time_op(f"save_scrollback[{tab_id[:8]} {len(data) // 1024}KB]"):
-        fd, tmp_name = tempfile.mkstemp(
-            dir=path.parent,
-            prefix=".scrollback-",
-            suffix=".tmp",
+        _atomic_write(
+            path, data, prefix=".scrollback-", label=f"scrollback for {tab_id}"
         )
-        tmp_path = Path(tmp_name)
-        try:
-            with os.fdopen(fd, "wb") as fh:
-                fh.write(data)
-                fh.flush()
-                os.fsync(fh.fileno())
-            tmp_path.replace(path)
-        except OSError:
-            log.exception("failed to persist scrollback for %s", tab_id)
-            with contextlib.suppress(OSError):
-                tmp_path.unlink(missing_ok=True)
 
 
 def load_scrollback(tab_id: str, base: Path | None = None) -> str | None:
@@ -123,23 +127,20 @@ def load_state(path: Path | None = None) -> AppState:
     return AppState.default()
 
 
-def save_state(state: AppState, path: Path | None = None) -> None:
-    """Write state atomically (temp file + os.replace)."""
+def save_state_json(payload: dict[str, Any], path: Path | None = None) -> None:
+    """Write an already-serialized state snapshot atomically.
+
+    Split from ``save_state`` so callers can build the snapshot under a
+    lock and run the disk write (fsync!) outside it — a lock held across
+    fsync stalls anyone else waiting on it, including the event loop.
+    """
     path = path or state_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(state.to_json(), indent=2)
-    with time_op(f"save_state[{len(payload) // 1024}KB]"):
-        fd, tmp_name = tempfile.mkstemp(
-            dir=path.parent, prefix=".state-", suffix=".tmp"
-        )
-        tmp_path = Path(tmp_name)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                fh.write(payload)
-                fh.flush()
-                os.fsync(fh.fileno())
-            tmp_path.replace(path)
-        except OSError:
-            log.exception("failed to persist state to %s", path)
-            with contextlib.suppress(OSError):
-                tmp_path.unlink(missing_ok=True)
+    data = json.dumps(payload, indent=2).encode("utf-8")
+    with time_op(f"save_state[{len(data) // 1024}KB]"):
+        _atomic_write(path, data, prefix=".state-", label=f"state to {path}")
+
+
+def save_state(state: AppState, path: Path | None = None) -> None:
+    """Write state atomically (temp file + os.replace)."""
+    save_state_json(state.to_json(), path)

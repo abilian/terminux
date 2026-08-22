@@ -1,4 +1,10 @@
-"""HTTP hardening headers (§6).
+"""HTTP auth gate + hardening headers (§6).
+
+Every HTTP route is token-guarded here, fail-closed — a new route can't
+forget its auth check. Only the content-hashed static assets are public
+(they contain no secrets and are needed before any JS runs). The PTY
+WebSocket route never passes through this middleware (Starlette's
+``BaseHTTPMiddleware`` sees HTTP only) and does its own ``check_auth``.
 
 A loopback-only, token-guarded server doesn't strictly need CSP for
 security — there's no remote origin to mix with — but pinning script
@@ -11,12 +17,19 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
+
+from terminux.server.auth import check_auth, client_ip
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from starlette.requests import Request
     from starlette.responses import Response
+
+# Paths served without a token: the immutable, content-hashed Vite bundle.
+# ``/`` is NOT public — its response embeds the session token.
+_PUBLIC_PREFIXES = ("/assets/",)
 
 
 # Restrictive CSP: only same-origin bundled assets and the same-origin
@@ -38,14 +51,20 @@ _CSP = (
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Attach CSP and hardening headers to every HTTP response."""
+    """Token-gate every HTTP route and attach CSP/hardening headers."""
 
     async def dispatch(  # noqa: PLR6301 (BaseHTTPMiddleware override must be a method)
         self,
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        response = await call_next(request)
+        path = request.url.path
+        if not path.startswith(_PUBLIC_PREFIXES) and not check_auth(
+            request.query_params.get("t"), client_ip(request)
+        ):
+            response: Response = JSONResponse({"error": "forbidden"}, status_code=403)
+        else:
+            response = await call_next(request)
         response.headers["Content-Security-Policy"] = _CSP
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"

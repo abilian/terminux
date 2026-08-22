@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import time
 import types
 
 import terminux.__main__  # noqa: F401  (import executes module body for coverage)
@@ -33,20 +34,16 @@ def _patch_common(monkeypatch) -> None:
 
 
 class _SlowStartServer(_FakeServer):
-    """`started` flips to True only after the first poll (covers the wait)."""
+    """Starts after a short delay, like real uvicorn: ``run`` blocks until
+    ``started`` flips, so the wait loop sees a live thread while polling."""
 
     def __init__(self, *a, **k) -> None:
         super().__init__(*a, **k)
-        self._polls = 0
+        self.started = False
 
-    @property  # type: ignore[override]
-    def started(self) -> bool:
-        self._polls += 1
-        return self._polls > 1
-
-    @started.setter
-    def started(self, _v: bool) -> None:
-        pass
+    def run(self) -> None:
+        time.sleep(0.06)
+        self.started = True
 
 
 def test_main_no_window(monkeypatch) -> None:

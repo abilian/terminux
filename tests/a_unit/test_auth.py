@@ -86,6 +86,18 @@ def test_check_auth_lockout_is_per_ip() -> None:
     assert check_auth(SESSION_TOKEN, good) is True
 
 
+def test_check_auth_loopback_exempt_from_lockout() -> None:
+    """Loopback clients all share one IP, so a stale client (old browser
+    tab polling with a dead token) must not lock out the legitimate
+    window. Wrong tokens still fail; the correct token always passes."""
+    _reset_rate_limiter()
+    for ip in ("127.0.0.1", "::1"):
+        for _ in range(MAX_FAILURES * 2):
+            assert check_auth("wrong", ip) is False
+        assert check_auth(SESSION_TOKEN, ip) is True
+        assert ip not in auth._failed_attempts
+
+
 def test_check_auth_failures_age_out(monkeypatch) -> None:
     """Failures older than LOCKOUT_SECONDS are discarded on the next check."""
     _reset_rate_limiter()

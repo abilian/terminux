@@ -70,8 +70,20 @@ def test_remove_workspace_drops_its_tabs() -> None:
     tab_ids = list(ws.tab_ids)
     out = s.remove_workspace(ws.id)
     assert out == tab_ids
-    assert s.tabs == {}
-    assert s.active_workspace_id is None
+    assert all(tid not in s.tabs for tid in tab_ids)
+
+
+def test_remove_last_workspace_respawns_baseline() -> None:
+    """The model itself upholds "≥ 1 workspace with ≥ 1 tab" — removing
+    the last workspace leaves a fresh default one, active and tabbed."""
+    s = AppState.default()
+    only = s.workspaces[0]
+    s.remove_workspace(only.id)
+    assert len(s.workspaces) == 1
+    fresh = s.workspaces[0]
+    assert fresh.id != only.id
+    assert fresh.tab_ids
+    assert s.active_workspace_id == fresh.id
 
 
 def test_set_active_workspace_invalid_noop() -> None:
