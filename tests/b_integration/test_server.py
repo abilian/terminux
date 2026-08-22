@@ -82,6 +82,12 @@ def test_security_headers_present(server: LiveServer) -> None:
     assert csp is not None
     assert "default-src 'none'" in csp
     assert "connect-src 'self'" in csp
+    # Older WebKit/Firefox don't count same-origin ws under 'self' — the ws
+    # origin must be named explicitly or the PTY socket is refused
+    # (observed on macOS Big Sur's WKWebView).
+    host = server.url.removeprefix("http://")
+    assert f"ws://{host}" in csp
+    assert f"wss://{host}" in csp
     # Regression guard: pywebview's evaluate_js needs 'unsafe-eval'.
     assert "'unsafe-eval'" in csp
     assert headers.get("X-Frame-Options") == "DENY"

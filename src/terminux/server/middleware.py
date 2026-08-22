@@ -14,6 +14,7 @@ catches accidental misconfigurations early.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -49,6 +50,26 @@ _CSP = (
     "form-action 'none'"
 )
 
+# Conservative shape for a Host header (hostname/IPv4/[IPv6] + optional
+# port). Anything else is left out of the CSP rather than injected into a
+# header the client influences.
+_HOST_OK = re.compile(r"^[A-Za-z0-9.\-]+(:\d{1,5})?$|^\[[0-9A-Fa-f:]+\](:\d{1,5})?$")
+
+
+def _csp_for_host(host: str | None) -> str:
+    """CSP with the origin's ws/wss named explicitly in ``connect-src``.
+
+    CSP3 says ``'self'`` covers same-origin WebSockets, and modern engines
+    agree — but older WebKit (macOS ≤ Big Sur) and older Firefox demand the
+    ``ws:`` origin spelled out, silently refusing the PTY socket otherwise.
+    """
+    if not host or not _HOST_OK.match(host):
+        return _CSP
+    return _CSP.replace(
+        "connect-src 'self'",
+        f"connect-src 'self' ws://{host} wss://{host}",
+    )
+
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Token-gate every HTTP route and attach CSP/hardening headers."""
@@ -65,7 +86,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response: Response = JSONResponse({"error": "forbidden"}, status_code=403)
         else:
             response = await call_next(request)
-        response.headers["Content-Security-Policy"] = _CSP
+        response.headers["Content-Security-Policy"] = _csp_for_host(
+            request.headers.get("host")
+        )
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"

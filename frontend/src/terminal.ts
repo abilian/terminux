@@ -163,9 +163,16 @@ async function connect(
   }
 
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  const ws = new WebSocket(
-    `${proto}://${location.host}/pty/${terminalId}?t=${window.TERMINUX_TOKEN}`,
-  );
+  let ws: WebSocket;
+  try {
+    ws = new WebSocket(
+      `${proto}://${location.host}/pty/${terminalId}?t=${window.TERMINUX_TOKEN}`,
+    );
+  } catch {
+    // e.g. a CSP refusal throws synchronously (SecurityError) — retryable,
+    // never fatal to the session.
+    return "fail";
+  }
   ws.binaryType = "arraybuffer";
   sess.ws = ws;
 

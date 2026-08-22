@@ -580,3 +580,14 @@ def test_note_input_sets_last_input() -> None:
     # a tick at the same instant.
     ctl.tick(1.0, now=ctl._last_input_at)
     assert ctl.active_seconds(ws_id) == 1
+
+
+def test_csp_names_ws_origin_and_rejects_hostile_host() -> None:
+    from terminux.server.middleware import _CSP, _csp_for_host
+
+    assert "ws://127.0.0.1:8443 wss://127.0.0.1:8443" in _csp_for_host("127.0.0.1:8443")
+    assert "ws://[::1]:8443" in _csp_for_host("[::1]:8443")
+    # A hostile Host header must not be able to inject CSP directives.
+    assert _csp_for_host("evil; script-src *") == _CSP
+    assert _csp_for_host("") == _CSP
+    assert _csp_for_host(None) == _CSP
