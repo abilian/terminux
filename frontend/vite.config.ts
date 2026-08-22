@@ -9,7 +9,12 @@ export default defineConfig({
     outDir: "../src/terminux/web/static",
     emptyOutDir: true,
     assetsDir: "assets",
-    target: "es2022",
+    // Support floor: the WKWebView of the oldest macOS we serve (Big Sur ≈
+    // Safari 14) — desktop windows and --connect clients run whatever WebKit
+    // the OS ships, and remote-mode browsers can be old too. Keep this (and
+    // dependency floors — xterm is pinned to the 5.x line for the same
+    // reason) below anything that would silently drop those machines.
+    target: ["es2020", "safari14"],
     sourcemap: false,
   },
 });

@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Added
 
+- **`--debug` now also opens the door to frontend debugging** in the desktop window: right-click → Inspect Element brings up the web inspector.
 - **Remote access.** Run terminux on one machine and use it from another. Start `terminux --server` on the host and `terminux --connect <url>` on your laptop: you get the normal desktop window, but every shell lives on the server — long-running builds keep going while you close the lid, change networks, or switch devices. Access is protected by a short persistent code (`abc-def-ghi` style, rate-limited against guessing); the recommended setup keeps the server private behind an SSH port-forward. Dragging files into a remote window pastes their paths, same as locally. Full guide: `docs/remote.md`.
 
 ### Fixed
@@ -17,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **A stale browser tab can no longer lock you out.** Requests with an outdated code from your own machine could trip the brute-force guard and block the real window for a minute at a time. Local connections are now exempt from the lockout, which still protects servers exposed to a network.
 - **Starting on a port that's already in use now fails with a clear error** instead of hanging forever with no output.
 - **Access codes no longer appear in request logs** when running with `--debug` or `--trace`.
+- **Terminals open again on older Macs.** A dependency upgrade silently raised the frontend's minimum browser requirement past the WebKit that older macOS versions ship, so on e.g. Big Sur the desktop window could create tabs but never open a shell in them ("(exited)"). The terminal library is pinned back to its proven line and the build now explicitly targets Safari-14-era WebKit — the floor for the oldest macOS terminux serves, whether as a desktop app, a `--connect` client, or a browser.
 - **Terminals now reconnect automatically.** A lost connection — a backend stall, a network blip, a laptop waking from sleep — used to leave tabs permanently dead even though the shells were fine; the only cure was reopening the app. Each terminal now shows "[connection lost — reconnecting…]", redials with backoff until the server answers, and repaints from the server's output buffer. This is what makes remote mode's "disconnect and come back later" actually hold.
 
 ### Internal
