@@ -13,10 +13,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Pasting can no longer freeze the app.** Pasting a large block of text into a program that wasn't reading input (an editor mid-redraw, a stopped pager, a busy REPL) could freeze *every* terminal and the whole UI, sometimes permanently. Now at most the terminal you pasted into waits; everything else stays live.
 - **Rare freeze of all terminals while idle.** A timing edge in how terminal output was read could lock up the whole app even with no user action. This class of freeze is now structurally impossible: reading terminal output can no longer stall the server.
 - **Very large pastes could be silently truncated.** The tail of a paste could be dropped when the terminal accepted it in chunks; every byte is now delivered.
+- **Web/remote mode: the page no longer reveals the access code.** Fetching the app's address without a valid code used to return the page with the code embedded in it — anyone who could reach the port could let themselves in. Every route now requires the code; your own links (which always carry it) are unaffected.
+- **A stale browser tab can no longer lock you out.** Requests with an outdated code from your own machine could trip the brute-force guard and block the real window for a minute at a time. Local connections are now exempt from the lockout, which still protects servers exposed to a network.
+- **Starting on a port that's already in use now fails with a clear error** instead of hanging forever with no output.
+- **Access codes no longer appear in request logs** when running with `--debug` or `--trace`.
 
 ### Internal
 
-- Terminal I/O is now non-blocking end to end. For anyone stuck on an older build, `notes/05-lessons-learned.md` documents how to unfreeze a live server without killing it.
+- Terminal I/O is now non-blocking end to end; the controller never holds its state lock across a disk write, and new shells are forked off the event loop — closing the remaining freeze vectors found in a full audit. For anyone stuck on an older build, `notes/05-lessons-learned.md` documents how to unfreeze a live server without killing it.
 
 ## [0.7.1] - 2026-06-03
 
