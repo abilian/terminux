@@ -7,7 +7,7 @@ import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 
-import { api } from "./api";
+import { api, TOKEN } from "./api";
 import { macEditingSeq } from "./editing";
 import { getFontSize } from "./font";
 import { createKitty } from "./kitty";
@@ -97,7 +97,7 @@ async function fetchScrollback(tid: string): Promise<SavedScrollback | null> {
 
 function persistScrollback(tid: string, content: string): void {
   // keepalive lets the request outlive a page hide / unload.
-  void fetch(`/api/tabs/${tid}/scrollback?t=${window.TERMINUX_TOKEN}`, {
+  void api(`/tabs/${tid}/scrollback`, {
     method: "PUT",
     headers: { "Content-Type": "text/plain" },
     body: content,
@@ -106,9 +106,23 @@ function persistScrollback(tid: string, content: string): void {
 }
 
 function discardScrollback(tid: string): void {
-  void fetch(`/api/tabs/${tid}/scrollback?t=${window.TERMINUX_TOKEN}`, {
-    method: "DELETE",
-  }).catch(() => {});
+  void api(`/tabs/${tid}/scrollback`, { method: "DELETE" }).catch(() => {});
+}
+
+// Shared by OSC 8 hyperlinks and regex-detected plain-text URLs: require a
+// modifier to open, matching iTerm2 / Terminal.app conventions so a stray
+// click can't navigate (Cmd+click on macOS, Ctrl+click on Linux — Ctrl+click
+// on macOS is the platform context-menu chord, left alone). Routed through
+// the backend because pywebview's WKWebView ignores JS window.open(); the
+// same handler then also works in --no-window mode. The backend rejects
+// every scheme but http/https/mailto, which is what makes program-printed
+// OSC 8 URIs safe to open without a confirm popup.
+function openLink(event: MouseEvent, uri: string): void {
+  if (!appMod(event)) return;
+  void api("/open-url", {
+    method: "POST",
+    body: JSON.stringify({ url: uri }),
+  });
 }
 
 export function disposeSession(tid: string): void {
@@ -166,7 +180,7 @@ async function connect(
   let ws: WebSocket;
   try {
     ws = new WebSocket(
-      `${proto}://${location.host}/pty/${terminalId}?t=${window.TERMINUX_TOKEN}`,
+      `${proto}://${location.host}/pty/${terminalId}?t=${TOKEN}`,
     );
   } catch {
     // e.g. a CSP refusal throws synchronously (SecurityError) — retryable,
@@ -246,7 +260,23 @@ async function reconnectLoop(tid: string, sess: Session): Promise<void> {
   sess.reconnecting = false;
 }
 
+// Tabs with an openTerminal in flight. The session lands in `sessions` only
+// after awaits (scrollback fetch, replay), so without this guard two rapid
+// activations of the same tab would both pass the `!sessions.has(tid)` check
+// and open twice — leaking the first xterm, its host div, and its socket.
+const opening = new Set<string>();
+
 async function openTerminal(tid: string, restore = true): Promise<void> {
+  if (opening.has(tid) || sessions.has(tid)) return;
+  opening.add(tid);
+  try {
+    await doOpenTerminal(tid, restore);
+  } finally {
+    opening.delete(tid);
+  }
+}
+
+async function doOpenTerminal(tid: string, restore: boolean): Promise<void> {
   const host = document.createElement("div");
   host.className = "term-host";
   document.getElementById("terminals")?.appendChild(host);
@@ -264,6 +294,11 @@ async function openTerminal(tid: string, restore = true): Promise<void> {
     cols: saved?.cols,
     rows: saved?.rows,
     theme: { background: "#1a1b26", foreground: "#c0caf5" },
+    // OSC 8 hyperlinks (a program printed an explicit link, e.g. Claude
+    // Code's artifact URLs). Without this, xterm's built-in fallback
+    // confirm()s a scary warning and then window.open()s — a no-op in
+    // pywebview's WKWebView, so the link dead-ends after the popup.
+    linkHandler: { activate: openLink },
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
@@ -271,21 +306,8 @@ async function openTerminal(tid: string, restore = true): Promise<void> {
   term.loadAddon(search);
   const serialize = new SerializeAddon();
   term.loadAddon(serialize);
-  // URLs are highlighted on hover; require a modifier to open, matching
-  // iTerm2 / Terminal.app conventions so a stray click can't navigate.
-  // Routed through the backend because pywebview's WKWebView ignores JS
-  // window.open() — the same handler then also works in --no-window mode.
-  term.loadAddon(
-    new WebLinksAddon((event, uri) => {
-      // Cmd+click on macOS, Ctrl+click on Linux — Ctrl+click on macOS is
-      // the platform context-menu chord, deliberately left alone.
-      if (!appMod(event)) return;
-      void api("/open-url", {
-        method: "POST",
-        body: JSON.stringify({ url: uri }),
-      });
-    }),
-  );
+  // Plain-text URLs are highlighted on hover and share the same handler.
+  term.loadAddon(new WebLinksAddon(openLink));
 
   // Per the SerializeAddon docs, replay BEFORE term.open: the parser fills
   // the buffer first, then rendering starts on a settled state — and the
