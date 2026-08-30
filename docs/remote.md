@@ -2,7 +2,7 @@
 
 Run terminux on one machine (a headless server, a desktop tower, a NUC,
 a Raspberry Pi) and connect from another (your laptop). Your shells live
-on the server — long-running builds keep going while you switch
+on the server: long-running builds keep going while you switch
 networks, sleep your laptop, or move to a different room.
 
 The architecture is intentionally thin:
@@ -34,7 +34,7 @@ the server bound to loopback:
     The token is persisted to
     `~/.local/share/terminux/server.token` (Linux) or
     `~/Library/Application Support/terminux/server.token` (macOS) with
-    mode `0600`. The same URL keeps working across server restarts —
+    mode `0600`. The same URL keeps working across server restarts;
     bookmark it.
 
 === "On the client (one shell)"
@@ -50,13 +50,12 @@ the server bound to loopback:
     uv run terminux --connect http://localhost:8443/?t=abc-def-ghi
     ```
 
-    A native terminux window opens. Workspaces, tabs, scrollback —
-    everything you see — lives on the server. The window is just a
+    A native terminux window opens. Workspaces, tabs, scrollback:
+    everything you see lives on the server. The window is just a
     viewer.
 
-That's the whole story for the common case. No new ports to open, no
-TLS certificates to manage, no auth plumbing — SSH already solved every
-hard part.
+That completes the common case. SSH already solved the hard parts, so
+there are no new ports, certificates, or auth layers to manage.
 
 ## Multiple clients
 
@@ -65,22 +64,22 @@ PTY, so opening a second `--connect` window from a phone or a second
 laptop attaches to the same shells. Typing in one window is visible in
 all of them, like `tmux attach` from multiple sessions.
 
-## What survives, what doesn't
+## What lives where
 
-Lives on the **server** (survives client disconnect, sleep, reboot of
-the client):
+State on the **server**, kept across client disconnects, sleeps, and
+client reboots:
 
 - Workspaces, tabs, their working directories
 - Live shells and the processes they're running
 - Scrollback (up to 2 MB per tab, replayed on reconnect)
 - Sidebar order, font size, UI prefs
 
-Lives on the **client** (each connection):
+State on the **client**, per connection:
 
-- Window position and size — uses defaults each launch. Per-client
+- Window position and size: each launch uses the defaults. Per-client
   geometry persistence is not implemented in v1.
-- Selection, the fuzzy-switcher's currently-typed query, etc. — normal
-  in-page state that resets when the window closes.
+- Selection, the fuzzy-switcher's typed query, and other in-page state,
+  which reset when the window closes.
 
 ## File drag-and-drop
 
@@ -88,7 +87,7 @@ Dropping a file from Finder / Files / your file manager onto a tab works
 the same way in `--connect` mode as it does locally. Under the hood the
 client POSTs the dropped path(s) to `POST /api/paste-paths` on the
 server, which writes the shell-quoted path to the currently active
-terminal — same UX, same shell quoting, just one HTTP round trip.
+terminal: the same UX and shell quoting, plus one HTTP round trip.
 
 ## Bypassing SSH: `--host 0.0.0.0`
 
@@ -116,24 +115,24 @@ ship TLS support and intentionally keeps the token short.
 |---|---|---|
 | SSH tunnel + loopback (default) | Fine: token guards a loopback-bound port | Any remote use over the open internet |
 | `--host 0.0.0.0` on a trusted LAN / VPN | Fine: 43 bits + per-IP lockout | Home network, Tailscale, WireGuard |
-| `--host 0.0.0.0` on the open internet | **Not enough** — front it with a real auth layer | Avoid unless you've layered something in front |
+| `--host 0.0.0.0` on the open internet | **Not enough**: front it with a real auth layer | Avoid unless you've layered something in front |
 
 ## Lifecycle / running it as a service
 
 terminux doesn't ship with a daemonizer. On a personal server, the
 simplest options are:
 
-- **systemd user service** — a single `WantedBy=default.target` unit
-  that runs `uv run terminux --server`. The token file survives the
-  service restart, so your bookmarked URL keeps working.
-- **tmux session** — `tmux new-session -d -s terminux 'uv run terminux
-  --server'`. Trivial; survives logout.
-- **macOS launchd** — a per-user `LaunchAgent` plist if you want it to
+- **systemd user service**: a single `WantedBy=default.target` unit
+  that runs `uv run terminux --server`. The token file persists across
+  service restarts, so your bookmarked URL keeps working.
+- **tmux session**: `tmux new-session -d -s terminux 'uv run terminux
+  --server'`. Trivial, and it keeps running after logout.
+- **macOS launchd**: a per-user `LaunchAgent` plist if you want it to
   auto-start at login.
 
 Pick whichever matches the host's idiom. The watchdog and `--debug` /
 `--trace` flags described in [Debugging knobs](developing.md#debugging-knobs)
-work the same in server mode and write to stderr — point that at a file
+work the same in server mode and write to stderr; point that at a file
 in your service definition.
 
 ## Known limitations (v1)
@@ -146,7 +145,7 @@ in your service definition.
 - **No transport security in terminux itself.** Use SSH or a TLS
   terminator upstream. Do not run `--host 0.0.0.0` straight on the open
   internet.
-- **Per-client window geometry** is not persisted yet — every
+- **Per-client window geometry** is not persisted yet: every
   `--connect` launch opens at default size.
-- **No "rotate token" CLI** — `rm ~/.../server.token` and restart the
+- **No "rotate token" CLI**: `rm ~/.../server.token` and restart the
   server to force a new one. The previous URL stops working.

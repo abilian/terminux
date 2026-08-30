@@ -1,7 +1,7 @@
 # Packaging & distribution
 
-terminux bundles into a self-contained desktop app — no Python or Node required
-to run it. Bundles are built with PyInstaller; `dist/` and `build/` are
+terminux bundles into a self-contained desktop app that needs neither Python
+nor Node to run. Bundles are built with PyInstaller; `dist/` and `build/` are
 gitignored build artifacts.
 
 ## Linux (via Docker)
@@ -55,12 +55,12 @@ WKWebView backend.
     - Built for the **host architecture** (arm64 on Apple Silicon). A
       `universal2` binary needs a universal Python and is not configured.
     - The app is **ad-hoc signed only**. On another Mac, Gatekeeper blocks it
-      until right-click → **Open** — or until it is signed with a Developer ID
+      until right-click → **Open**, or until it is signed with a Developer ID
       and notarized (out of scope for the prototype).
 
 ## Windows
 
-Not yet — the Windows PTY backend is on the roadmap. See the [FAQ](faq.md).
+Not yet: the Windows PTY backend is on the roadmap. See the [FAQ](faq.md).
 
 ## Troubleshooting on macOS
 
@@ -77,16 +77,16 @@ dyld: Library not loaded: /opt/homebrew/opt/pcre2/lib/libpcre2-8.0.dylib
 
 …this is **macOS TCC** (the "Files and Folders" / "Full Disk Access" privacy
 controls) blocking the spawned shell from reading files on a path the
-parent process isn't allowed to touch — most commonly a **removable volume**
+parent process isn't allowed to touch: most commonly a **removable volume**
 (an external SSD where Homebrew, `nvm`, or similar has been relocated).
 
-The phrase `file system sandbox blocked open()` is the giveaway: it comes
-from macOS's `sandboxd`, not a chmod or ACL.
+The phrase `file system sandbox blocked open()` is the giveaway that
+macOS's `sandboxd` did the blocking; no chmod or ACL produces that message.
 
 #### Why it can appear mid-session
 
 TCC decisions are made at *access time*, not when the process starts. The
-first shells often don't touch the protected location — your prompt, `cd`,
+first shells often don't touch the protected location: your prompt, `cd`,
 and basic builtins stay on the boot drive. The block kicks in only when
 something later re-sources `.profile` / `.zshrc` or a new tab spawns a fresh
 shell that `dlopen()`s a library from the restricted path.
@@ -101,20 +101,20 @@ shell that `dlopen()`s a library from the restricted path.
    ps -o pid,ppid,command -p $(pgrep -f terminux)
    ```
 2. Open **System Settings → Privacy & Security**, then either:
-    - **Files and Folders → Removable Volumes** — grant access to the
+    - **Files and Folders → Removable Volumes**: grant access to the
       specific external drive (narrower scope), *or*
-    - **Full Disk Access** — add the executable (broader; needed if you
+    - **Full Disk Access**: add the executable (broader; needed if you
       rely on protected boot-drive locations too).
 3. Add the executable identified in step 1.
 4. **Restart terminux.** macOS only re-evaluates TCC scope at process
    start.
 
-If you're running from the `.app` bundle, grant FDA to the bundle itself,
-not the embedded Python.
+If you're running from the `.app` bundle, grant FDA to the bundle itself;
+skip the embedded Python.
 
 #### Quick check
 
 You can confirm the diagnosis without changing settings by spawning a
 working terminal (iTerm2 / Terminal.app with FDA) and seeing whether
-`brew --version` succeeds there but fails in terminux. Same shell, same
-PATH, different TCC scope.
+`brew --version` succeeds there but fails in terminux. The shell and PATH
+are the same; only the TCC scope differs.

@@ -1,6 +1,6 @@
 # FAQ
 
-## What state survives a restart?
+## What state is restored after a restart?
 
 - The **layout**: workspaces, tabs, window geometry, sidebar width/collapsed
   state, terminal font size, and each shell's last working directory.
@@ -8,9 +8,8 @@
   on restart with a dim `──── session resumed @ <time> ────` separator so the
   boundary between old output and the new shell is obvious.
 
-Every tab respawns a **fresh shell** in the saved directory — running
-processes are *not* restored. terminux persists what was on screen, not what
-was running.
+Every tab respawns a **fresh shell** in the saved directory: running
+processes are *not* restored.
 
 ## Can I turn scrollback persistence off?
 
@@ -29,23 +28,22 @@ The pref is persisted server-side, so it sticks across restarts.
 
 Full-screen TUIs draw into the terminal's **alternate screen buffer**, which
 the program owns and tears down when it exits. By the time terminux can save
-the tab, that buffer has been handed back and its contents are gone — there's
-nothing to capture. What you'll see on restart is the shell session *around*
-the TUI (commands, their non-fullscreen output, the prompt), not the TUI's
-own UI. iTerm2's session restoration has the same limit; it's a property of
-how alt-screen mode is specified, not a bug.
+the tab, that buffer has been handed back and its contents are gone. On
+restart you'll see the shell session *around* the TUI: the commands, their
+non-fullscreen output, the prompt. iTerm2's session restoration has the same
+limit; alt-screen mode is specified that way.
 
 ## What do the colored dots in the sidebar mean?
 
 It's a small traffic-light:
 
-- **Blue** — this workspace is the one you're currently looking at.
-- **Green** — produced output since you last viewed it (go check).
-- **Amber** — a foreground task is running and there's nothing else more
+- **Blue**: this workspace is the one you're currently looking at.
+- **Green**: produced output since you last viewed it (go check).
+- **Amber**: a foreground task is running and there's nothing else more
   urgent to signal. See [Working vs ready](workspaces-and-tabs.md#working-vs-ready).
-- **Empty outline** — shell is at a prompt with nothing new.
-- **Gray** — all shells in the workspace have exited.
-- **🔔** — a tab signaled it wants attention (BEL, `OSC 9`, or a long
+- **Empty outline**: shell is at a prompt with nothing new.
+- **Gray**: all shells in the workspace have exited.
+- **🔔**: a tab signaled it wants attention (BEL, `OSC 9`, or a long
   `OSC 133;D`). Overrides everything else.
 
 Hover any dot for a tooltip with the same explanation.
@@ -62,19 +60,19 @@ Not yet. macOS and Linux are supported; the Windows PTY backend is deferred.
 
 By default the backend binds to **loopback only** and authenticates every
 request and WebSocket with a per-session token. If you bind beyond loopback
-(`--host 0.0.0.0`), that token is the **only** authentication — anyone with the
+(`--host 0.0.0.0`), that token is the **only** authentication: anyone with the
 URL gets a shell. Keep the URL private and prefer loopback.
 
 ## Does terminux send any telemetry or need an account?
 
-No. terminux is **local-first**: no account, no telemetry, file-based
-persistence only.
+No. terminux is **local-first**: it stores everything in local files and
+never phones home.
 
 ## Does it include an editor / AI / git integration?
 
-No, and by design. terminux deliberately keeps a small, auditable surface —
-workspaces and tabbed terminals done well. Editor, AI, git, and file-navigator
-features are out of scope.
+No, and by design. terminux keeps a small, auditable surface: workspaces and
+tabbed terminals done well. Editor, AI, git, and file-navigator features are
+out of scope.
 
 ## Why is the macOS app blocked by Gatekeeper?
 
@@ -89,14 +87,14 @@ Only to *build* or change the frontend. The build output is committed to
 
 ## Can I run terminux on a server and connect from my laptop?
 
-Yes — run `terminux --server` on the remote box and `terminux --connect URL`
-on your laptop. The shells live on the server (long-running builds survive
-your laptop sleeping, switching Wi-Fi, etc.); the laptop opens a native
+Yes. Run `terminux --server` on the remote box and `terminux --connect URL`
+on your laptop. The shells live on the server (long-running builds keep
+going while your laptop sleeps or switches Wi-Fi); the laptop opens a native
 window pointed at the server's URL. The recommended setup uses an SSH
 tunnel to avoid exposing the server to the open internet. See
 [Remote access](remote.md) for the full recipe.
 
-## terminux froze — what do I do?
+## terminux froze: what do I do?
 
 A built-in watchdog detects an asyncio-loop stall after **3 seconds** and
 automatically prints per-thread Python tracebacks to stderr (the same dump
@@ -116,7 +114,7 @@ kill -INFO <pid>                         # macOS
 kill -USR1 <pid>                         # Linux
 ```
 
-For a reproducer worth filing as a bug, run with `--debug` (slow-I/O
-warnings + access logs) or `--trace` (every persisted save and cwd lookup
-logged with its duration). Both flags emit ms-precision timestamps. See
+For a bug report, run the reproducer with `--debug` (slow-I/O warnings +
+access logs) or `--trace` (every persisted save and cwd lookup logged with
+its duration). Both flags emit ms-precision timestamps. See
 [Debugging knobs](developing.md#debugging-knobs) for the full menu.

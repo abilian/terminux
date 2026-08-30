@@ -1,4 +1,4 @@
-# Shell integration — reliable "ready" attention
+# Shell integration: reliable "ready" attention
 
 terminux fires the sidebar attention badge (🔔) on three signals from the
 shell:
@@ -7,11 +7,11 @@ shell:
 | --- | --- | --- |
 | **Real BEL** (`\x07` outside an OSC) | Legacy "ding" | `printf '\\a'`, `echo -e '\\a'` |
 | **OSC 9** | iTerm2-style desktop notification | `printf '\x1b]9;%s\x07' "done!"` |
-| **OSC 133;D** | A long-running command just finished — *the* "ready" signal | shell integration (below) |
+| **OSC 133;D** | A long-running command just finished: *the* "ready" signal | shell integration (below) |
 
-The BEL that closes an `OSC 0/2;<title>\x07` title update **does not count**
-— tools like Claude Code update the title constantly while they work, and
-the sidebar would never stop ringing if it counted those.
+The BEL that closes an `OSC 0/2;<title>\x07` title update **does not
+count**: tools like Claude Code update the title constantly while they
+work, and the sidebar would never stop ringing if it counted those.
 
 ## Why you want OSC 133
 
@@ -21,8 +21,8 @@ finishes. Set it up once and:
 - Background tabs only ping you when their work is done.
 - Tabs you're already looking at never ping you (the attention guard is
   per-tab visibility).
-- Quick commands (`cd`, `ls` — anything under ~2 seconds) stay silent;
-  only commands worth waiting for raise the badge.
+- Quick commands (`cd`, `ls`, anything under ~2 seconds) stay silent;
+  only long-running commands raise the badge.
 - The sidebar's amber **busy** dot (see
   [Working vs ready](workspaces-and-tabs.md#working-vs-ready)) becomes
   precise: it lights only between the shell's `;C` and `;D` markers,
@@ -84,8 +84,8 @@ You need a small snippet in your shell init file. Pick yours:
 terminux watches each PTY's output for `OSC 133;C` (command start) and
 `OSC 133;D[;exit]` (command end). When `;D` arrives, the attention badge
 fires **only if** the matching `;C` was at least **2 seconds** earlier and
-the tab isn't currently in view — so a snappy `cd` in a background tab
-won't ring, but a long `make test` or a Claude Code response will.
+the tab isn't currently in view. A snappy `cd` in a background tab won't
+ring; a long `make test` or a Claude Code response will.
 
 The threshold is hard-coded in `core/terminal.py`
-(`OSC133_MIN_COMMAND_SECONDS`); it's deliberately not user-configurable yet.
+(`OSC133_MIN_COMMAND_SECONDS`); it is not user-configurable yet.

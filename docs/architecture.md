@@ -21,11 +21,11 @@ flowchart LR
 
 ## The two processes
 
-- **Frontend** — a Vite/TypeScript app built on **xterm.js**, rendered inside a
+- **Frontend**: a Vite/TypeScript app built on **xterm.js**, rendered inside a
   sandboxed [pywebview](https://pywebview.flowrl.com/) window. The build output
   is committed to `src/terminux/web/static/`, so the Python package runs with no
   Node toolchain.
-- **Backend** — a loopback **Starlette/uvicorn** ASGI server. It owns the PTYs
+- **Backend**: a loopback **Starlette/uvicorn** ASGI server. It owns the PTYs
   (via `ptyprocess`), serves the static UI, and exposes a **per-terminal
   WebSocket** that streams raw PTY bytes.
 
@@ -51,13 +51,13 @@ is also the dev/test path.
 - **Raw-byte streaming with backpressure.** Terminal output uses a bounded
   per-subscriber buffer with coalesced flushing and an explicit drop notice. PTY
   spawning is serialized.
-- **Structure-only persistence.** Only the layout is saved — live processes and
+- **Structure-only persistence.** Only the layout is saved: live processes and
   scrollback are not. State is written atomically and versioned, so a port or
   version change doesn't lose your workspaces.
 - **Loopback + token by default.** HTTP responses carry a strict CSP and
   security headers; a per-session token authenticates every request and
   WebSocket. Binding beyond loopback (`--host 0.0.0.0`) makes the token the only
-  line of defense — keep the URL private.
+  line of defense. Keep the URL private.
 - **Reliability over features.** Small, auditable surface; no editor, AI, git,
   or file navigator. The data model leaves the door open to split panes without
   committing to them in v1.
