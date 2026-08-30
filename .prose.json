@@ -3,7 +3,9 @@
     "R34-verbless": [
       "Hover for the same value as a tooltip",
       "The dump lands on the same stderr stream",
-      "for signing, Gatekeeper, X11"
+      "for signing, Gatekeeper, X11",
+      "img.shields.io",
+      "abilian/terminux</a>"
     ]
   }
 }

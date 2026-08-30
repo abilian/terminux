@@ -4,16 +4,16 @@
 
 ### A fast, reliable, cross-platform terminal, organized the way you actually work.
 
-**Workspaces on the left. Tabbed terminals in the middle. Everything where you left it.**
+**Workspaces sit on the left, tabbed terminals in the middle, and everything stays where you left it.**
 
 [![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey.svg)](#install--package)
-[![Status](https://img.shields.io/badge/status-0.7%20preview-orange.svg)](#status-07-preview)
+[![Status](https://img.shields.io/badge/status-0.8%20preview-orange.svg)](#status-08-preview)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)](LICENSE)
 
 <br/>
 
-<img src="docs/images/main-window.png" alt="terminux — workspaces sidebar and a tabbed terminal running a test suite" width="800"/>
+<img src="https://git.sr.ht/~sfermigier/terminux/blob/main/docs/images/main-window.png" alt="terminux: workspaces sidebar and a tabbed terminal running a test suite" width="800"/>
 
 </div>
 
@@ -36,18 +36,18 @@ That's it. You're in.
 
 - **Workspaces sidebar:** a persistent list of named workspaces. Names track the first tab's working directory automatically (until you pin one).
 - **Tabbed terminals:** every workspace has its own tabs, each a real PTY shell. Switch freely; background tabs keep streaming, no jank.
-- **Survives restarts:** workspaces, tabs, window geometry, font size, each shell's working directory, and *the visible scrollback of every tab* all come back. Fresh shells, same layout, same view you left.
-- **Remote access:** run the backend on a server, connect from your laptop with `--connect`. Shells and long-running builds survive lid-closes, network hops, and device switches. See [**Remote access**](docs/remote.md).
+- **Everything comes back:** workspaces, tabs, window geometry, font size, each shell's working directory, and *the visible scrollback of every tab* are restored after a restart. Fresh shells, same layout, same view you left.
+- **Remote access:** run the backend on a server, connect from your laptop with `--connect`. Shells and long-running builds keep going through lid-closes, network hops, and device switches; terminals reconnect automatically and repaint from the server's buffer. See [**Remote access**](docs/remote.md).
 - **Keyboard-first:** sidebar shows a keycap on each of the first nine workspaces; jump straight there with `Ctrl+Shift+1..9` on Linux (`Cmd+1..9` on macOS). Plus a fuzzy quick-switcher, find-in-terminal, font zoom, and more.
 - **Platform-respecting shortcuts:** Linux uses `Ctrl+Shift+<key>` for app shortcuts (matching GNOME Terminal, Konsole, Alacritty, Ghostty, kitty), so raw `Ctrl+P` / `Ctrl+B` / `Ctrl+F` flow straight to your shell. macOS uses `Cmd` for the same job; raw `Ctrl` is left alone.
 - **Clickable URLs & iTerm2-style copy:** modifier-click opens links; optional auto-copy on selection, persisted, off by default.
-- **Working vs ready:** a two-color sidebar dot reads like a CI traffic light — **amber** while a foreground task is actively working (idle TUIs and parked prompts don't count), **green** once it finishes. Works out of the box; opt-in [shell integration](docs/shell-integration.md) makes it more precise. Plain output by itself never falsely promotes to green.
+- **Working vs ready:** a two-color sidebar dot reads like a CI traffic light: **amber** while a foreground task is actively working (idle TUIs and parked prompts don't count), **green** once it finishes. Works out of the box; opt-in [shell integration](docs/shell-integration.md) makes it more precise. Plain output by itself never falsely promotes to green.
 - **Drag & drop:** reorder workspaces and tabs with live drop feedback. Drop a file to paste its shell-quoted path.
 - **Local-first & hardened:** loopback-only by default, per-session auth token, CSP and security headers, atomic versioned persistence.
 
 <div align="center">
 
-<img src="docs/images/quick-switcher.png" alt="The fuzzy quick switcher (Ctrl+Shift+P / Cmd+P) jumping between workspaces and tabs" width="800"/>
+<img src="https://git.sr.ht/~sfermigier/terminux/blob/main/docs/images/quick-switcher.png" alt="The fuzzy quick switcher (Ctrl+Shift+P / Cmd+P) jumping between workspaces and tabs" width="800"/>
 
 <sub>The fuzzy quick switcher (<code>Ctrl+Shift+P</code> on Linux, <code>Cmd+P</code> on macOS): jump to any workspace or tab.</sub>
 
@@ -64,7 +64,7 @@ uv run terminux --debug      # verbose logs + slow-op warnings
 uv run terminux --trace      # extreme: log every save/load/cwd lookup
 ```
 
-`--no-window` serves the same UI to any browser — handy for development and for running terminux where no display is available. `--debug` and `--trace` are diagnostics flags; see [**Debugging knobs**](docs/developing.md#debugging-knobs).
+`--no-window` serves the same UI to any browser, handy for development and for running terminux where no display is available. `--debug` and `--trace` are diagnostics flags; see [**Debugging knobs**](docs/developing.md#debugging-knobs).
 
 ### Remote mode
 
@@ -121,9 +121,9 @@ make format
 
 The e2e tier drives the served UI with a real browser (no pywebview); install it once with `uv run playwright install chromium`.
 
-## Status: 0.7 preview
+## Status: 0.8 preview
 
-**Works today:** workspaces sidebar (create / rename / reorder / close, working/ready dot), tabs with multiple live terminals, real PTY shells streaming in the background, layout *and scrollback* restored across restarts (always with fresh shells), remote mode (`--server` / `--connect`), self-diagnosing freeze watchdog, macOS & Linux bundles.
+**Works today:** workspaces sidebar (create / rename / reorder / close, working/ready dot), tabs with multiple live terminals, real PTY shells streaming in the background, layout *and scrollback* restored across restarts (always with fresh shells), remote mode (`--server` / `--connect`) with automatic reconnection, program-printed hyperlinks, self-diagnosing freeze watchdog, macOS & Linux bundles. 0.8 also hardened the remote-auth path and restored support for older Macs (Safari-14-era WebKit).
 
 **Not yet:** split panes, Windows PTY, multi-user.
 

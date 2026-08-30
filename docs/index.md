@@ -37,6 +37,9 @@ flow.
   output to look at, so the dot reads like a CI traffic light).
 - **Attention routing**: background activity indicators; BEL / `OSC 9` on an
   off-screen tab raises a badge that bubbles up to its workspace.
+- **Remote access**: run the backend on a server and connect from your laptop
+  with `--connect`; shells keep running while you disconnect, and terminals
+  reconnect automatically. See [Remote access](remote.md).
 - **Local-first & hardened**: loopback-only by default, per-session auth token,
   CSP and security headers, atomic versioned persistence.
 
@@ -51,7 +54,7 @@ flow.
 
 </div>
 
-!!! note "Status: 0.5 preview"
-    terminux is a 0.5 prototype. The workspace + tabbed-terminal core works well;
-    split panes, detach, Windows PTY, and scrollback persistence are not done
-    yet. See the [FAQ](faq.md).
+!!! note "Status: 0.8 preview"
+    terminux is a 0.8 preview. The workspace + tabbed-terminal core, scrollback
+    persistence, and remote access (`--server` / `--connect`) work well; split
+    panes and the Windows PTY backend are not done yet. See the [FAQ](faq.md).

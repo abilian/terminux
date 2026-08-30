@@ -51,9 +51,9 @@ is also the dev/test path.
 - **Raw-byte streaming with backpressure.** Terminal output uses a bounded
   per-subscriber buffer with coalesced flushing and an explicit drop notice. PTY
   spawning is serialized.
-- **Structure-only persistence.** Only the layout is saved: live processes and
-  scrollback are not. State is written atomically and versioned, so a port or
-  version change doesn't lose your workspaces.
+- **Structure and scrollback, never processes.** The layout and each tab's
+  visible buffer are saved; live processes are not. State is written atomically
+  and versioned, so a port or version change doesn't lose your workspaces.
 - **Loopback + token by default.** HTTP responses carry a strict CSP and
   security headers; a per-session token authenticates every request and
   WebSocket. Binding beyond loopback (`--host 0.0.0.0`) makes the token the only

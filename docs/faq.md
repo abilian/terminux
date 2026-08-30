@@ -50,7 +50,7 @@ Hover any dot for a tooltip with the same explanation.
 
 ## What about split panes and Windows?
 
-Both are still on the roadmap, along with client/server detach.
+Both are still on the roadmap.
 
 ## Does terminux work on Windows?
 

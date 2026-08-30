@@ -147,8 +147,8 @@ are *not* still running.
 
 !!! warning "Not persisted"
     Running processes are **not** restored; only their visible output is.
-    Split panes, client/server detach, and Windows PTY are still on the
-    roadmap (see `notes/technical-spec.md` §11–§14).
+    Split panes and the Windows PTY backend are still on the roadmap (see
+    `notes/technical-spec.md` §11–§14).
 
 !!! info "Full-screen TUIs (Claude Code, vim, less, tmux, fzf…)"
     Full-screen apps draw into the terminal's **alternate screen buffer**,
