@@ -2,11 +2,30 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-08-22
+
+### Added
+
+- **Terminals now reconnect automatically.** A lost connection — a backend stall, a network blip, a laptop waking from sleep — used to leave tabs permanently dead even though the shells were fine; the only cure was reopening the app. Each terminal now shows "[connection lost — reconnecting…]", redials with backoff until the server answers, and repaints from the server's output buffer. This is what makes remote mode's "disconnect and come back later" actually hold.
+- **`--debug` now also opens the door to frontend debugging** in the desktop window: right-click → Inspect Element brings up the web inspector.
+
+### Fixed
+
+- **Web/remote mode: the page no longer reveals the access code.** Fetching the app's address without a valid code used to return the page with the code embedded in it — anyone who could reach the port could let themselves in. Every route now requires the code; your own links (which always carry it) are unaffected.
+- **A stale browser tab can no longer lock you out.** Requests with an outdated code from your own machine could trip the brute-force guard and block the real window for a minute at a time. Local connections are now exempt from the lockout, which still protects servers exposed to a network.
+- **Terminals open again on older Macs.** Two stacked problems broke every shell on e.g. Big Sur while the rest of the UI worked: a dependency upgrade had raised the frontend's minimum browser requirement past the WebKit that older macOS versions ship, and the security policy only declared `connect-src 'self'`, which older engines refuse to apply to websockets — so even a working terminal couldn't attach its data stream. The terminal library is pinned back to its proven line, the build explicitly targets Safari-14-era WebKit, and the policy now names the websocket origin explicitly. Applies wherever an older engine renders the UI: the desktop app, a `--connect` client, or a browser.
+- **Hyperlinks printed by programs now open.** Clicking a link a program emitted as a real terminal hyperlink (Claude Code's artifact URLs, `ls --hyperlink`, modern CLI tools) used to show a browser warning popup whose OK button then did nothing. Such links now behave exactly like plain-text URLs: Cmd+click (macOS) / Ctrl+click (Linux) opens them in your default browser, with no popup; only `http`, `https`, and `mailto` links are ever opened.
+- **Starting on a port that's already in use now fails with a clear error** instead of hanging forever with no output.
+- **Access codes no longer appear in request logs** when running with `--debug` or `--trace`.
+
+### Internal
+
+- The controller never holds its state lock across a disk write, and new shells are forked off the event loop — closing the remaining freeze vectors found in a full audit. For anyone stuck on an older build, `notes/05-lessons-learned.md` documents how to unfreeze a live server without killing it.
+
 ## [0.7.2] - 2026-07-29
 
 ### Added
 
-- **`--debug` now also opens the door to frontend debugging** in the desktop window: right-click → Inspect Element brings up the web inspector.
 - **Remote access.** Run terminux on one machine and use it from another. Start `terminux --server` on the host and `terminux --connect <url>` on your laptop: you get the normal desktop window, but every shell lives on the server — long-running builds keep going while you close the lid, change networks, or switch devices. Access is protected by a short persistent code (`abc-def-ghi` style, rate-limited against guessing); the recommended setup keeps the server private behind an SSH port-forward. Dragging files into a remote window pastes their paths, same as locally. Full guide: `docs/remote.md`.
 
 ### Fixed
@@ -14,16 +33,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Pasting can no longer freeze the app.** Pasting a large block of text into a program that wasn't reading input (an editor mid-redraw, a stopped pager, a busy REPL) could freeze *every* terminal and the whole UI, sometimes permanently. Now at most the terminal you pasted into waits; everything else stays live.
 - **Rare freeze of all terminals while idle.** A timing edge in how terminal output was read could lock up the whole app even with no user action. This class of freeze is now structurally impossible: reading terminal output can no longer stall the server.
 - **Very large pastes could be silently truncated.** The tail of a paste could be dropped when the terminal accepted it in chunks; every byte is now delivered.
-- **Web/remote mode: the page no longer reveals the access code.** Fetching the app's address without a valid code used to return the page with the code embedded in it — anyone who could reach the port could let themselves in. Every route now requires the code; your own links (which always carry it) are unaffected.
-- **A stale browser tab can no longer lock you out.** Requests with an outdated code from your own machine could trip the brute-force guard and block the real window for a minute at a time. Local connections are now exempt from the lockout, which still protects servers exposed to a network.
-- **Starting on a port that's already in use now fails with a clear error** instead of hanging forever with no output.
-- **Access codes no longer appear in request logs** when running with `--debug` or `--trace`.
-- **Terminals open again on older Macs.** Two stacked problems broke every shell on e.g. Big Sur while the rest of the UI worked: a dependency upgrade had raised the frontend's minimum browser requirement past the WebKit that older macOS versions ship, and the security policy only declared `connect-src 'self'`, which older engines refuse to apply to websockets — so even a working terminal couldn't attach its data stream. The terminal library is pinned back to its proven line, the build explicitly targets Safari-14-era WebKit, and the policy now names the websocket origin explicitly. Applies wherever an older engine renders the UI: the desktop app, a `--connect` client, or a browser.
-- **Terminals now reconnect automatically.** A lost connection — a backend stall, a network blip, a laptop waking from sleep — used to leave tabs permanently dead even though the shells were fine; the only cure was reopening the app. Each terminal now shows "[connection lost — reconnecting…]", redials with backoff until the server answers, and repaints from the server's output buffer. This is what makes remote mode's "disconnect and come back later" actually hold.
 
 ### Internal
 
-- Terminal I/O is now non-blocking end to end; the controller never holds its state lock across a disk write, and new shells are forked off the event loop — closing the remaining freeze vectors found in a full audit. For anyone stuck on an older build, `notes/05-lessons-learned.md` documents how to unfreeze a live server without killing it.
+- Terminal I/O is now non-blocking end to end.
 
 ## [0.7.1] - 2026-06-03
 
