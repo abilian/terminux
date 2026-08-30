@@ -83,6 +83,12 @@ def token_ok(supplied: str | None) -> bool:
 _failed_attempts: dict[str, list[float]] = {}
 _attempts_lock = threading.Lock()
 
+# An IP's entry is only purged when that IP comes back, so a wide scan of
+# distinct source addresses would otherwise grow the dict forever. Past
+# this size, every IP whose newest failure has aged out of the lockout
+# window is dropped on the next recorded failure.
+_MAX_TRACKED_IPS = 1024
+
 
 def _purge_old(attempts: list[float], now: float) -> list[float]:
     cutoff = now - LOCKOUT_SECONDS
@@ -111,6 +117,10 @@ def check_auth(supplied: str | None, client_ip: str) -> bool:
             return True
         attempts.append(now)
         _failed_attempts[client_ip] = attempts
+        if len(_failed_attempts) > _MAX_TRACKED_IPS:
+            cutoff = now - LOCKOUT_SECONDS
+            for ip in [ip for ip, ts in _failed_attempts.items() if ts[-1] <= cutoff]:
+                del _failed_attempts[ip]
         if len(attempts) == MAX_FAILURES:
             log.warning(
                 "auth rate-limit triggered for %s (%d failures in %ds)",

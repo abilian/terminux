@@ -756,3 +756,44 @@ def test_index_requires_token_but_assets_are_public(server: LiveServer) -> None:
     with pytest.raises(urllib.error.HTTPError) as exc:
         urllib.request.urlopen(f"{server.url}/assets/nope.js")  # noqa: S310
     assert exc.value.code == 404
+
+
+def test_patch_workspace_ignores_foreign_active_tab(server: LiveServer) -> None:
+    """A bogus/stale active_tab_id must not corrupt live state — it is
+    silently ignored, matching the stale-client tolerance of reorders."""
+    base = server.url
+    ws = _req(f"{base}/api/state?t={T}")["workspaces"][0]
+    good_tid = ws["active_tab_id"]
+    assert good_tid is not None
+    _req(
+        f"{base}/api/workspaces/{ws['id']}?t={T}",
+        method="PATCH",
+        body=json.dumps({"active_tab_id": "not-a-real-tab"}).encode(),
+    )
+    after = _req(f"{base}/api/state?t={T}")["workspaces"][0]
+    assert after["active_tab_id"] == good_tid
+
+
+def test_malformed_numeric_bodies_return_400(server: LiveServer) -> None:
+    base = server.url
+    st = _req(f"{base}/api/state?t={T}")
+    tid = st["workspaces"][0]["active_tab_id"]
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        _req(
+            f"{base}/api/tabs/{tid}/spawn?t={T}",
+            method="POST",
+            body=json.dumps({"cols": "wide"}).encode(),
+        )
+    assert exc.value.code == 400
+
+    # A bad field rejects the whole PATCH: the valid sibling is not applied.
+    before = st["ui"]["sidebar_width"]
+    target = 300 if before != 300 else 320
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        _req(
+            f"{base}/api/ui?t={T}",
+            method="PATCH",
+            body=json.dumps({"sidebar_width": target, "font_size": "big"}).encode(),
+        )
+    assert exc.value.code == 400
+    assert _req(f"{base}/api/state?t={T}")["ui"]["sidebar_width"] == before

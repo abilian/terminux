@@ -106,9 +106,16 @@ class Api:
                 if body.get("active"):
                     self.ctl.state.set_active_workspace(ws.id)
                 if "active_tab_id" in body:
-                    ws.active_tab_id = body["active_tab_id"]
-                    if ws.active_tab_id is not None:
-                        tab = self.ctl.state.tabs.get(ws.active_tab_id)
+                    # Only accept a tab that belongs to this workspace (also
+                    # type-guards): a stale client racing a tab delete is
+                    # ignored, not an error — same tolerance as the reorder
+                    # keys below.
+                    new_tid = body["active_tab_id"]
+                    if new_tid is None:
+                        ws.active_tab_id = None
+                    elif new_tid in ws.tab_ids:
+                        ws.active_tab_id = new_tid
+                        tab = self.ctl.state.tabs.get(new_tid)
                         if tab is not None:
                             tab.has_unseen_output = False
                 if "order" in body:
@@ -134,23 +141,24 @@ class Api:
     def delete_workspace(self, request: Request) -> Response:
         ws_id = request.path_params["ws_id"]
         with self.ctl.lock:
-            # Collect terminal ids and tab ids BEFORE removal — remove_workspace
-            # drops the tabs from state, so we need the references first (and a
-            # deliberate close also drops the saved scrollback for each tab).
-            # remove_workspace itself guarantees ≥ 1 workspace remains.
+            # Collect terminal ids BEFORE removal — remove_workspace drops the
+            # tabs from state, so the references must be taken first. It
+            # returns the removed tab ids and itself guarantees ≥ 1 workspace
+            # remains.
             ws = self.ctl.state.get_workspace(ws_id)
-            tab_ids: list[str] = list(ws.tab_ids) if ws is not None else []
             term_ids = [
                 tab.terminal_id
-                for tid in tab_ids
+                for tid in (ws.tab_ids if ws is not None else [])
                 if (tab := self.ctl.state.tabs.get(tid)) is not None
                 and tab.terminal_id is not None
             ]
-            self.ctl.state.remove_workspace(ws_id)
+            tab_ids = self.ctl.state.remove_workspace(ws_id)
             for term_id in term_ids:
                 self.ctl.terminals.close(term_id)
-            for tid in tab_ids:
-                self.ctl.delete_scrollback(tid)
+        # A deliberate close also drops each tab's saved scrollback; the
+        # unlinks run outside the lock (disk is never touched under it).
+        for tid in tab_ids:
+            self.ctl.delete_scrollback(tid)
         self.ctl.save()
         return JSONResponse({"ok": True})
 
@@ -189,33 +197,17 @@ class Api:
 
     async def patch_ui(self, request: Request) -> Response:
         body: dict[str, Any] = await request.json()
+        # Validate/clamp up front (pure, outside the lock): a malformed field
+        # is a 400 with nothing half-applied, not a 500 mid-mutation.
+        try:
+            updates = _ui_updates(body)
+        except (TypeError, ValueError):
+            return JSONResponse({"error": "invalid body"}, status_code=400)
 
         def _apply() -> None:
             with self.ctl.lock:
-                ui = self.ctl.state.ui
-                if "sidebar_width" in body:
-                    ui.sidebar_width = max(
-                        SIDEBAR_WIDTH_MIN,
-                        min(SIDEBAR_WIDTH_MAX, int(body["sidebar_width"])),
-                    )
-                if "font_size" in body:
-                    ui.font_size = max(
-                        FONT_SIZE_MIN, min(FONT_SIZE_MAX, int(body["font_size"]))
-                    )
-                for k in (
-                    "sidebar_collapsed",
-                    "copy_on_select",
-                    "scrollback_persist",
-                    "win_maximized",
-                ):
-                    if k in body:
-                        setattr(ui, k, bool(body[k]))
-                for k in ("win_w", "win_h"):
-                    if k in body:
-                        setattr(ui, k, max(WIN_DIM_MIN, int(body[k])))
-                for k in ("win_x", "win_y"):
-                    if k in body:
-                        setattr(ui, k, None if body[k] is None else int(body[k]))
+                for k, v in updates.items():
+                    setattr(self.ctl.state.ui, k, v)
             self.ctl.save()
 
         await asyncio.to_thread(_apply)
@@ -228,9 +220,10 @@ class Api:
             if tab is not None and tab.terminal_id is not None:
                 self.ctl.terminals.close(tab.terminal_id)
             self.ctl.state.remove_tab(tab_id)
-            # Deliberate close drops the captured scrollback too; restart-in-place
-            # uses the dedicated DELETE /scrollback endpoint.
-            self.ctl.delete_scrollback(tab_id)
+        # Deliberate close drops the captured scrollback too (restart-in-place
+        # uses the dedicated DELETE /scrollback endpoint); the unlink runs
+        # outside the lock (disk is never touched under it).
+        self.ctl.delete_scrollback(tab_id)
         self.ctl.save()
         return JSONResponse({"ok": True})
 
@@ -241,11 +234,15 @@ class Api:
             with self.ctl.lock:
                 if self.ctl.state.tabs.get(tab_id) is None:
                     return None
-                return self.ctl.load_scrollback(tab_id) or ""
+            # Disk read outside the lock — a slow or wedged volume must not
+            # stall anyone queued on it (including the event loop via
+            # ensure_terminal). A tab deleted between the check and the read
+            # simply loads as absent.
+            return self.ctl.load_scrollback(tab_id) or ""
 
         content = await asyncio.to_thread(_load)
         if content is None:
-            return PlainTextResponse("", status_code=404)
+            return JSONResponse({"error": "not found"}, status_code=404)
         return PlainTextResponse(content)
 
     async def put_scrollback(self, request: Request) -> Response:
@@ -262,8 +259,15 @@ class Api:
                 if not self.ctl.state.ui.scrollback_persist:
                     # Pref disabled: accept silently so the client doesn't retry.
                     return True
-                self.ctl.save_scrollback(tab_id, decoded)
-                return True
+            # Disk write (fsync!) outside the lock — the event loop queues on
+            # this lock via ensure_terminal, so holding it here would stall
+            # spawns (and the loop) for the fsync duration.
+            self.ctl.save_scrollback(tab_id, decoded)
+            with self.ctl.lock:
+                gone = self.ctl.state.tabs.get(tab_id) is None
+            if gone:  # tab deleted mid-write — don't resurrect its file
+                self.ctl.delete_scrollback(tab_id)
+            return True
 
         if not await asyncio.to_thread(_save):
             return JSONResponse({"error": "not found"}, status_code=404)
@@ -314,15 +318,18 @@ class Api:
 
     async def spawn(self, request: Request) -> Response:
         body: dict[str, Any] = await request.json()
+        try:
+            cols = int(body.get("cols", 80))
+            rows = int(body.get("rows", 24))
+        except (TypeError, ValueError):
+            return JSONResponse({"error": "invalid body"}, status_code=400)
         # Serialize PTY creation: concurrent openpty+spawn can stall output
         # pipes under rapid tab creation (technical spec §8). The fork/exec
         # itself runs in a worker thread inside ensure_terminal; only the
         # ``add_reader`` registration happens here on the loop.
         async with self.ctl.spawn_lock:
             term = await self.ctl.ensure_terminal(
-                request.path_params["tab_id"],
-                int(body.get("cols", 80)),
-                int(body.get("rows", 24)),
+                request.path_params["tab_id"], cols, rows
             )
         if term is None:
             return JSONResponse({"error": "not found"}, status_code=404)
@@ -348,6 +355,38 @@ class Api:
         finally:
             out_task.cancel()
             term.unsubscribe(sub)
+
+
+def _ui_updates(body: dict[str, Any]) -> dict[str, Any]:
+    """Clamp a ``PATCH /api/ui`` body into UiPrefs attribute assignments.
+
+    Pure: raises ``TypeError``/``ValueError`` on a malformed field without
+    touching any state, so the caller can 400 cleanly.
+    """
+    updates: dict[str, Any] = {}
+    if "sidebar_width" in body:
+        updates["sidebar_width"] = max(
+            SIDEBAR_WIDTH_MIN, min(SIDEBAR_WIDTH_MAX, int(body["sidebar_width"]))
+        )
+    if "font_size" in body:
+        updates["font_size"] = max(
+            FONT_SIZE_MIN, min(FONT_SIZE_MAX, int(body["font_size"]))
+        )
+    for k in (
+        "sidebar_collapsed",
+        "copy_on_select",
+        "scrollback_persist",
+        "win_maximized",
+    ):
+        if k in body:
+            updates[k] = bool(body[k])
+    for k in ("win_w", "win_h"):
+        if k in body:
+            updates[k] = max(WIN_DIM_MIN, int(body[k]))
+    for k in ("win_x", "win_y"):
+        if k in body:
+            updates[k] = None if body[k] is None else int(body[k])
+    return updates
 
 
 async def _pump_out(ws: WebSocket, sub: Subscriber, term: Terminal) -> None:

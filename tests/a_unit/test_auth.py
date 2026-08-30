@@ -111,6 +111,23 @@ def test_check_auth_failures_age_out(monkeypatch) -> None:
     assert check_auth(SESSION_TOKEN, ip) is True  # cleared
 
 
+def test_check_auth_sweeps_stale_ips_past_cap(monkeypatch) -> None:
+    """The tracked-IP table is bounded: entries are normally purged only when
+    their own IP returns, so past the cap a failure sweeps out every IP whose
+    newest failure aged beyond the lockout window."""
+    _reset_rate_limiter()
+    now = [1000.0]
+    monkeypatch.setattr(auth.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(auth, "_MAX_TRACKED_IPS", 3)
+    for i in range(4):
+        check_auth("wrong", f"10.0.1.{i}")
+    assert len(auth._failed_attempts) == 4  # all still within the window
+    now[0] += auth.LOCKOUT_SECONDS + 1
+    check_auth("wrong", "10.0.2.99")  # pushes past the cap → sweep
+    assert set(auth._failed_attempts) == {"10.0.2.99"}
+    _reset_rate_limiter()
+
+
 def test_persistent_token_generates_and_writes(
     tmp_path: Path, isolated_token: None
 ) -> None:

@@ -121,7 +121,10 @@ def test_palette_opens_filters_and_closes(page: Page, app_url: str) -> None:
     expect(pal.locator(".pal-row")).to_have_count(2)
     pal.locator("input").type("zzqqxx")  # matches nothing
     expect(pal.locator(".pal-row")).to_have_count(0)
-    page.keyboard.press("Escape")
+    # Press Escape on the input itself: the close handler lives on the
+    # input's keydown, and page.keyboard depends on focus — which a
+    # background re-render can steal under full-suite load (flaked once).
+    pal.locator("input").press("Escape")
     expect(pal).to_be_hidden()
 
 
