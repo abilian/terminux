@@ -1,7 +1,11 @@
 # Zensical configuration for the terminux documentation site.
-# Docs: https://zensical.org/docs/  ·  build: `uv run zensical build`
+# Docs: https://zensical.org/docs/  ·  build: `make docs` (from the repo root)
 
 [project]
+# Paths are resolved relative to this file: sources in docs/src, built site
+# in docs/site (gitignored).
+docs_dir = "src"
+site_dir = "site"
 site_name = "terminux"
 site_description = "A fast, reliable, cross-platform terminal with a Workspaces sidebar and tabbed terminals."
 site_author = "Stefane Fermigier"

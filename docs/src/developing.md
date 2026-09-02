@@ -52,16 +52,17 @@ cd frontend && npm run typecheck   # tsc
 
 ## Documentation
 
-Docs are written in Markdown under `docs/` and built with
-[Zensical](https://zensical.org/). Configuration lives in `zensical.toml`.
+Docs are written in Markdown under `docs/src/` and built with
+[Zensical](https://zensical.org/). Configuration lives in
+`docs/zensical.toml`.
 
 ```sh
-uv run zensical serve    # live preview with rebuild-on-save (http://127.0.0.1:8000)
-uv run zensical build    # static site → site/
+make docs-serve    # live preview with rebuild-on-save (http://127.0.0.1:8000)
+make docs          # static site → docs/site/
 ```
 
-To add a page, create `docs/<name>.md` and add it to the `nav` array in
-`zensical.toml`.
+To add a page, create `docs/src/<name>.md` and add it to the `nav` array in
+`docs/zensical.toml`.
 
 ## Debugging knobs
 

@@ -1,0 +1,12 @@
+[metadata]
+id = "terminux-docs"
+title = "Terminux Documentation"
+description = "Official documentation for Terminux"
+
+[build]
+toolchain = "static"
+static-dir = "site"
+ignore = ["src"]
+
+[env]
+HOST_NAME = "terminux.lab.abilian.com"
