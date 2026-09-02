@@ -42,7 +42,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://github.com/abilian/terminux"
-Documentation = "https://github.com/abilian/terminux/blob/main/docs/index.md"
+Documentation = "https://terminux.lab.abilian.com/"
 Repository = "https://github.com/abilian/terminux.git"
 Issues = "https://github.com/abilian/terminux/issues"
 Changelog = "https://github.com/abilian/terminux/blob/main/CHANGES.md"
