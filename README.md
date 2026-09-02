@@ -13,7 +13,7 @@
 
 <br/>
 
-<img src="https://git.sr.ht/~sfermigier/terminux/blob/main/docs/images/main-window.png" alt="terminux: workspaces sidebar and a tabbed terminal running a test suite" width="800"/>
+<img src="https://git.sr.ht/~sfermigier/terminux/blob/main/docs/src/images/main-window.png" alt="terminux: workspaces sidebar and a tabbed terminal running a test suite" width="800"/>
 
 </div>
 
@@ -37,17 +37,17 @@ That's it. You're in.
 - **Workspaces sidebar:** a persistent list of named workspaces. Names track the first tab's working directory automatically (until you pin one).
 - **Tabbed terminals:** every workspace has its own tabs, each a real PTY shell. Switch freely; background tabs keep streaming, no jank.
 - **Everything comes back:** workspaces, tabs, window geometry, font size, each shell's working directory, and *the visible scrollback of every tab* are restored after a restart. Fresh shells, same layout, same view you left.
-- **Remote access:** run the backend on a server, connect from your laptop with `--connect`. Shells and long-running builds keep going through lid-closes, network hops, and device switches; terminals reconnect automatically and repaint from the server's buffer. See [**Remote access**](docs/remote.md).
+- **Remote access:** run the backend on a server, connect from your laptop with `--connect`. Shells and long-running builds keep going through lid-closes, network hops, and device switches; terminals reconnect automatically and repaint from the server's buffer. See [**Remote access**](docs/src/remote.md).
 - **Keyboard-first:** sidebar shows a keycap on each of the first nine workspaces; jump straight there with `Ctrl+Shift+1..9` on Linux (`Cmd+1..9` on macOS). Plus a fuzzy quick-switcher, find-in-terminal, font zoom, and more.
 - **Platform-respecting shortcuts:** Linux uses `Ctrl+Shift+<key>` for app shortcuts (matching GNOME Terminal, Konsole, Alacritty, Ghostty, kitty), so raw `Ctrl+P` / `Ctrl+B` / `Ctrl+F` flow straight to your shell. macOS uses `Cmd` for the same job; raw `Ctrl` is left alone.
 - **Clickable URLs & iTerm2-style copy:** modifier-click opens links; optional auto-copy on selection, persisted, off by default.
-- **Working vs ready:** a two-color sidebar dot reads like a CI traffic light: **amber** while a foreground task is actively working (idle TUIs and parked prompts don't count), **green** once it finishes. Works out of the box; opt-in [shell integration](docs/shell-integration.md) makes it more precise. Plain output by itself never falsely promotes to green.
+- **Working vs ready:** a two-color sidebar dot reads like a CI traffic light: **amber** while a foreground task is actively working (idle TUIs and parked prompts don't count), **green** once it finishes. Works out of the box; opt-in [shell integration](docs/src/shell-integration.md) makes it more precise. Plain output by itself never falsely promotes to green.
 - **Drag & drop:** reorder workspaces and tabs with live drop feedback. Drop a file to paste its shell-quoted path.
 - **Local-first & hardened:** loopback-only by default, per-session auth token, CSP and security headers, atomic versioned persistence.
 
 <div align="center">
 
-<img src="https://git.sr.ht/~sfermigier/terminux/blob/main/docs/images/quick-switcher.png" alt="The fuzzy quick switcher (Ctrl+Shift+P / Cmd+P) jumping between workspaces and tabs" width="800"/>
+<img src="https://git.sr.ht/~sfermigier/terminux/blob/main/docs/src/images/quick-switcher.png" alt="The fuzzy quick switcher (Ctrl+Shift+P / Cmd+P) jumping between workspaces and tabs" width="800"/>
 
 <sub>The fuzzy quick switcher (<code>Ctrl+Shift+P</code> on Linux, <code>Cmd+P</code> on macOS): jump to any workspace or tab.</sub>
 
@@ -64,7 +64,7 @@ uv run terminux --debug      # verbose logs + slow-op warnings
 uv run terminux --trace      # extreme: log every save/load/cwd lookup
 ```
 
-`--no-window` serves the same UI to any browser, handy for development and for running terminux where no display is available. `--debug` and `--trace` are diagnostics flags; see [**Debugging knobs**](docs/developing.md#debugging-knobs).
+`--no-window` serves the same UI to any browser, handy for development and for running terminux where no display is available. `--debug` and `--trace` are diagnostics flags; see [**Debugging knobs**](docs/src/developing.md#debugging-knobs).
 
 ### Remote mode
 
@@ -83,7 +83,7 @@ ssh -L 8443:localhost:8443 server.example.com
 uv run terminux --connect http://localhost:8443/?t=abc-def-ghi
 ```
 
-Shells, workspaces, and scrollback live on the server: disconnect, sleep the laptop, reconnect later, everything's where you left it. See [**Remote access**](docs/remote.md) for the full recipe (multi-client, firewall guidance, systemd service).
+Shells, workspaces, and scrollback live on the server: disconnect, sleep the laptop, reconnect later, everything's where you left it. See [**Remote access**](docs/src/remote.md) for the full recipe (multi-client, firewall guidance, systemd service).
 
 ## Install / package
 
@@ -99,14 +99,14 @@ Full platform notes (signing, Gatekeeper, X11, architectures) live in the [**doc
 
 ## Documentation
 
-Docs are built with [Zensical](https://zensical.org/) and live in `docs/`.
+Docs are built with [Zensical](https://zensical.org/); sources live in `docs/src/`, configuration in `docs/zensical.toml`.
 
 ```sh
 make docs-serve    # live preview at http://127.0.0.1:8000
-make docs          # static site → site/
+make docs          # static site → docs/site/
 ```
 
-Start with [`docs/index.md`](docs/index.md). The original vision, functional spec, and technical spec are in [`notes/`](notes/).
+Start with [`docs/src/index.md`](docs/src/index.md). The original vision, functional spec, and technical spec are in [`notes/`](notes/).
 
 ## Develop
 

@@ -16,7 +16,7 @@ node_modules/
 *.tsbuildinfo
 
 # Docs (Zensical build output)
-/site/
+/docs/site/
 
 # Local / secrets / tmp
 .envrc

@@ -37,13 +37,13 @@ docker-run:
 	docker build --target bundle -t terminux:bundle .
 	docker run --rm -p 8000:8000 terminux:bundle
 
-# Build the documentation site (Zensical) -> site/.
+# Build the documentation site (Zensical) -> docs/site/.
 docs:
-	uv run zensical build
+	uv run zensical build -f docs/zensical.toml
 
 # Live docs preview with rebuild-on-save (http://127.0.0.1:8000).
 docs-serve:
-	uv run zensical serve
+	uv run zensical serve -f docs/zensical.toml
 
 check: lint
 

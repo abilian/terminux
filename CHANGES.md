@@ -26,7 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Added
 
-- **Remote access.** Run terminux on one machine and use it from another. Start `terminux --server` on the host and `terminux --connect <url>` on your laptop: you get the normal desktop window, but every shell lives on the server — long-running builds keep going while you close the lid, change networks, or switch devices. Access is protected by a short persistent code (`abc-def-ghi` style, rate-limited against guessing); the recommended setup keeps the server private behind an SSH port-forward. Dragging files into a remote window pastes their paths, same as locally. Full guide: `docs/remote.md`.
+- **Remote access.** Run terminux on one machine and use it from another. Start `terminux --server` on the host and `terminux --connect <url>` on your laptop: you get the normal desktop window, but every shell lives on the server — long-running builds keep going while you close the lid, change networks, or switch devices. Access is protected by a short persistent code (`abc-def-ghi` style, rate-limited against guessing); the recommended setup keeps the server private behind an SSH port-forward. Dragging files into a remote window pastes their paths, same as locally. Full guide: `docs/src/remote.md`.
 
 ### Fixed
 
@@ -47,7 +47,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Added
 
 - **The app now diagnoses its own stalls.** If the server stops responding for more than ~3 seconds, it automatically logs a warning with a snapshot of what it was doing at the time — so a freeze report comes with evidence attached. You can request the same snapshot at any moment with `kill -INFO <pid>` (macOS) or `kill -USR1 <pid>` (Linux), and disk operations that turn suspiciously slow are flagged in the log before they escalate into a freeze.
-- **`--debug` and `--trace` flags** for verbose logging when investigating or reporting a problem. See `docs/developing.md#debugging-knobs`.
+- **`--debug` and `--trace` flags** for verbose logging when investigating or reporting a problem. See `docs/src/developing.md#debugging-knobs`.
 
 ## [0.7.0] - 2026-05-28
 
@@ -96,8 +96,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Clickable URLs**: `Cmd`-click (macOS) or `Ctrl`-click (Linux) opens links in your default browser.
 - **Auto-copy on selection** (iTerm2-style), off by default, toggleable from the command palette.
 - **Quit confirmation** so an accidental `Cmd+Q` / `Ctrl+Q` doesn't drop live shells.
-- **Shell-integration snippets** for bash / zsh / fish, for more precise busy/ready detection. See `docs/shell-integration.md`.
-- **macOS permission (TCC) troubleshooting** section in `docs/packaging.md`.
+- **Shell-integration snippets** for bash / zsh / fish, for more precise busy/ready detection. See `docs/src/shell-integration.md`.
+- **macOS permission (TCC) troubleshooting** section in `docs/src/packaging.md`.
 
 ### Changed
 
