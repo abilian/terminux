@@ -21,6 +21,10 @@ import { isEditingTab, renderTabs } from "./tabs";
 
 configure({
   onRender: () => {
+    // Window/browser-tab title carries the workspace name too — the only
+    // cue that works even when the app is in the background.
+    const ws = activeWorkspace();
+    document.title = ws ? `${ws.name} — terminux` : "terminux";
     syncFontFromState(); // before the first terminal opens; one-shot
     if (isReordering()) return; // don't rebuild rows mid-drag
     // Skip a panel's re-render while it has an inline rename in
@@ -71,4 +75,7 @@ setInterval(() => {
 // exercise the reconnect path).
 (window as unknown as { __terminux: object }).__terminux = { sessions };
 
-void refresh().then(applyLayout);
+void refresh().then(() => {
+  applyLayout();
+  renderTabs(); // applyLayout may have just hidden the sidebar → chip
+});

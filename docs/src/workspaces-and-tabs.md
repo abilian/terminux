@@ -20,6 +20,10 @@ reorderable list of them.
   tracking, and the pinned name persists across restarts. Inline rename
   works for both workspaces and tabs.
 - **Status dot.** Each workspace shows a lightweight status indicator.
+- **Visible even without the sidebar.** When the sidebar is hidden
+  (`Cmd/Ctrl+B`), the active workspace's dot, number, and name appear as a
+  chip at the left of the tab bar; click it to bring the sidebar back. The
+  window title carries the workspace name as well.
 - **Closing the last tab** of a workspace closes the *workspace* and activates
   another one; it does not quit the app.
 

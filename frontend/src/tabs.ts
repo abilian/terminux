@@ -1,6 +1,7 @@
 // Tab bar: tabs for the active workspace, inline rename, close, and nav.
 
 import { api } from "./api";
+import { toggleSidebar } from "./layout";
 import { makeRenameInput } from "./rename";
 import { makeDraggable, recentlyReordered } from "./reorder";
 import {
@@ -10,6 +11,7 @@ import {
   setActiveTabOptimistic,
 } from "./store";
 import { disposeSession } from "./terminal";
+import type { StateView, WorkspaceView } from "./types";
 
 let editingTabId: string | null = null;
 
@@ -31,6 +33,41 @@ export function isEditingTab(): boolean {
   return editingTabId !== null;
 }
 
+function sidebarHidden(): boolean {
+  return document.getElementById("sidebar")?.style.display === "none";
+}
+
+function makeWsChip(state: StateView, ws: WorkspaceView): HTMLDivElement {
+  const chip = document.createElement("div");
+  chip.id = "ws-chip";
+  const n = ws.tab_ids.length;
+  chip.title = `${ws.name} (${n} tab${n === 1 ? "" : "s"}) — click to show the sidebar`;
+  const dot = document.createElement("span");
+  dot.className = "dot " + ws.status;
+  chip.appendChild(dot);
+  // Same keycap the sidebar shows: ties the chip to Cmd/Ctrl+1..9.
+  const idx = state.workspaces.findIndex((w) => w.id === ws.id);
+  if (idx >= 0 && idx < 9) {
+    const slot = document.createElement("span");
+    slot.className = "keycap";
+    slot.textContent = String(idx + 1);
+    chip.appendChild(slot);
+  }
+  const name = document.createElement("span");
+  name.className = "name";
+  name.textContent = ws.name;
+  chip.appendChild(name);
+  const sep = document.createElement("span");
+  sep.className = "sep";
+  sep.textContent = "❯";
+  chip.appendChild(sep);
+  chip.onclick = (): void => {
+    toggleSidebar();
+    renderTabs(); // the chip just made itself redundant
+  };
+  return chip;
+}
+
 export function renderTabs(): void {
   // Same shape as renderSidebar: the "skip while editing" guard lives
   // at the ``onRender`` call site so the dblclick-to-rename transition
@@ -41,6 +78,11 @@ export function renderTabs(): void {
   bar.innerHTML = "";
   const ws = activeWorkspace();
   if (!ws) return;
+  // With the sidebar hidden, nothing else on screen says which workspace
+  // this is — the chip stands in for it (and clicking it brings the
+  // sidebar back). Redundant, and therefore absent, while the sidebar is
+  // visible.
+  if (sidebarHidden()) bar.appendChild(makeWsChip(state, ws));
   // Tabs go in an overflow-clipped wrapper so the "+" sibling at the end
   // of #tabbar stays visible no matter how many tabs accrue.
   const list = document.createElement("div");

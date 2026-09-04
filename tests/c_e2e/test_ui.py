@@ -144,9 +144,35 @@ def test_sidebar_toggle_shortcut(page: Page, app_url: str) -> None:
     page.goto(app_url)
     sidebar = page.locator("#sidebar")
     expect(sidebar).to_be_visible()
+    ws_name = page.locator(".ws-row.active .name").inner_text()
+    # The window/tab title always carries the workspace name.
+    assert page.title() == f"{ws_name} — terminux"
+    # Sidebar visible → no chip (it would be redundant).
+    chip = page.locator("#ws-chip")
+    expect(chip).to_have_count(0)
     page.keyboard.press(f"{APP_MOD}+b")
     expect(sidebar).to_be_hidden()
+    # Sidebar hidden → the chip stands in with the same workspace name.
+    expect(chip).to_be_visible()
+    expect(chip.locator(".name")).to_have_text(ws_name)
     page.keyboard.press(f"{APP_MOD}+b")
+    expect(sidebar).to_be_visible()
+    expect(chip).to_have_count(0)
+    # Clicking the chip reopens the sidebar too.
+    page.keyboard.press(f"{APP_MOD}+b")
+    expect(chip).to_be_visible()
+    chip.click()
+    expect(sidebar).to_be_visible()
+    expect(chip).to_have_count(0)
+    # A page that loads with the collapsed pref already set shows the chip
+    # from the start (applyLayout hides the sidebar after the first render).
+    page.keyboard.press(f"{APP_MOD}+b")
+    expect(chip).to_be_visible()
+    page.reload()
+    expect(page.locator(".xterm")).to_be_visible(timeout=UI)
+    expect(sidebar).to_be_hidden()
+    expect(chip).to_be_visible()
+    page.keyboard.press(f"{APP_MOD}+b")  # leave the sidebar visible for peers
     expect(sidebar).to_be_visible()
 
 

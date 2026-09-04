@@ -19,7 +19,7 @@ import {
   refresh,
   setActiveWorkspaceOptimistic,
 } from "./store";
-import { closeTab, switchTab } from "./tabs";
+import { closeTab, renderTabs, switchTab } from "./tabs";
 
 declare global {
   interface Window {
@@ -68,7 +68,10 @@ export function installCommands(): void {
   register("palette.quick", openPalette);
   register("palette.command", openCmdPalette);
   register("view.find", openFind);
-  register("view.sidebar.toggle", toggleSidebar);
+  register("view.sidebar.toggle", () => {
+    toggleSidebar();
+    renderTabs(); // the workspace chip appears/disappears with the sidebar
+  });
 
   // ----- font zoom ----------------------------------------------------
   register("view.zoom.in", () => applyFontSize(getFontSize() + 1));
