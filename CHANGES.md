@@ -2,6 +2,12 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-08-30
+
+### Added
+
+- **You can always see which workspace you're in.** With the sidebar hidden (`Cmd/Ctrl+B`), the active workspace's status dot, number, and name now appear as a chip at the left of the tab bar; clicking it brings the sidebar back. The window and browser-tab title also carry the workspace name, so the answer to "where am I?" survives even minimizing the app.
+
 ## [0.8.0] - 2026-08-30
 
 ### Added
