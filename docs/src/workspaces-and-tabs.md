@@ -55,13 +55,13 @@ Each workspace's accumulated time shows inline in the sidebar (small, dim,
 right-aligned next to the name). Hover for the same value as a tooltip.
 
 The **command palette** (`F1`, provisional, on Linux; `Cmd+Shift+P` on
-macOS) is a launcher: verbs only, fuzzy-filtered. Commands relevant to
-activity stats:
+macOS) is a launcher: verbs only, fuzzy-filtered. Three of its commands
+touch activity stats:
 
 - **Display usage stats**: opens a focused overlay listing every
   workspace ranked by active time, with a bar showing each one's share of
   the busiest. Escape or click outside to dismiss.
-- **Reorder sidebar by activity (most used first)**: one-shot
+- **Sort sidebar by activity (most used first)**: one-shot
   rearrangement of the sidebar; nothing keeps reordering automatically
   after that.
 - **Reset session activity counters**: wipes all per-workspace
@@ -109,7 +109,7 @@ Two short windows soften the visual feedback right around a visit:
   preserves every one of them, so quick navigation doesn't silently
   dismiss "look here later" information.
 
-Trade-offs of the heuristic:
+The heuristic accepts three trade-offs:
 
 - A task that starts *and* finishes inside the post-visit grace window
   won't raise the dot.

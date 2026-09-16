@@ -108,7 +108,7 @@ needed to find the root cause. It re-warns every 10 s while the stall
 persists.
 
 The watchdog is started automatically by `terminux.app.main()`; no flag
-required.
+is required.
 
 ### Manual stack dump
 
@@ -130,10 +130,9 @@ lands on the same stderr stream as the watchdog's output.
 
 When set in the environment, every PTY read is appended to `<path>` as a
 one-line trace: `<epoch.ms> <terminal-id-prefix> <byte_count> <repr of
-first 120 bytes>`. Useful for characterizing what an "idle" TUI actually
-emits when you suspect a sidebar dot is reacting to noise rather than
-real work. It is off by default and leaves no trace on disk in normal
-runs.
+first 120 bytes>`. Use it to characterize what an "idle" TUI actually
+emits when you suspect a sidebar dot is reacting to noise. It is off by
+default and leaves no trace on disk in normal runs.
 
 ```sh
 rm -f /tmp/pty.log

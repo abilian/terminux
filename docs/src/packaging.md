@@ -14,7 +14,7 @@ make build-linux   # -> dist/linux/terminux/terminux (PyInstaller onedir)
 make docker-run    # run the same image in web mode on :8000
 ```
 
-Runtime requirements on the host: `libgtk-3` and `libwebkit2gtk-4.1`. Tested on
+The host needs `libgtk-3` and `libwebkit2gtk-4.1` at runtime. Tested on
 Ubuntu / Debian / Fedora / Arch derivatives.
 
 ### Web mode (container-native)

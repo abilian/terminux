@@ -3,7 +3,7 @@
 terminux follows the platform convention for the app modifier:
 
 - **Linux**: `Ctrl+Shift+<key>` for everything, including digit jumps.
-  Raw `Ctrl+<letter>` flows to the shell unchanged, matching GNOME
+  A raw `Ctrl+<letter>` chord flows to the shell unchanged, matching GNOME
   Terminal, Konsole, Alacritty, Ghostty and kitty.
 - **macOS**: `Cmd+<key>`. Raw `Ctrl` is left alone so terminal/Emacs
   chords (tmux prefix, fish/zsh history, readline editing) flow straight

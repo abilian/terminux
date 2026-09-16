@@ -2,6 +2,12 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- "Reorder by activity" is now called "Sort by activity" in the menu and command palette, so it can't be confused with drag-and-drop reordering.
+
 ## [0.8.1] - 2026-08-30
 
 ### Added

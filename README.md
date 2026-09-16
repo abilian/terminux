@@ -21,9 +21,9 @@
 
 ## Why terminux?
 
-You don't have one project. You have *six*. Each one is a different directory, a different mental context, a different set of running shells. terminux gives each of them a home (a **workspace**) and keeps them alive and arranged exactly how you left them, even across restarts.
+You have *six* projects on the go. Each one is a different directory, a different mental context, a different set of running shells. terminux gives each of them a home (a **workspace**) and keeps them alive and arranged exactly how you left them, even across restarts.
 
-It's the workspace UX of cmux on a clean, auditable two-process architecture inspired by terax. Rebuilt in **Python** for **reliability over features**. No accounts. No telemetry. No AI. Just a terminal that respects your flow.
+It's the workspace UX of cmux, rebuilt in **Python** on a clean, auditable two-process architecture inspired by terax, with **reliability over features** as the guiding principle. There is no account, telemetry, or AI: just a terminal that respects your flow.
 
 ```sh
 uv sync && make frontend
@@ -95,7 +95,7 @@ make docker-run   # run headless web mode on :8000
 make build-macos  # macOS .app → dist/terminux.app
 ```
 
-Full platform notes (signing, Gatekeeper, X11, architectures) live in the [**documentation**](#documentation).
+The [**documentation**](#documentation) has the full platform notes (signing, Gatekeeper, X11, architectures).
 
 ## Documentation
 

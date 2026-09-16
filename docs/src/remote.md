@@ -11,7 +11,7 @@ The architecture is intentionally thin:
   persistent auth token and a connect-banner. The full frontend
   (xterm.js, sidebar, persistence) is served from the same process.
 - **Client** (`--connect URL`) is a native pywebview window pointed at
-  the server's URL. No local backend, no local PTYs. Everything runs on
+  the server's URL. No backend or PTY runs locally; everything lives on
   the remote.
 
 ## The recommended setup: SSH port-forward
@@ -66,7 +66,7 @@ all of them, like `tmux attach` from multiple sessions.
 
 ## What lives where
 
-State on the **server**, kept across client disconnects, sleeps, and
+The **server** keeps this state across client disconnects, sleeps, and
 client reboots:
 
 - Workspaces, tabs, their working directories
@@ -74,7 +74,7 @@ client reboots:
 - Scrollback (up to 2 MB per tab, replayed on reconnect)
 - Sidebar order, font size, UI prefs
 
-State on the **client**, per connection:
+The **client** keeps only per-connection state:
 
 - Window position and size: each launch uses the defaults. Per-client
   geometry persistence is not implemented in v1.
