@@ -13,7 +13,7 @@ interface PaletteEntry {
   label: string;
   commandId: string;
   // If set, the entry is hidden unless the predicate returns true.
-  // Used so e.g. "Reorder by activity" only shows when there's more
+  // Used so e.g. "Sort by activity" only shows when there's more
   // than one workspace.
   visible?: () => boolean;
 }
@@ -34,7 +34,7 @@ function buildEntries(): PaletteEntry[] {
   return [
     { label: "Display usage stats", commandId: "view.stats" },
     {
-      label: "Reorder sidebar by activity (most used first)",
+      label: "Sort sidebar by activity (most used first)",
       commandId: "workspace.reorder-by-activity",
       visible: () => (getState()?.workspaces.length ?? 0) > 1,
     },
