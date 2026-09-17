@@ -1,0 +1,120 @@
+// The store's fetch/optimistic machinery: polls render without activating,
+// optimistic switches repaint immediately and queue ordered PATCHes, and a
+// stale poll cannot roll back the user's latest intent.
+
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { StateView } from "../src/state/types";
+
+const mocks = vi.hoisted(() => ({ api: vi.fn() }));
+vi.mock("../src/state/api", () => ({ api: mocks.api, TOKEN: "t" }));
+
+type Store = typeof import("../src/state/store");
+
+function serverState(activeWs: string): StateView {
+  return {
+    workspaces: [
+      {
+        id: "w1",
+        name: "one",
+        tab_ids: ["t1"],
+        active_tab_id: "t1",
+        status: activeWs === "w1" ? "active" : "idle",
+        active_seconds: 0,
+      },
+      {
+        id: "w2",
+        name: "two",
+        tab_ids: ["t2"],
+        active_tab_id: "t2",
+        status: activeWs === "w2" ? "active" : "idle",
+        active_seconds: 0,
+      },
+    ],
+    tabs: {},
+    active_workspace_id: activeWs,
+    session_started_at: 0,
+    ui: {
+      sidebar_width: 220,
+      sidebar_collapsed: false,
+      font_size: 13,
+      copy_on_select: false,
+      scrollback_persist: true,
+    },
+  };
+}
+
+let store: Store;
+let served: StateView;
+let rendered: number;
+let activated: number;
+
+beforeEach(async () => {
+  vi.resetModules();
+  store = await import("../src/state/store");
+  served = serverState("w1");
+  rendered = 0;
+  activated = 0;
+  mocks.api.mockReset();
+  mocks.api.mockImplementation((path: string) => {
+    if (path === "/state") {
+      return Promise.resolve({ json: () => Promise.resolve(served) });
+    }
+    return Promise.resolve({ json: () => Promise.resolve({}) });
+  });
+  store.configure({
+    onRender: () => {
+      rendered++;
+    },
+    onActivate: () => {
+      activated++;
+    },
+  });
+});
+
+describe("store", () => {
+  it("refresh renders and activates; poll only renders", async () => {
+    await store.refresh();
+    expect(store.getState()?.active_workspace_id).toBe("w1");
+    expect([rendered, activated]).toEqual([1, 1]);
+    await store.poll();
+    expect([rendered, activated]).toEqual([2, 1]);
+  });
+
+  it("optimistic switch repaints locally, then PATCHes and re-polls", async () => {
+    await store.refresh();
+    await store.setActiveWorkspaceOptimistic("w2");
+    // The local flip happened before any PATCH round-trip.
+    expect(store.getState()?.active_workspace_id).toBe("w2");
+    expect(store.activeWorkspace()?.id).toBe("w2");
+    expect(activated).toBe(2);
+    // Drain the activation queue: PATCH to w2, then a follow-up poll.
+    await new Promise((r) => setTimeout(r, 0));
+    const calls = mocks.api.mock.calls.map((c: unknown[]) => c[0]);
+    expect(calls).toContain("/workspaces/w2");
+    expect(calls.filter((p: unknown) => p === "/state").length).toBeGreaterThan(
+      1,
+    );
+  });
+
+  it("a stale poll cannot roll back the user's latest switch", async () => {
+    await store.refresh();
+    await store.setActiveWorkspaceOptimistic("w2");
+    // The server still reports w1 (our PATCH hasn't landed yet).
+    await store.poll();
+    expect(store.getState()?.active_workspace_id).toBe("w2");
+    // Once the server agrees, the expectation clears and w2 sticks.
+    served = serverState("w2");
+    await store.poll();
+    expect(store.getState()?.active_workspace_id).toBe("w2");
+  });
+
+  it("optimistic tab switch updates the workspace's active tab", async () => {
+    served.workspaces[0].tab_ids = ["t1", "t3"];
+    await store.refresh();
+    await store.setActiveTabOptimistic("w1", "t3");
+    expect(store.activeWorkspace()?.active_tab_id).toBe("t3");
+    // A stale poll (still reporting t1) does not roll it back.
+    await store.poll();
+    expect(store.activeWorkspace()?.active_tab_id).toBe("t3");
+  });
+});

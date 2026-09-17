@@ -38,8 +38,20 @@ function state(): StateView {
       },
     ],
     tabs: {
-      t1: { id: "t1", title: "vim", user_set_title: false, live: true, has_unseen_output: false },
-      t2: { id: "t2", title: "make", user_set_title: false, live: false, has_unseen_output: true },
+      t1: {
+        id: "t1",
+        title: "vim",
+        user_set_title: false,
+        live: true,
+        has_unseen_output: false,
+      },
+      t2: {
+        id: "t2",
+        title: "make",
+        user_set_title: false,
+        live: false,
+        has_unseen_output: true,
+      },
     },
     active_workspace_id: "w1",
     session_started_at: 0,
@@ -66,9 +78,7 @@ describe("tab bar island", () => {
     const tabs = document.querySelectorAll(".tab");
     expect(tabs).toHaveLength(2);
     expect(tabs[0].classList.contains("active")).toBe(true);
-    expect(tabs[1].querySelector(".title")?.textContent).toBe(
-      "make (exited)",
-    );
+    expect(tabs[1].querySelector(".title")?.textContent).toBe("make (exited)");
     expect(tabs[1].querySelector(".activity")).toBeTruthy();
     expect(document.querySelector("#new-tab")).toBeTruthy();
   });
@@ -88,9 +98,7 @@ describe("tab bar island", () => {
     document.getElementById("sidebar")!.style.display = "none";
     renderTabs();
     (document.querySelector("#ws-chip") as HTMLElement).click();
-    expect(document.getElementById("sidebar")!.style.display).not.toBe(
-      "none",
-    );
+    expect(document.getElementById("sidebar")!.style.display).not.toBe("none");
     expect(document.querySelector("#ws-chip")).toBeNull();
   });
 });

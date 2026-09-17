@@ -85,16 +85,18 @@ describe("sidebar island", () => {
   it("keeps a rename in progress across re-renders", async () => {
     renderSidebar();
     await dbl(document.querySelector(".ws-row.active .name")!);
-    const input =
-      document.querySelector<HTMLInputElement>(".ws-row .name-input")!;
+    const input = document.querySelector<HTMLInputElement>(
+      ".ws-row .name-input",
+    )!;
     expect(input.value).toBe("alpha");
     input.value = "alp-renamed";
     // Simulate two poll cycles (state refreshed, island re-rendered).
     fakeState = state();
     renderSidebar();
     renderSidebar();
-    const after =
-      document.querySelector<HTMLInputElement>(".ws-row .name-input");
+    const after = document.querySelector<HTMLInputElement>(
+      ".ws-row .name-input",
+    );
     expect(after).toBe(input); // same DOM node, not a rebuild
     expect(after!.value).toBe("alp-renamed");
   });
@@ -102,8 +104,9 @@ describe("sidebar island", () => {
   it("commits on Enter and cancels on Escape", async () => {
     renderSidebar();
     await dbl(document.querySelector(".ws-row.active .name")!);
-    const input =
-      document.querySelector<HTMLInputElement>(".ws-row .name-input")!;
+    const input = document.querySelector<HTMLInputElement>(
+      ".ws-row .name-input",
+    )!;
     input.value = "pinned";
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
     await tick();
@@ -115,8 +118,9 @@ describe("sidebar island", () => {
     expect(document.querySelector(".ws-row .name-input")).toBeNull();
 
     await dbl(document.querySelector(".ws-row.active .name")!);
-    const again =
-      document.querySelector<HTMLInputElement>(".ws-row .name-input")!;
+    const again = document.querySelector<HTMLInputElement>(
+      ".ws-row .name-input",
+    )!;
     again.value = "discarded";
     apiMock.mockClear();
     again.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
