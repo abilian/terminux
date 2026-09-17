@@ -21,7 +21,10 @@ vi.mock("../src/state/store", () => ({
 // terminal.ts drags in xterm; the sidebar only needs disposeSession.
 vi.mock("../src/term/terminal", () => ({ disposeSession: vi.fn() }));
 
-const { renderSidebar } = await import("../src/ui/sidebar");
+const { renderSidebar, closeWorkspace, switchWorkspace } =
+  await import("../src/ui/sidebar");
+const storeMod = await import("../src/state/store");
+const termMod = await import("../src/term/terminal");
 
 function state(): StateView {
   return {
@@ -128,5 +131,25 @@ describe("sidebar island", () => {
     renderSidebar();
     expect(document.querySelector(".ws-row .name-input")).toBeNull();
     expect(apiMock).not.toHaveBeenCalled();
+  });
+
+  it("closeWorkspace disposes its sessions before deleting it", () => {
+    closeWorkspace("w1");
+    expect(termMod.disposeSession).toHaveBeenCalledWith("t1");
+    expect(apiMock).toHaveBeenCalledWith(
+      "/workspaces/w1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("switchWorkspace cycles with wraparound", () => {
+    switchWorkspace(1);
+    expect(storeMod.setActiveWorkspaceOptimistic).toHaveBeenLastCalledWith(
+      "w2",
+    );
+    switchWorkspace(-1); // from w1, backwards wraps to the end
+    expect(storeMod.setActiveWorkspaceOptimistic).toHaveBeenLastCalledWith(
+      "w2",
+    );
   });
 });

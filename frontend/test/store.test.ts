@@ -117,4 +117,13 @@ describe("store", () => {
     await store.poll();
     expect(store.activeWorkspace()?.active_tab_id).toBe("t3");
   });
+
+  it("activeSession returns the live session of the active tab", async () => {
+    await store.refresh();
+    expect(store.activeSession()).toBeNull();
+    const fake = { id: "fake" } as never;
+    store.sessions.set("t1", fake);
+    expect(store.activeSession()).toBe(fake);
+    store.sessions.clear();
+  });
 });

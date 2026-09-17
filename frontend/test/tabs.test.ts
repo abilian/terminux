@@ -23,7 +23,10 @@ vi.mock("../src/state/store", () => ({
 }));
 vi.mock("../src/term/terminal", () => ({ disposeSession: vi.fn() }));
 
-const { renderTabs } = await import("../src/ui/tabs");
+const { renderTabs, closeTab, switchTab } = await import("../src/ui/tabs");
+const storeMod = await import("../src/state/store");
+const termMod = await import("../src/term/terminal");
+const tick = () => new Promise((r) => setTimeout(r, 0));
 
 function state(): StateView {
   return {
@@ -70,6 +73,8 @@ beforeEach(() => {
     '<aside id="sidebar"></aside><div id="tabbar"></div>';
   fakeState = state();
   apiMock.mockClear();
+  vi.mocked(storeMod.setActiveTabOptimistic).mockClear();
+  vi.mocked(termMod.disposeSession).mockClear();
 });
 
 describe("tab bar island", () => {
@@ -100,5 +105,62 @@ describe("tab bar island", () => {
     (document.querySelector("#ws-chip") as HTMLElement).click();
     expect(document.getElementById("sidebar")!.style.display).not.toBe("none");
     expect(document.querySelector("#ws-chip")).toBeNull();
+  });
+
+  it("clicking an inactive tab switches; its ✕ closes it", () => {
+    renderTabs();
+    const second = document.querySelectorAll(".tab")[1] as HTMLElement;
+    second.click();
+    expect(storeMod.setActiveTabOptimistic).toHaveBeenCalledWith("w1", "t2");
+    (second.querySelector(".x") as HTMLElement).click();
+    expect(termMod.disposeSession).toHaveBeenCalledWith("t2");
+    expect(apiMock).toHaveBeenCalledWith(
+      "/tabs/t2",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("switchTab steps through the list with wraparound", () => {
+    switchTab(1);
+    expect(storeMod.setActiveTabOptimistic).toHaveBeenLastCalledWith(
+      "w1",
+      "t2",
+    );
+    switchTab(-1); // from t1, backwards wraps to the end
+    expect(storeMod.setActiveTabOptimistic).toHaveBeenLastCalledWith(
+      "w1",
+      "t2",
+    );
+  });
+
+  it("closeTab disposes the session before deleting the tab", () => {
+    closeTab("t1");
+    expect(termMod.disposeSession).toHaveBeenCalledWith("t1");
+    expect(apiMock).toHaveBeenCalledWith(
+      "/tabs/t1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("a tab rename survives a re-render and commits on Enter", async () => {
+    renderTabs();
+    document
+      .querySelectorAll(".tab")[1]
+      .querySelector(".title")!
+      .dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    await tick();
+    const input = document.querySelector<HTMLInputElement>(".tab .name-input")!;
+    expect(input.value).toBe("make");
+    input.value = "build";
+    renderTabs(); // a poll re-render must not touch the typed value
+    expect(
+      document.querySelector<HTMLInputElement>(".tab .name-input")!.value,
+    ).toBe("build");
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    await tick();
+    expect(apiMock).toHaveBeenCalledWith(
+      "/tabs/t2",
+      expect.objectContaining({ method: "PATCH" }),
+    );
   });
 });
