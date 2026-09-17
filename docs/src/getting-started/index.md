@@ -1,4 +1,4 @@
-# Getting started
+# Installation
 
 ## Requirements
 
@@ -51,7 +51,7 @@ Python nor Node to run.
     The bundle embeds the Python backend, the built web UI, and pywebview's
     WKWebView backend.
 
-See [Packaging & distribution](packaging.md) for signing, Gatekeeper, X11, and
+See [Packaging & distribution](../developers/packaging.md) for signing, Gatekeeper, X11, and
 architecture details.
 
 ## First steps in the app
@@ -65,4 +65,4 @@ architecture details.
 4. Quit and relaunch: your workspaces and tabs come back, each shell respawned
    in the directory it was in at exit.
 
-Continue with [Workspaces & tabs](workspaces-and-tabs.md).
+Continue with [Workspaces & tabs](../guides/workspaces-and-tabs.md).

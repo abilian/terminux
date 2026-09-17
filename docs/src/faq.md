@@ -40,7 +40,7 @@ It's a small traffic-light:
 - **Blue**: this workspace is the one you're currently looking at.
 - **Green**: produced output since you last viewed it (go check).
 - **Amber**: a foreground task is running and there's nothing else more
-  urgent to signal. See [Working vs ready](workspaces-and-tabs.md#working-vs-ready).
+  urgent to signal. See [Working vs ready](guides/workspaces-and-tabs.md#working-vs-ready).
 - **Empty outline**: shell is at a prompt with nothing new.
 - **Gray**: all shells in the workspace have exited.
 - **🔔**: a tab signaled it wants attention (BEL, `OSC 9`, or a long
@@ -78,7 +78,7 @@ out of scope.
 
 The `.app` is **ad-hoc signed only**. On a Mac other than the build machine,
 right-click → **Open** the first time, or sign with a Developer ID and notarize.
-See [Packaging & distribution](packaging.md).
+See [Packaging & distribution](developers/packaging.md).
 
 ## Do I need Node.js to run terminux?
 
@@ -92,7 +92,7 @@ on your laptop. The shells live on the server (long-running builds keep
 going while your laptop sleeps or switches Wi-Fi); the laptop opens a native
 window pointed at the server's URL. The recommended setup uses an SSH
 tunnel to avoid exposing the server to the open internet. See
-[Remote access](remote.md) for the full recipe.
+[Remote access](guides/remote.md) for the full recipe.
 
 ## terminux froze: what do I do?
 
@@ -117,4 +117,4 @@ kill -USR1 <pid>                         # Linux
 For a bug report, run the reproducer with `--debug` (slow-I/O warnings +
 access logs) or `--trace` (every persisted save and cwd lookup logged with
 its duration). Both flags emit ms-precision timestamps. See
-[Debugging knobs](developing.md#debugging-knobs) for the full menu.
+[Debugging knobs](developers/developing.md#debugging-knobs) for the full menu.

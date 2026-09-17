@@ -3,7 +3,7 @@
 terminux is organized around two concepts: **workspaces** (the left sidebar) and
 **tabs** (the terminals inside a workspace).
 
-![The workspaces sidebar with two workspaces and a tabbed terminal](images/main-window.png){ loading=lazy }
+![The workspaces sidebar with two workspaces and a tabbed terminal](../images/main-window.png){ loading=lazy }
 
 ## Workspaces
 

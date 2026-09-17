@@ -7,6 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Changed
 
 - "Reorder by activity" is now called "Sort by activity" in the menu and command palette, so it can't be confused with drag-and-drop reordering.
+- **The usage-stats overlay updates live.** Leave it open and the per-workspace times and bars tick along with your activity; they used to freeze at whatever they showed when the overlay opened.
+
+### Fixed
+
+- **Renaming no longer swallows the first keystroke.** Typing immediately after double-clicking a workspace or tab name could lose the first character to a focus race; the rename input is now focused before any keystroke can land.
+
+### Internal
+
+- The frontend's chrome (sidebar, tab bar, palettes, stats, find) is now rendered with Preact, which retires the hand-written "don't repaint while the user is typing or dragging" guards: background refreshes patch the DOM instead of rebuilding it, and the two palettes share one fuzzy-overlay component. Frontend modules are grouped into `state/`, `term/`, `ui/`, `input/`, and `util/` layers; frontend unit tests grew from 27 to 80 (`make frontend-cov` reports coverage), and `make help` lists every target.
 
 ## [0.8.1] - 2026-08-30
 
@@ -38,7 +47,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Added
 
-- **Remote access.** Run terminux on one machine and use it from another. Start `terminux --server` on the host and `terminux --connect <url>` on your laptop: you get the normal desktop window, but every shell lives on the server — long-running builds keep going while you close the lid, change networks, or switch devices. Access is protected by a short persistent code (`abc-def-ghi` style, rate-limited against guessing); the recommended setup keeps the server private behind an SSH port-forward. Dragging files into a remote window pastes their paths, same as locally. Full guide: `docs/src/remote.md`.
+- **Remote access.** Run terminux on one machine and use it from another. Start `terminux --server` on the host and `terminux --connect <url>` on your laptop: you get the normal desktop window, but every shell lives on the server — long-running builds keep going while you close the lid, change networks, or switch devices. Access is protected by a short persistent code (`abc-def-ghi` style, rate-limited against guessing); the recommended setup keeps the server private behind an SSH port-forward. Dragging files into a remote window pastes their paths, same as locally. Full guide: `docs/src/guides/remote.md`.
 
 ### Fixed
 
@@ -59,7 +68,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Added
 
 - **The app now diagnoses its own stalls.** If the server stops responding for more than ~3 seconds, it automatically logs a warning with a snapshot of what it was doing at the time — so a freeze report comes with evidence attached. You can request the same snapshot at any moment with `kill -INFO <pid>` (macOS) or `kill -USR1 <pid>` (Linux), and disk operations that turn suspiciously slow are flagged in the log before they escalate into a freeze.
-- **`--debug` and `--trace` flags** for verbose logging when investigating or reporting a problem. See `docs/src/developing.md#debugging-knobs`.
+- **`--debug` and `--trace` flags** for verbose logging when investigating or reporting a problem. See `docs/src/developers/developing.md#debugging-knobs`.
 
 ## [0.7.0] - 2026-05-28
 
@@ -108,8 +117,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Clickable URLs**: `Cmd`-click (macOS) or `Ctrl`-click (Linux) opens links in your default browser.
 - **Auto-copy on selection** (iTerm2-style), off by default, toggleable from the command palette.
 - **Quit confirmation** so an accidental `Cmd+Q` / `Ctrl+Q` doesn't drop live shells.
-- **Shell-integration snippets** for bash / zsh / fish, for more precise busy/ready detection. See `docs/src/shell-integration.md`.
-- **macOS permission (TCC) troubleshooting** section in `docs/src/packaging.md`.
+- **Shell-integration snippets** for bash / zsh / fish, for more precise busy/ready detection. See `docs/src/guides/shell-integration.md`.
+- **macOS permission (TCC) troubleshooting** section in `docs/src/developers/packaging.md`.
 
 ### Changed
 

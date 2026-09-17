@@ -9,7 +9,9 @@ site_dir = "site"
 site_name = "terminux"
 site_description = "A fast, reliable, cross-platform terminal with a Workspaces sidebar and tabbed terminals."
 site_author = "Stefane Fermigier"
-site_url = "https://abilian.github.io/terminux/"
+# The canonical published URL. Keep it a domain root: a path component
+# here would also move the local preview under that path.
+site_url = "https://terminux.lab.abilian.com/"
 copyright = """
 Copyright &copy; 2026 The terminux authors
 """
@@ -17,17 +19,35 @@ Copyright &copy; 2026 The terminux authors
 repo_url = "https://github.com/abilian/terminux"
 repo_name = "abilian/terminux"
 
+# Each section's landing page is a titled first entry so it gets its own
+# row at the top of the left nav. Do NOT enable navigation.indexes: that
+# feature folds the landing page into the section title and removes its
+# row, which is exactly what we don't want.
 nav = [
-  { "Home" = "index.md" },
-  { "Getting started" = "getting-started.md" },
-  { "Workspaces & tabs" = "workspaces-and-tabs.md" },
-  { "Keyboard shortcuts" = "keyboard-shortcuts.md" },
-  { "Shell integration" = "shell-integration.md" },
-  { "Remote access" = "remote.md" },
-  { "Packaging & distribution" = "packaging.md" },
-  { "Architecture" = "architecture.md" },
-  { "Developing" = "developing.md" },
-  { "FAQ" = "faq.md" },
+  { "Home" = [
+    { "Home" = "index.md" },
+    { "About" = "about.md" },
+    { "Compared to…" = "compared.md" },
+    { "FAQ" = "faq.md" },
+  ] },
+  { "Getting started" = [
+    { "Installation" = "getting-started/index.md" },
+    { "Configuration" = "getting-started/configuration.md" },
+  ] },
+  { "Guides" = [
+    { "Overview" = "guides/index.md" },
+    { "Workspaces & tabs" = "guides/workspaces-and-tabs.md" },
+    { "Keyboard shortcuts" = "guides/keyboard-shortcuts.md" },
+    { "Remote access" = "guides/remote.md" },
+    { "Shell integration" = "guides/shell-integration.md" },
+  ] },
+  { "Developers" = [
+    { "Overview" = "developers/index.md" },
+    { "Architecture" = "developers/architecture.md" },
+    { "HTTP & WebSocket API" = "developers/api.md" },
+    { "Developing" = "developers/developing.md" },
+    { "Packaging & distribution" = "developers/packaging.md" },
+  ] },
 ]
 
 [project.theme]
@@ -40,9 +60,10 @@ features = [
   "content.tabs.link",
   "content.tooltips",
   "navigation.footer",
-  "navigation.indexes",
   "navigation.instant",
   "navigation.instant.prefetch",
+  "navigation.tabs",
+  "navigation.tabs.sticky",
   "navigation.path",
   "navigation.sections",
   "navigation.top",

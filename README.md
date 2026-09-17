@@ -37,11 +37,11 @@ That's it. You're in.
 - **Workspaces sidebar:** a persistent list of named workspaces. Names track the first tab's working directory automatically (until you pin one).
 - **Tabbed terminals:** every workspace has its own tabs, each a real PTY shell. Switch freely; background tabs keep streaming, no jank.
 - **Everything comes back:** workspaces, tabs, window geometry, font size, each shell's working directory, and *the visible scrollback of every tab* are restored after a restart. Fresh shells, same layout, same view you left.
-- **Remote access:** run the backend on a server, connect from your laptop with `--connect`. Shells and long-running builds keep going through lid-closes, network hops, and device switches; terminals reconnect automatically and repaint from the server's buffer. See [**Remote access**](docs/src/remote.md).
+- **Remote access:** run the backend on a server, connect from your laptop with `--connect`. Shells and long-running builds keep going through lid-closes, network hops, and device switches; terminals reconnect automatically and repaint from the server's buffer. See [**Remote access**](docs/src/guides/remote.md).
 - **Keyboard-first:** sidebar shows a keycap on each of the first nine workspaces; jump straight there with `Ctrl+Shift+1..9` on Linux (`Cmd+1..9` on macOS). Plus a fuzzy quick-switcher, find-in-terminal, font zoom, and more.
 - **Platform-respecting shortcuts:** Linux uses `Ctrl+Shift+<key>` for app shortcuts (matching GNOME Terminal, Konsole, Alacritty, Ghostty, kitty), so raw `Ctrl+P` / `Ctrl+B` / `Ctrl+F` flow straight to your shell. macOS uses `Cmd` for the same job; raw `Ctrl` is left alone.
 - **Clickable URLs & iTerm2-style copy:** modifier-click opens links; optional auto-copy on selection, persisted, off by default.
-- **Working vs ready:** a two-color sidebar dot reads like a CI traffic light: **amber** while a foreground task is actively working (idle TUIs and parked prompts don't count), **green** once it finishes. Works out of the box; opt-in [shell integration](docs/src/shell-integration.md) makes it more precise. Plain output by itself never falsely promotes to green.
+- **Working vs ready:** a two-color sidebar dot reads like a CI traffic light: **amber** while a foreground task is actively working (idle TUIs and parked prompts don't count), **green** once it finishes. Works out of the box; opt-in [shell integration](docs/src/guides/shell-integration.md) makes it more precise. Plain output by itself never falsely promotes to green.
 - **Drag & drop:** reorder workspaces and tabs with live drop feedback. Drop a file to paste its shell-quoted path.
 - **Local-first & hardened:** loopback-only by default, per-session auth token, CSP and security headers, atomic versioned persistence.
 
@@ -64,7 +64,7 @@ uv run terminux --debug      # verbose logs + slow-op warnings
 uv run terminux --trace      # extreme: log every save/load/cwd lookup
 ```
 
-`--no-window` serves the same UI to any browser, handy for development and for running terminux where no display is available. `--debug` and `--trace` are diagnostics flags; see [**Debugging knobs**](docs/src/developing.md#debugging-knobs).
+`--no-window` serves the same UI to any browser, handy for development and for running terminux where no display is available. `--debug` and `--trace` are diagnostics flags; see [**Debugging knobs**](docs/src/developers/developing.md#debugging-knobs).
 
 ### Remote mode
 
@@ -83,7 +83,7 @@ ssh -L 8443:localhost:8443 server.example.com
 uv run terminux --connect http://localhost:8443/?t=abc-def-ghi
 ```
 
-Shells, workspaces, and scrollback live on the server: disconnect, sleep the laptop, reconnect later, everything's where you left it. See [**Remote access**](docs/src/remote.md) for the full recipe (multi-client, firewall guidance, systemd service).
+Shells, workspaces, and scrollback live on the server: disconnect, sleep the laptop, reconnect later, everything's where you left it. See [**Remote access**](docs/src/guides/remote.md) for the full recipe (multi-client, firewall guidance, systemd service).
 
 ## Install / package
 
@@ -111,10 +111,12 @@ Start with [`docs/src/index.md`](docs/src/index.md). The original vision, functi
 ## Develop
 
 ```sh
+make help            # every target, grouped and described
 make frontend        # build TS/Vite UI → src/terminux/web/static
 make frontend-dev    # live Vite dev server against a --no-window backend
-make frontend-test   # vitest unit tests (pure TS logic)
-make test            # pytest: unit, integration, e2e (Playwright)
+make frontend-test   # vitest unit tests (fast, no browser)
+make frontend-cov    # frontend coverage report
+make test            # everything: vitest, then pytest unit/integration/e2e
 make lint            # ruff + ty + pyrefly + mypy
 make format
 ```
@@ -129,7 +131,7 @@ The e2e tier drives the served UI with a real browser (no pywebview); install it
 
 ## Architecture in one breath
 
-A Vite/TypeScript xterm.js web UI runs in a sandboxed pywebview window and talks to a loopback Starlette/uvicorn backend that owns the PTYs and streams raw bytes over per-terminal WebSockets. The frontend build output is committed to `src/terminux/web/static/`, so the Python package runs with no Node toolchain.
+A Vite/TypeScript web UI (xterm.js for the terminals, Preact for the chrome around them) runs in a sandboxed pywebview window and talks to a loopback Starlette/uvicorn backend that owns the PTYs and streams raw bytes over per-terminal WebSockets. The frontend build output is committed to `src/terminux/web/static/`, so the Python package runs with no Node toolchain.
 
 <div align="center">
 <sub>Built for people who keep too many terminals open. <a href="https://github.com/abilian/terminux">abilian/terminux</a></sub>

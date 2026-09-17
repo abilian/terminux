@@ -131,7 +131,7 @@ simplest options are:
   auto-start at login.
 
 Pick whichever matches the host's idiom. The watchdog and `--debug` /
-`--trace` flags described in [Debugging knobs](developing.md#debugging-knobs)
+`--trace` flags described in [Debugging knobs](../developers/developing.md#debugging-knobs)
 work the same in server mode and write to stderr; point that at a file
 in your service definition.
 

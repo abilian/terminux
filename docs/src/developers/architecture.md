@@ -5,9 +5,9 @@ that renders terminals, and a backend that owns the PTYs and streams raw bytes
 over a narrow, typed channel.
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph Window["pywebview window (WKWebView / WebKit2GTK)"]
-        UI["xterm.js UI<br/>(TypeScript / Vite)"]
+        UI["xterm.js + Preact UI<br/>(TypeScript / Vite)"]
     end
     subgraph Backend["Loopback backend (Starlette + uvicorn)"]
         ASGI["ASGI app<br/>HTTP + per-terminal WebSocket"]
@@ -21,10 +21,13 @@ flowchart LR
 
 ## The two processes
 
-- **Frontend**: a Vite/TypeScript app built on **xterm.js**, rendered inside a
-  sandboxed [pywebview](https://pywebview.flowrl.com/) window. The build output
-  is committed to `src/terminux/web/static/`, so the Python package runs with no
-  Node toolchain.
+- **Frontend**: a Vite/TypeScript app, rendered inside a sandboxed
+  [pywebview](https://pywebview.flowrl.com/) window. Terminals are
+  **xterm.js**; the chrome around them (sidebar, tab bar, palettes,
+  overlays) is **Preact**, so background refreshes diff the DOM instead
+  of rebuilding it. The build output is committed to
+  `src/terminux/web/static/`, so the Python package runs with no Node
+  toolchain.
 - **Backend**: a loopback **Starlette/uvicorn** ASGI server. It owns the PTYs
   (via `ptyprocess`), serves the static UI, and exposes a **per-terminal
   WebSocket** that streams raw PTY bytes.
@@ -45,6 +48,21 @@ is also the dev/test path.
 | `src/terminux/core/pty_backend.py` | PTY spawning and I/O (`ptyprocess`). |
 | `src/terminux/core/shellprobe.py` | Shell / working-directory probing. |
 | `src/terminux/web/static/` | Committed frontend build output. |
+
+The frontend source (`frontend/src/`) is layered the same way:
+
+| Path | Responsibility |
+| --- | --- |
+| `state/` | Server state: fetch wrapper, store, optimistic reconcile, types. |
+| `term/` | xterm.js sessions, kitty keyboard codec, macOS editing chords, font. |
+| `ui/` | Preact islands (sidebar, tabs, palettes, stats, find) and drag logic. |
+| `input/` | Command bus, keyboard chords, native-menu bindings. |
+| `util/` | Pure helpers (fuzzy matching, duration formatting). |
+| `main.ts` | Entry point wiring the hooks together. |
+
+Imports point downward only (`ui` → `state`/`term`/`util`; nothing imports
+`main.ts`), and the imperative pieces (xterm hosts, mouse-event drag,
+divider resize) stay outside Preact's render cycle on purpose.
 
 ## Key design decisions
 

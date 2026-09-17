@@ -60,7 +60,7 @@ WKWebView backend.
 
 ## Windows
 
-Not yet: the Windows PTY backend is on the roadmap. See the [FAQ](faq.md).
+Not yet: the Windows PTY backend is on the roadmap. See the [FAQ](../faq.md).
 
 ## Troubleshooting on macOS
 

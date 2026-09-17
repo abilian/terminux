@@ -1,60 +1,40 @@
+---
+title: Home
+---
+
 # terminux
 
 **A fast, reliable, cross-platform terminal, organized the way you actually work.**
 
-Workspaces sit on the left, tabbed terminals in the middle, and everything
-stays where you left it, even across restarts.
-
 ![terminux: workspaces sidebar and a tabbed terminal running a test suite](images/main-window.png){ loading=lazy }
 
----
+You have several projects on the go: each one is a different directory, a different mental context, a different set of running shells. terminux gives each of them a home (a **workspace** in a persistent sidebar), keeps its tabbed terminals streaming in the background, and brings everything back after a restart.
 
-## The idea
+Three things carry the pitch:
 
-You have several projects on the go: each is a different directory, a
-different mental context, a different set of running shells. terminux gives each
-of them a home: a **workspace**. Workspaces and their tabs persist across
-restarts, so reopening the app drops you straight back into your layout.
+- **Workspaces with signals.** Every workspace shows a status dot that reads like a CI traffic light: amber while a foreground task works, green once it finishes and wants a look. Tens of projects stay scannable at a glance, and `Cmd/Ctrl+1..9` jumps straight to the first nine.
+- **Everything comes back.** Quit and relaunch: workspaces, tabs, window geometry, font size, each shell's working directory, and each tab's visible scrollback are restored, with fresh shells spawned where you left off.
+- **Remote access.** Run the backend on a server and connect from your laptop with `--connect`: long builds keep going while you close the lid or switch networks, and terminals reconnect on their own. See [Remote access](guides/remote.md).
 
-terminux takes the workspace UX of [cmux](https://github.com/) and rebuilds it
-on a clean, auditable two-process architecture, written in
-**Python**, with **reliability over features** as the guiding principle. There
-is no account, telemetry, AI, or editor: just a terminal that respects your
-flow.
+terminux is **local-first** with a small, auditable surface. There is no account, telemetry, AI, or editor: just a terminal that respects your flow, built with **reliability over features** as the guiding principle.
 
-## Highlights
+Install and run in two commands:
 
-- **Workspaces sidebar**: a persistent, reorderable list of named workspaces,
-  each with an automatic status dot.
-- **Tabbed terminals**: multiple live PTY shells per workspace; background tabs
-  keep streaming with no switch jank.
-- **Persistence**: workspaces, tabs, window geometry, sidebar state, font size,
-  and per-shell working directories persist across restarts.
-- **Keyboard-first**: workspace jumps, fuzzy quick-switcher, find-in-terminal,
-  font zoom. See [Keyboard shortcuts](keyboard-shortcuts.md).
-- **Working vs ready**: the sidebar status dot turns amber while a
-  workspace has a foreground task running (green wins when there's unseen
-  output to look at, so the dot reads like a CI traffic light).
-- **Attention routing**: background activity indicators; BEL / `OSC 9` on an
-  off-screen tab raises a badge that bubbles up to its workspace.
-- **Remote access**: run the backend on a server and connect from your laptop
-  with `--connect`; shells keep running while you disconnect, and terminals
-  reconnect automatically. See [Remote access](remote.md).
-- **Local-first & hardened**: loopback-only by default, per-session auth token,
-  CSP and security headers, atomic versioned persistence.
+```sh
+uv sync && make frontend
+uv run terminux
+```
 
-## Where to go next
+## Where next
 
 <div class="grid cards" markdown>
 
-- **[Getting started](getting-started.md)**: install, run, and package terminux.
-- **[Workspaces & tabs](workspaces-and-tabs.md)**: the core model and how persistence behaves.
-- **[Keyboard shortcuts](keyboard-shortcuts.md)**: every binding.
-- **[Architecture](architecture.md)**: the two-process design.
+- **[Getting started](getting-started/index.md)**: install, package, and configure terminux.
+- **[Guides](guides/index.md)**: workspaces, keyboard, remote mode, and shell integration, organized by what you want to do.
+- **[Developers](developers/architecture.md)**: the two-process architecture, the HTTP/WebSocket API, and how to hack on it.
+- **[About](about.md)** and **[Compared to…](compared.md)**: the project's philosophy, and how terminux relates to tmux, iTerm2, and friends.
 
 </div>
 
 !!! note "Status: 0.8 preview"
-    terminux is a 0.8 preview. The workspace + tabbed-terminal core, scrollback
-    persistence, and remote access (`--server` / `--connect`) work well; split
-    panes and the Windows PTY backend are not done yet. See the [FAQ](faq.md).
+    terminux is a 0.8 preview. The workspace + tabbed-terminal core, scrollback persistence, and remote access work well; split panes and the Windows PTY backend are not done yet. See the [FAQ](faq.md).

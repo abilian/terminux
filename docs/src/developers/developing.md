@@ -61,8 +61,9 @@ make docs-serve    # live preview with rebuild-on-save (http://127.0.0.1:8000)
 make docs          # static site → docs/site/
 ```
 
-To add a page, create `docs/src/<name>.md` and add it to the `nav` array in
-`docs/zensical.toml`.
+To add a page, create it under the matching section directory in
+`docs/src/` (`getting-started/`, `guides/`, `developers/`, or the root
+for Home-tab pages) and add it to the `nav` array in `docs/zensical.toml`.
 
 ## Debugging knobs
 

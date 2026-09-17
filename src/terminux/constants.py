@@ -7,4 +7,4 @@ embedding a literal string.
 
 from __future__ import annotations
 
-DOCS_URL = "https://github.com/abilian/terminux"
+DOCS_URL = "https://terminux.lab.abilian.com/"
