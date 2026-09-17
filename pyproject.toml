@@ -1,6 +1,6 @@
 [project]
 name = "terminux"
-version = "0.8.1"
+version = "0.9.0"
 description = "A cross-platform desktop terminal with workspaces and tabs"
 readme = "README.md"
 license = "Apache-2.0"
