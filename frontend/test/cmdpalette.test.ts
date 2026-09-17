@@ -70,12 +70,13 @@ describe("command launcher", () => {
     expect(labels()).toContain("Enable scrollback persistence");
   });
 
-  it("Enter dispatches the selected command and closes", () => {
+  it("Enter dispatches the selected command and closes", async () => {
     cmdpalette.openCmdPalette();
     const input =
       document.querySelector<HTMLInputElement>("#cmdpalette input")!;
     input.value = "usage";
     input.dispatchEvent(new Event("input"));
+    await new Promise((r) => setTimeout(r, 0)); // flush the filter render
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
     expect(mocks.invoke).toHaveBeenCalledWith("view.stats");
     expect(document.getElementById("cmdpalette")!.hidden).toBe(true);

@@ -11,7 +11,7 @@ import { installFind } from "./ui/find";
 import { syncFontFromState } from "./term/font";
 import { installShortcuts } from "./input/keymap";
 import { installPalette } from "./ui/palette";
-import { installStatsPanel } from "./ui/statspanel";
+import { installStatsPanel, renderStatsPanel } from "./ui/statspanel";
 import { isReordering } from "./ui/reorder";
 import { applyLayout, installSidebarResizer } from "./ui/layout";
 import { renderSidebar } from "./ui/sidebar";
@@ -44,6 +44,7 @@ configure({
     }
     renderSidebar();
     renderTabs();
+    renderStatsPanel(); // the stats overlay ticks live while open
   },
   onActivate: () => ensureActiveTerminal(),
 });

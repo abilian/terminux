@@ -87,4 +87,16 @@ describe("stats overlay", () => {
     overlay.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(overlay.hidden).toBe(true);
   });
+
+  it("ticks live from the render hook while open, and only while open", () => {
+    stats.openStatsPanel();
+    expect(document.querySelector(".stats-time")!.textContent).toBe("5m 00s");
+    mocks.seconds = { alpha: 150, beta: 360 };
+    stats.renderStatsPanel(); // what main.ts calls on every poll
+    expect(document.querySelector(".stats-time")!.textContent).toBe("6m 00s");
+    stats.closeStatsPanel();
+    mocks.seconds = { alpha: 150, beta: 999 };
+    stats.renderStatsPanel();
+    expect(document.getElementById("stats-overlay")!.hidden).toBe(true);
+  });
 });

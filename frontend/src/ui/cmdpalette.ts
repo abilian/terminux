@@ -1,15 +1,14 @@
-// Shift+Cmd/Ctrl+P command launcher: verbs only.
-//
-// Deliberately separate from palette.ts (the Cmd/Ctrl+P quick switcher,
-// which lists workspaces and tabs). This one is a list of fixed actions
-// dispatched through the shared command bus in ./commands.ts — same
-// dispatch table the keyboard and the native menu use.
+// Shift+Cmd/Ctrl+P command launcher: verbs only, dispatched through the
+// command bus. Separate from palette.ts (the quick switcher, which
+// lists workspaces and tabs) but built on the same FuzzyOverlay.
 
 import { invoke } from "../input/commands";
-import { fuzzyScore } from "../util/fuzzy";
-import { activeSession, getState } from "../state/store";
+import { getState } from "../state/store";
+import { createFuzzyOverlay, type FuzzyEntry } from "./fuzzyoverlay";
 
-interface PaletteEntry {
+const overlay = createFuzzyOverlay("cmdpalette", "Run a command…");
+
+interface CommandEntry {
   label: string;
   commandId: string;
   // If set, the entry is hidden unless the predicate returns true.
@@ -18,20 +17,13 @@ interface PaletteEntry {
   visible?: () => boolean;
 }
 
-let overlay: HTMLDivElement | null = null;
-let input: HTMLInputElement | null = null;
-let listEl: HTMLDivElement | null = null;
-let entries: PaletteEntry[] = [];
-let filtered: PaletteEntry[] = [];
-let selected = 0;
-
-function buildEntries(): PaletteEntry[] {
+function buildEntries(): FuzzyEntry[] {
   const state = getState();
   const copyOn = state?.ui.copy_on_select ?? false;
   const sbOn = state?.ui.scrollback_persist ?? true;
   // Labels reflect the action that *will* run, not the current state,
   // so reading the label tells you what selecting it will do.
-  return [
+  const commands: CommandEntry[] = [
     { label: "Display usage stats", commandId: "view.stats" },
     {
       label: "Sort sidebar by activity (most used first)",
@@ -54,98 +46,20 @@ function buildEntries(): PaletteEntry[] {
         : "Enable scrollback persistence",
       commandId: "view.scrollback-persist.toggle",
     },
-  ].filter((e) => e.visible === undefined || e.visible());
-}
-
-function render(): void {
-  if (!listEl) {
-    return;
-  }
-  const q = input?.value ?? "";
-  filtered = entries
-    .map((e) => ({ e, s: fuzzyScore(q, e.label) }))
-    .filter((x): x is { e: PaletteEntry; s: number } => x.s !== null)
-    .sort((a, b) => a.s - b.s)
-    .slice(0, 50)
-    .map((x) => x.e);
-  if (selected >= filtered.length) {
-    selected = Math.max(0, filtered.length - 1);
-  }
-  listEl.innerHTML = "";
-  filtered.forEach((e, i) => {
-    const row = document.createElement("div");
-    row.className = "pal-row" + (i === selected ? " sel" : "");
-    row.textContent = e.label;
-    row.onclick = () => {
-      invoke(e.commandId);
-      closeCmdPalette();
-    };
-    listEl?.appendChild(row);
-  });
-}
-
-function ensure(): void {
-  if (overlay && input && listEl) {
-    return;
-  }
-  overlay = document.createElement("div");
-  overlay.id = "cmdpalette";
-  overlay.hidden = true;
-  input = document.createElement("input");
-  input.type = "text";
-  input.placeholder = "Run a command…";
-  input.spellcheck = false;
-  listEl = document.createElement("div");
-  listEl.className = "pal-list";
-  overlay.append(input, listEl);
-  document.body.appendChild(overlay);
-
-  input.addEventListener("input", () => {
-    selected = 0;
-    render();
-  });
-  input.addEventListener("keydown", (e: KeyboardEvent) => {
-    e.stopPropagation();
-    if (e.key === "Escape") {
-      closeCmdPalette();
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault();
-      selected = Math.min(selected + 1, filtered.length - 1);
-      render();
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      selected = Math.max(selected - 1, 0);
-      render();
-    } else if (e.key === "Enter") {
-      const sel = filtered[selected];
-      if (sel) {
-        invoke(sel.commandId);
-        closeCmdPalette();
-      }
-    }
-  });
+  ];
+  return commands
+    .filter((e) => e.visible === undefined || e.visible())
+    .map((e) => ({ label: e.label, run: () => void invoke(e.commandId) }));
 }
 
 export function installCmdPalette(): void {
-  ensure();
+  overlay.install();
 }
 
 export function openCmdPalette(): void {
-  ensure();
-  if (!overlay || !input) {
-    return;
-  }
-  entries = buildEntries();
-  selected = 0;
-  input.value = "";
-  render();
-  overlay.hidden = false;
-  input.focus();
+  overlay.open(buildEntries());
 }
 
 export function closeCmdPalette(): void {
-  if (overlay) {
-    overlay.hidden = true;
-  }
-  activeSession()?.term.focus();
+  overlay.close();
 }

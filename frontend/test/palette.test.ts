@@ -53,6 +53,8 @@ vi.mock("../src/state/store", () => ({
 type Palette = typeof import("../src/ui/palette");
 let palette: Palette;
 
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
 function key(name: string): void {
   document
     .querySelector("#palette input")!
@@ -76,22 +78,25 @@ describe("quick switcher", () => {
     expect(rows[0].classList.contains("sel")).toBe(true);
   });
 
-  it("filters with fuzzy match and clears on no hit", () => {
+  it("filters with fuzzy match and clears on no hit", async () => {
     palette.openPalette();
     const input = document.querySelector<HTMLInputElement>("#palette input")!;
     input.value = "beta";
     input.dispatchEvent(new Event("input"));
+    await tick();
     const rows = [...document.querySelectorAll(".pal-row")];
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.every((r) => r.textContent!.includes("beta"))).toBe(true);
     input.value = "zzqqxx";
     input.dispatchEvent(new Event("input"));
+    await tick();
     expect(document.querySelectorAll(".pal-row")).toHaveLength(0);
   });
 
-  it("ArrowDown + Enter activates the selected entry and closes", () => {
+  it("ArrowDown + Enter activates the selected entry and closes", async () => {
     palette.openPalette();
     key("ArrowDown");
+    await tick();
     expect(
       document.querySelectorAll(".pal-row")[1].classList.contains("sel"),
     ).toBe(true);
