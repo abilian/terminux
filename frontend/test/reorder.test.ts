@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { reorder } from "../src/reorder";
+import { reorder } from "../src/ui/reorder";
 
 describe("reorder", () => {
   it("moves an item just before the drop target", () => {

@@ -5,9 +5,9 @@
 // dispatched through the shared command bus in ./commands.ts — same
 // dispatch table the keyboard and the native menu use.
 
-import { invoke } from "./commands";
-import { fuzzyScore } from "./fuzzy";
-import { activeSession, getState } from "./store";
+import { invoke } from "../input/commands";
+import { fuzzyScore } from "../util/fuzzy";
+import { activeSession, getState } from "../state/store";
 
 interface PaletteEntry {
   label: string;
@@ -58,7 +58,9 @@ function buildEntries(): PaletteEntry[] {
 }
 
 function render(): void {
-  if (!listEl) return;
+  if (!listEl) {
+    return;
+  }
   const q = input?.value ?? "";
   filtered = entries
     .map((e) => ({ e, s: fuzzyScore(q, e.label) }))
@@ -66,7 +68,9 @@ function render(): void {
     .sort((a, b) => a.s - b.s)
     .slice(0, 50)
     .map((x) => x.e);
-  if (selected >= filtered.length) selected = Math.max(0, filtered.length - 1);
+  if (selected >= filtered.length) {
+    selected = Math.max(0, filtered.length - 1);
+  }
   listEl.innerHTML = "";
   filtered.forEach((e, i) => {
     const row = document.createElement("div");
@@ -81,7 +85,9 @@ function render(): void {
 }
 
 function ensure(): void {
-  if (overlay && input && listEl) return;
+  if (overlay && input && listEl) {
+    return;
+  }
   overlay = document.createElement("div");
   overlay.id = "cmdpalette";
   overlay.hidden = true;
@@ -126,7 +132,9 @@ export function installCmdPalette(): void {
 
 export function openCmdPalette(): void {
   ensure();
-  if (!overlay || !input) return;
+  if (!overlay || !input) {
+    return;
+  }
   entries = buildEntries();
   selected = 0;
   input.value = "";
@@ -136,6 +144,8 @@ export function openCmdPalette(): void {
 }
 
 export function closeCmdPalette(): void {
-  if (overlay) overlay.hidden = true;
+  if (overlay) {
+    overlay.hidden = true;
+  }
   activeSession()?.term.focus();
 }

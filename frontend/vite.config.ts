@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from "vite";
 
 // The built bundle is served by the Python backend, so emit it into the
@@ -16,5 +17,12 @@ export default defineConfig({
     // reason) below anything that would silently drop those machines.
     target: ["es2020", "safari14"],
     sourcemap: false,
+  },
+  test: {
+    coverage: {
+      // Report against every source file, not only the ones tests import —
+      // otherwise the rate flatters itself by ignoring untested modules.
+      include: ["src/**/*.{ts,tsx}"],
+    },
   },
 });

@@ -45,9 +45,15 @@ export function reconcile(
   const nextTabs = new Map<string, string>();
   for (const [wsId, tid] of expected.tabs) {
     const w = fetched.workspaces.find((x) => x.id === wsId);
-    if (!w) continue; // workspace gone — drop the expectation
-    if (w.active_tab_id === tid) continue; // backend agrees — drop
-    if (!w.tab_ids.includes(tid)) continue; // tab gone — drop
+    if (!w) {
+      continue;
+    } // workspace gone — drop the expectation
+    if (w.active_tab_id === tid) {
+      continue;
+    } // backend agrees — drop
+    if (!w.tab_ids.includes(tid)) {
+      continue;
+    } // tab gone — drop
     w.active_tab_id = tid;
     nextTabs.set(wsId, tid);
   }

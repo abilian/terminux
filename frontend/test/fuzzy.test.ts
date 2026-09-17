@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { fuzzyScore } from "../src/fuzzy";
+import { fuzzyScore } from "../src/util/fuzzy";
 
 describe("fuzzyScore", () => {
   it("empty query matches everything with score 0", () => {

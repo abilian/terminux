@@ -104,6 +104,37 @@ def test_new_workspace(page: Page, app_url: str) -> None:
     expect(page.locator(".ws-row")).to_have_count(2)
 
 
+def test_rename_survives_the_poll(page: Page, app_url: str) -> None:
+    """A rename in progress must survive the 2 s state poll: the input,
+    its text, and its focus all stay put while the sidebar re-renders
+    underneath it. Enter commits and pins the name; Escape cancels."""
+    page.goto(app_url)
+    expect(page.locator(".xterm")).to_be_visible(timeout=UI)
+    # Let the startup activation land first: ensureActiveTerminal focuses
+    # the terminal a beat after .xterm appears, and a rename begun inside
+    # that window is blurred (= committed) by that late focus. Same
+    # behavior as the pre-island code; the terminal owning focus marks
+    # the app as settled.
+    expect(page.locator("textarea.xterm-helper-textarea")).to_be_focused(timeout=UI)
+    page.locator(".ws-row.active .name").dblclick()
+    box = page.locator(".ws-row .name-input")
+    expect(box).to_be_visible()
+    box.type("proj")
+    page.wait_for_timeout(2500)  # let at least one poll re-render land
+    expect(box).to_be_focused()
+    expect(box).to_have_value("proj")
+    box.type("ect-x")
+    box.press("Enter")
+    expect(page.locator(".ws-row.active .name")).to_have_text("project-x")
+    # Escape cancels: the typed text is discarded, the pinned name stays.
+    page.locator(".ws-row.active .name").dblclick()
+    box = page.locator(".ws-row .name-input")
+    expect(box).to_be_visible()
+    box.type("zzz")
+    box.press("Escape")
+    expect(page.locator(".ws-row.active .name")).to_have_text("project-x")
+
+
 # Note: sidebar-divider resize is intentionally not e2e-tested — synthetic
 # pointer-drag is flaky in headless Chromium, and the resize clamping +
 # persistence is covered deterministically by the /api/ui server test.

@@ -2,8 +2,8 @@
 // (UiPrefs) so they survive an app exit — localStorage can't, since the
 // loopback port (page origin) changes every launch.
 
-import { api } from "./api";
-import { getState } from "./store";
+import { api } from "../state/api";
+import { getState } from "../state/store";
 
 const MIN_W = 120;
 const MAX_W = 600;
@@ -11,9 +11,13 @@ const MAX_W = 600;
 function setHidden(hidden: boolean, persist: boolean): void {
   const el = document.getElementById("sidebar");
   const divider = document.getElementById("divider");
-  if (!el) return;
+  if (!el) {
+    return;
+  }
   el.style.display = hidden ? "none" : "flex";
-  if (divider) divider.style.display = hidden ? "none" : "";
+  if (divider) {
+    divider.style.display = hidden ? "none" : "";
+  }
   if (persist) {
     api("/ui", {
       method: "PATCH",
@@ -32,19 +36,29 @@ export function toggleSidebar(): void {
 // Apply persisted width + collapsed state from server state (no re-persist).
 export function applyLayout(): void {
   const ui = getState()?.ui;
-  if (!ui) return;
+  if (!ui) {
+    return;
+  }
   const el = document.getElementById("sidebar");
-  if (el && ui.sidebar_width) el.style.width = `${ui.sidebar_width}px`;
-  if (ui.sidebar_collapsed) setHidden(true, false);
+  if (el && ui.sidebar_width) {
+    el.style.width = `${ui.sidebar_width}px`;
+  }
+  if (ui.sidebar_collapsed) {
+    setHidden(true, false);
+  }
 }
 
 export function installSidebarResizer(): void {
   const divider = document.getElementById("divider");
   const sidebar = document.getElementById("sidebar");
-  if (!divider || !sidebar) return;
+  if (!divider || !sidebar) {
+    return;
+  }
 
   divider.addEventListener("mousedown", (down: MouseEvent) => {
-    if (down.button !== 0) return;
+    if (down.button !== 0) {
+      return;
+    }
     down.preventDefault();
     divider.classList.add("dragging");
     document.body.style.userSelect = "none";

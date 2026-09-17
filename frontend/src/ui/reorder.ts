@@ -14,10 +14,14 @@ export function reorder(
   to: string,
   after = false,
 ): string[] {
-  if (from === to) return ids.slice();
+  if (from === to) {
+    return ids.slice();
+  }
   const a = ids.slice();
   const fi = a.indexOf(from);
-  if (fi < 0) return ids;
+  if (fi < 0) {
+    return ids;
+  }
   a.splice(fi, 1);
   const ti = a.indexOf(to);
   if (ti < 0) {
@@ -47,10 +51,14 @@ export function makeDraggable(
 ): void {
   el.dataset.reorderId = id;
   el.addEventListener("mousedown", (down: MouseEvent) => {
-    if (down.button !== 0) return;
+    if (down.button !== 0) {
+      return;
+    }
     const target = down.target as HTMLElement;
     // Don't start a drag from interactive bits (rename input, ✎, ✕).
-    if (target.closest("input, .x, .edit")) return;
+    if (target.closest("input, .x, .edit")) {
+      return;
+    }
     down.preventDefault(); // suppress text selection / native drag
     const sx = down.clientX;
     const sy = down.clientY;
@@ -59,7 +67,9 @@ export function makeDraggable(
     let after = false;
 
     const mark = (next: HTMLElement | null, side: boolean): void => {
-      if (next === marked && side === after) return;
+      if (next === marked && side === after) {
+        return;
+      }
       marked?.classList.remove("drop-before", "drop-after");
       next?.classList.add(side ? "drop-after" : "drop-before");
       marked = next;
@@ -67,7 +77,9 @@ export function makeDraggable(
     };
     const onMove = (e: MouseEvent): void => {
       if (!active) {
-        if (Math.hypot(e.clientX - sx, e.clientY - sy) < DRAG_THRESHOLD) return;
+        if (Math.hypot(e.clientX - sx, e.clientY - sy) < DRAG_THRESHOLD) {
+          return;
+        }
         active = true;
         dragging = true;
         el.classList.add("dragging");
@@ -93,7 +105,9 @@ export function makeDraggable(
     const onUp = (): void => {
       document.removeEventListener("mousemove", onMove, true);
       document.removeEventListener("mouseup", onUp, true);
-      if (!active) return; // it was a click; let the normal handler run
+      if (!active) {
+        return;
+      } // it was a click; let the normal handler run
       const to = marked?.dataset.reorderId;
       const dropAfter = after;
       mark(null, false);
@@ -102,7 +116,9 @@ export function makeDraggable(
       document.body.style.cursor = "";
       dragging = false;
       lastDropAt = Date.now();
-      if (to && to !== id) commit(reorder(current(), id, to, dropAfter));
+      if (to && to !== id) {
+        commit(reorder(current(), id, to, dropAfter));
+      }
     };
     // Capture phase on document: fires even if a child stops propagation,
     // and mousemove is delivered while the button is held in every WebKit.

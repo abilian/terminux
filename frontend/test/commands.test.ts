@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { _reset, has, invoke, register } from "../src/commands";
+import { _reset, has, invoke, register } from "../src/input/commands";
 
 afterEach(() => _reset());
 

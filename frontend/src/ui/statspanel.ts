@@ -5,8 +5,8 @@
 // each one's share of the busiest. Header reports the session's total
 // wall-clock age. Read-only — actions live in the command palette.
 
-import { formatDuration } from "./duration";
-import { activeSession, getState } from "./store";
+import { formatDuration } from "../util/duration";
+import { activeSession, getState } from "../state/store";
 
 let overlay: HTMLDivElement | null = null;
 let card: HTMLDivElement | null = null;
@@ -23,7 +23,9 @@ function elapsedSince(epoch: number): string {
 }
 
 function render(): void {
-  if (!bodyEl || !headerEl) return;
+  if (!bodyEl || !headerEl) {
+    return;
+  }
   const state = getState();
   if (!state) {
     bodyEl.textContent = "";
@@ -87,13 +89,17 @@ function render(): void {
 }
 
 function ensure(): void {
-  if (overlay && card && bodyEl && headerEl) return;
+  if (overlay && card && bodyEl && headerEl) {
+    return;
+  }
   overlay = document.createElement("div");
   overlay.id = "stats-overlay";
   overlay.hidden = true;
   overlay.addEventListener("click", (e) => {
     // Click on the backdrop (not the card) dismisses.
-    if (e.target === overlay) closeStatsPanel();
+    if (e.target === overlay) {
+      closeStatsPanel();
+    }
   });
 
   card = document.createElement("div");
@@ -115,7 +121,9 @@ function ensure(): void {
   window.addEventListener(
     "keydown",
     (e: KeyboardEvent) => {
-      if (overlay?.hidden) return;
+      if (overlay?.hidden) {
+        return;
+      }
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
@@ -132,13 +140,17 @@ export function installStatsPanel(): void {
 
 export function openStatsPanel(): void {
   ensure();
-  if (!overlay || !card) return;
+  if (!overlay || !card) {
+    return;
+  }
   render();
   overlay.hidden = false;
   card.focus();
 }
 
 export function closeStatsPanel(): void {
-  if (overlay) overlay.hidden = true;
+  if (overlay) {
+    overlay.hidden = true;
+  }
   activeSession()?.term.focus();
 }

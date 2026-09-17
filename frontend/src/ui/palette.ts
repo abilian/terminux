@@ -1,8 +1,8 @@
 // Cmd/Ctrl+P quick switcher: fuzzy-jump to a workspace or tab.
 
-import { api } from "./api";
-import { fuzzyScore } from "./fuzzy";
-import { activeSession, getState, refresh } from "./store";
+import { api } from "../state/api";
+import { fuzzyScore } from "../util/fuzzy";
+import { activeSession, getState, refresh } from "../state/store";
 
 interface Entry {
   label: string;
@@ -18,7 +18,9 @@ let selected = 0;
 
 function buildEntries(): Entry[] {
   const state = getState();
-  if (!state) return [];
+  if (!state) {
+    return [];
+  }
   const out: Entry[] = [];
   for (const w of state.workspaces) {
     out.push({
@@ -32,7 +34,9 @@ function buildEntries(): Entry[] {
     });
     for (const tid of w.tab_ids) {
       const t = state.tabs[tid];
-      if (!t) continue;
+      if (!t) {
+        continue;
+      }
       out.push({
         label: `  ${t.title} — ${w.name}`,
         run: () => {
@@ -48,7 +52,9 @@ function buildEntries(): Entry[] {
 }
 
 function render(): void {
-  if (!listEl) return;
+  if (!listEl) {
+    return;
+  }
   const q = input?.value ?? "";
   filtered = entries
     .map((e) => ({ e, s: fuzzyScore(q, e.label) }))
@@ -56,7 +62,9 @@ function render(): void {
     .sort((a, b) => a.s - b.s)
     .slice(0, 50)
     .map((x) => x.e);
-  if (selected >= filtered.length) selected = Math.max(0, filtered.length - 1);
+  if (selected >= filtered.length) {
+    selected = Math.max(0, filtered.length - 1);
+  }
   listEl.innerHTML = "";
   filtered.forEach((e, i) => {
     const row = document.createElement("div");
@@ -71,7 +79,9 @@ function render(): void {
 }
 
 function ensure(): void {
-  if (overlay && input && listEl) return;
+  if (overlay && input && listEl) {
+    return;
+  }
   overlay = document.createElement("div");
   overlay.id = "palette";
   overlay.hidden = true;
@@ -116,7 +126,9 @@ export function installPalette(): void {
 
 export function openPalette(): void {
   ensure();
-  if (!overlay || !input) return;
+  if (!overlay || !input) {
+    return;
+  }
   entries = buildEntries();
   selected = 0;
   input.value = "";
@@ -126,6 +138,8 @@ export function openPalette(): void {
 }
 
 export function closePalette(): void {
-  if (overlay) overlay.hidden = true;
+  if (overlay) {
+    overlay.hidden = true;
+  }
   activeSession()?.term.focus();
 }

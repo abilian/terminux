@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { macEditingSeq } from "../src/editing";
+import { macEditingSeq } from "../src/term/editing";
 
 function ev(p: Partial<KeyboardEvent>): KeyboardEvent {
   return {

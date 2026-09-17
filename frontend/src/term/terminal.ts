@@ -7,11 +7,11 @@ import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 
-import { api, TOKEN } from "./api";
+import { api, TOKEN } from "../state/api";
 import { macEditingSeq } from "./editing";
 import { getFontSize } from "./font";
 import { createKitty } from "./kitty";
-import { appMod } from "./platform";
+import { appMod } from "../input/platform";
 import {
   activeWorkspace,
   getState,
@@ -19,7 +19,7 @@ import {
   refresh,
   type Session,
   sessions,
-} from "./store";
+} from "../state/store";
 
 const enc = new TextEncoder();
 
@@ -29,7 +29,9 @@ const SCROLLBACK_LINES = 5000;
 
 function binStr(u8: Uint8Array): string {
   let s = "";
-  for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]);
+  for (let i = 0; i < u8.length; i++) {
+    s += String.fromCharCode(u8[i]);
+  }
   return s;
 }
 
@@ -55,9 +57,13 @@ interface SavedScrollback {
 async function fetchScrollback(tid: string): Promise<SavedScrollback | null> {
   try {
     const r = await api(`/tabs/${tid}/scrollback`);
-    if (!r.ok) return null;
+    if (!r.ok) {
+      return null;
+    }
     const body = await r.text();
-    if (!body) return null;
+    if (!body) {
+      return null;
+    }
     // v2 format: a one-line JSON header ({"v":2,"cols":…,"rows":…}\n) then
     // the raw ANSI. v1 saves had no header — fall through to legacy.
     if (body.charCodeAt(0) === 0x7b /* '{' */) {
@@ -118,7 +124,9 @@ function discardScrollback(tid: string): void {
 // every scheme but http/https/mailto, which is what makes program-printed
 // OSC 8 URIs safe to open without a confirm popup.
 function openLink(event: MouseEvent, uri: string): void {
-  if (!appMod(event)) return;
+  if (!appMod(event)) {
+    return;
+  }
   void api("/open-url", {
     method: "POST",
     body: JSON.stringify({ url: uri }),
@@ -147,7 +155,9 @@ const sleep = (ms: number): Promise<void> =>
 
 function sendInput(sess: Session, data: string): void {
   const w = sess.ws;
-  if (w && w.readyState === 1) w.send(enc.encode(data));
+  if (w && w.readyState === 1) {
+    w.send(enc.encode(data));
+  }
 }
 
 /**
@@ -169,8 +179,12 @@ async function connect(
       method: "POST",
       body: JSON.stringify({ cols: sess.term.cols, rows: sess.term.rows }),
     });
-    if (r.status === 404) return "gone";
-    if (!r.ok) return "fail";
+    if (r.status === 404) {
+      return "gone";
+    }
+    if (!r.ok) {
+      return "fail";
+    }
     terminalId = ((await r.json()) as { terminal_id: string }).terminal_id;
   } catch {
     return "fail";
@@ -220,13 +234,19 @@ async function connect(
     ws.onopen = (): void => resolve(true);
     ws.onclose = (): void => resolve(false); // refused before opening
   });
-  if (!opened) return "fail";
+  if (!opened) {
+    return "fail";
+  }
 
   // From here on, a close means the connection was lost mid-flight.
   ws.onclose = (): void => {
-    if (!sess.disposed && !sess.exited) void reconnectLoop(tid, sess);
+    if (!sess.disposed && !sess.exited) {
+      void reconnectLoop(tid, sess);
+    }
   };
-  if (reset) sess.term.reset(); // the replayed backlog repaints from scratch
+  if (reset) {
+    sess.term.reset();
+  } // the replayed backlog repaints from scratch
   sess.fit.fit();
   ws.send(
     JSON.stringify({
@@ -239,15 +259,21 @@ async function connect(
 }
 
 async function reconnectLoop(tid: string, sess: Session): Promise<void> {
-  if (sess.reconnecting) return;
+  if (sess.reconnecting) {
+    return;
+  }
   sess.reconnecting = true;
   sess.term.write("\r\n\x1b[2m[connection lost — reconnecting…]\x1b[0m\r\n");
   let backoff = RECONNECT_MIN_MS;
   while (!sess.disposed && !sess.exited) {
     await sleep(backoff);
-    if (sess.disposed || sess.exited) break;
+    if (sess.disposed || sess.exited) {
+      break;
+    }
     const res = await connect(tid, sess, true);
-    if (res === "ok") break;
+    if (res === "ok") {
+      break;
+    }
     if (res === "gone") {
       // Tab deleted server-side while we were away; drop the local session
       // and let the next state refresh reconcile the UI.
@@ -267,7 +293,9 @@ async function reconnectLoop(tid: string, sess: Session): Promise<void> {
 const opening = new Set<string>();
 
 async function openTerminal(tid: string, restore = true): Promise<void> {
-  if (opening.has(tid) || sessions.has(tid)) return;
+  if (opening.has(tid) || sessions.has(tid)) {
+    return;
+  }
   opening.add(tid);
   try {
     await doOpenTerminal(tid, restore);
@@ -346,16 +374,22 @@ async function doOpenTerminal(tid: string, restore: boolean): Promise<void> {
   // Auto-copy on selection (iTerm2-style), gated by the persisted pref. We
   // read the pref live each time so a toggle takes effect immediately.
   term.onSelectionChange(() => {
-    if (!getState()?.ui.copy_on_select) return;
+    if (!getState()?.ui.copy_on_select) {
+      return;
+    }
     const sel = term.getSelection();
-    if (sel) void navigator.clipboard?.writeText(sel);
+    if (sel) {
+      void navigator.clipboard?.writeText(sel);
+    }
   });
 
   // OSC 0/2 title from the shell tracks the tab name (unless pinned).
   let lastTitle = "";
   term.onTitleChange((t: string) => {
     const title = t.trim();
-    if (!title || title === lastTitle) return;
+    if (!title || title === lastTitle) {
+      return;
+    }
     lastTitle = title;
     api(`/tabs/${tid}`, {
       method: "PATCH",
@@ -366,8 +400,9 @@ async function doOpenTerminal(tid: string, restore: boolean): Promise<void> {
   term.onData((d: string) => sendInput(sess, d));
   term.onResize(({ cols, rows }: { cols: number; rows: number }) => {
     const w = sess.ws;
-    if (w && w.readyState === 1)
+    if (w && w.readyState === 1) {
       w.send(JSON.stringify({ type: "resize", cols, rows }));
+    }
   });
 
   // macOS editing chords first (own every event type so the webview can't
@@ -389,12 +424,20 @@ async function doOpenTerminal(tid: string, restore: boolean): Promise<void> {
       }
       return false;
     }
-    if (e.key !== "Enter") return true;
+    if (e.key !== "Enter") {
+      return true;
+    }
     const modified = e.shiftKey || e.altKey || e.ctrlKey || e.metaKey;
-    if (!modified) return true; // plain Enter → xterm's default CR (submit)
-    if (e.type !== "keydown") return false;
+    if (!modified) {
+      return true;
+    } // plain Enter → xterm's default CR (submit)
+    if (e.type !== "keydown") {
+      return false;
+    }
     const seq = sess.kitty.encodeEnter(e) ?? (e.shiftKey ? "\n" : null);
-    if (seq === null) return false;
+    if (seq === null) {
+      return false;
+    }
     sendInput(sess, seq);
     return false;
   });
@@ -404,7 +447,9 @@ async function doOpenTerminal(tid: string, restore: boolean): Promise<void> {
     disposeSession(tid);
     return;
   }
-  if (res === "fail") void reconnectLoop(tid, sess); // keep trying quietly
+  if (res === "fail") {
+    void reconnectLoop(tid, sess);
+  } // keep trying quietly
 }
 
 async function restartTerminal(tid: string): Promise<void> {
@@ -422,9 +467,13 @@ async function restartTerminal(tid: string): Promise<void> {
 }
 
 function flushScrollback(force = false): void {
-  if (!force && !getState()?.ui.scrollback_persist) return;
+  if (!force && !getState()?.ui.scrollback_persist) {
+    return;
+  }
   for (const [tid, s] of sessions) {
-    if (!force && !s.dirty) continue;
+    if (!force && !s.dirty) {
+      continue;
+    }
     // excludeAltBuffer: full-screen TUIs (Claude Code, vim, less, fzf, tmux)
     // own the alt buffer; the moment they exit the contents are gone, so
     // capturing them produces a replay that flips the next session into
@@ -464,14 +513,24 @@ export async function ensureActiveTerminal(): Promise<void> {
   const ws = activeWorkspace();
   const empty = document.getElementById("empty");
   if (!ws || !ws.active_tab_id) {
-    if (empty) empty.style.display = "flex";
-    for (const s of sessions.values()) s.host.hidden = true;
+    if (empty) {
+      empty.style.display = "flex";
+    }
+    for (const s of sessions.values()) {
+      s.host.hidden = true;
+    }
     return;
   }
-  if (empty) empty.style.display = "none";
+  if (empty) {
+    empty.style.display = "none";
+  }
   const tid = ws.active_tab_id;
-  for (const [id, s] of sessions) s.host.hidden = id !== tid;
-  if (!sessions.has(tid)) await openTerminal(tid);
+  for (const [id, s] of sessions) {
+    s.host.hidden = id !== tid;
+  }
+  if (!sessions.has(tid)) {
+    await openTerminal(tid);
+  }
   const s = sessions.get(tid);
   if (s) {
     s.fit.fit();

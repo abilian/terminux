@@ -2,8 +2,8 @@
 // app exit — localStorage can't, because the loopback port (and thus the
 // page origin) changes every launch.
 
-import { api } from "./api";
-import { getState, sessions } from "./store";
+import { api } from "../state/api";
+import { getState, sessions } from "../state/store";
 
 const FONT_MIN = 6;
 const FONT_MAX = 32;
@@ -28,7 +28,9 @@ function applyToSessions(): void {
 // Adopt the persisted size once, before the first terminal opens. Idempotent
 // and one-shot so a later poll can't revert an in-flight zoom change.
 export function syncFontFromState(): void {
-  if (initialized) return;
+  if (initialized) {
+    return;
+  }
   const f = getState()?.ui.font_size;
   if (f) {
     fontSize = clamp(f);

@@ -4,22 +4,22 @@
 // from ``commands.ts`` so the pure registry stays import-light and
 // node-testable.
 
-import { api } from "./api";
+import { api } from "../state/api";
 import { invoke, register } from "./commands";
-import { openCmdPalette } from "./cmdpalette";
-import { openFind } from "./find";
-import { applyFontSize, getFontSize, resetFontSize } from "./font";
-import { toggleSidebar } from "./layout";
-import { openPalette } from "./palette";
-import { closeWorkspace, switchWorkspace } from "./sidebar";
-import { openStatsPanel } from "./statspanel";
+import { openCmdPalette } from "../ui/cmdpalette";
+import { openFind } from "../ui/find";
+import { applyFontSize, getFontSize, resetFontSize } from "../term/font";
+import { toggleSidebar } from "../ui/layout";
+import { openPalette } from "../ui/palette";
+import { closeWorkspace, switchWorkspace } from "../ui/sidebar";
+import { openStatsPanel } from "../ui/statspanel";
 import {
   activeWorkspace,
   getState,
   refresh,
   setActiveWorkspaceOptimistic,
-} from "./store";
-import { closeTab, renderTabs, switchTab } from "./tabs";
+} from "../state/store";
+import { closeTab, renderTabs, switchTab } from "../ui/tabs";
 
 declare global {
   interface Window {
@@ -36,13 +36,17 @@ export function installCommands(): void {
   register("workspace.prev", () => switchWorkspace(-1));
   register("workspace.close", () => {
     const ws = activeWorkspace();
-    if (ws) closeWorkspace(ws.id);
+    if (ws) {
+      closeWorkspace(ws.id);
+    }
   });
   for (let i = 1; i <= 9; i++) {
     register(`workspace.jump.${i}`, () => {
       const state = getState();
       const target = state?.workspaces[i - 1];
-      if (target) void setActiveWorkspaceOptimistic(target.id);
+      if (target) {
+        void setActiveWorkspaceOptimistic(target.id);
+      }
     });
   }
 
@@ -57,9 +61,14 @@ export function installCommands(): void {
     // Cmd+W parity: close the active tab; the last tab closes the
     // whole workspace.
     const ws = activeWorkspace();
-    if (!ws) return;
-    if (ws.tab_ids.length > 1 && ws.active_tab_id) closeTab(ws.active_tab_id);
-    else closeWorkspace(ws.id);
+    if (!ws) {
+      return;
+    }
+    if (ws.tab_ids.length > 1 && ws.active_tab_id) {
+      closeTab(ws.active_tab_id);
+    } else {
+      closeWorkspace(ws.id);
+    }
   });
   register("tab.next", () => switchTab(1));
   register("tab.prev", () => switchTab(-1));
@@ -101,12 +110,16 @@ export function installCommands(): void {
   });
   register("workspace.reorder-by-activity", () => {
     const state = getState();
-    if (!state || state.workspaces.length < 2) return;
+    if (!state || state.workspaces.length < 2) {
+      return;
+    }
     const order = [...state.workspaces]
       .sort((a, b) => b.active_seconds - a.active_seconds)
       .map((w) => w.id);
     const target = order[0];
-    if (!target) return;
+    if (!target) {
+      return;
+    }
     void api(`/workspaces/${target}`, {
       method: "PATCH",
       body: JSON.stringify({ order }),

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createKitty } from "../src/kitty";
+import { createKitty } from "../src/term/kitty";
 
 describe("createKitty", () => {
   it("answers a flags query with the current flags", () => {

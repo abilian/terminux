@@ -3,21 +3,30 @@
 
 import "./style.css";
 
-import { api } from "./api";
-import { installCommands } from "./commands-bindings";
-import { installCmdPalette } from "./cmdpalette";
-import { installDragAndDrop } from "./dragdrop";
-import { installFind } from "./find";
-import { syncFontFromState } from "./font";
-import { installShortcuts } from "./keymap";
-import { installPalette } from "./palette";
-import { installStatsPanel } from "./statspanel";
-import { isReordering } from "./reorder";
-import { applyLayout, installSidebarResizer } from "./layout";
-import { isEditingSidebar, renderSidebar } from "./sidebar";
-import { activeWorkspace, configure, poll, refresh, sessions } from "./store";
-import { ensureActiveTerminal, installScrollbackAutosave } from "./terminal";
-import { isEditingTab, renderTabs } from "./tabs";
+import { api } from "./state/api";
+import { installCommands } from "./input/commands-bindings";
+import { installCmdPalette } from "./ui/cmdpalette";
+import { installDragAndDrop } from "./ui/dragdrop";
+import { installFind } from "./ui/find";
+import { syncFontFromState } from "./term/font";
+import { installShortcuts } from "./input/keymap";
+import { installPalette } from "./ui/palette";
+import { installStatsPanel } from "./ui/statspanel";
+import { isReordering } from "./ui/reorder";
+import { applyLayout, installSidebarResizer } from "./ui/layout";
+import { renderSidebar } from "./ui/sidebar";
+import {
+  activeWorkspace,
+  configure,
+  poll,
+  refresh,
+  sessions,
+} from "./state/store";
+import {
+  ensureActiveTerminal,
+  installScrollbackAutosave,
+} from "./term/terminal";
+import { renderTabs } from "./ui/tabs";
 
 configure({
   onRender: () => {
@@ -26,14 +35,15 @@ configure({
     const ws = activeWorkspace();
     document.title = ws ? `${ws.name} — terminux` : "terminux";
     syncFontFromState(); // before the first terminal opens; one-shot
-    if (isReordering()) return; // don't rebuild rows mid-drag
-    // Skip a panel's re-render while it has an inline rename in
-    // progress — otherwise the 2 s poll wipes the user's typing.
-    // ``beginRename`` and the commit/cancel callbacks invoke the
-    // renderer directly and bypass this hook, so the transitions
-    // into and out of edit mode still happen.
-    if (!isEditingSidebar()) renderSidebar();
-    if (!isEditingTab()) renderTabs();
+    // The islands diff the DOM, so a rename in progress survives the
+    // 2 s poll on its own. Only a live drag still pauses rendering:
+    // the drop-marker classes are managed imperatively by reorder.ts,
+    // and a diff would overwrite them.
+    if (isReordering()) {
+      return;
+    }
+    renderSidebar();
+    renderTabs();
   },
   onActivate: () => ensureActiveTerminal(),
 });
@@ -48,7 +58,9 @@ if (newWs) {
 window.addEventListener("resize", () => {
   const ws = activeWorkspace();
   const s = ws?.active_tab_id ? sessions.get(ws.active_tab_id) : null;
-  if (s) s.fit.fit();
+  if (s) {
+    s.fit.fit();
+  }
 });
 
 // Must come before any surface that calls ``invoke()`` — keymap and

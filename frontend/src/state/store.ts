@@ -7,7 +7,7 @@ import type { SerializeAddon } from "@xterm/addon-serialize";
 import type { Terminal } from "@xterm/xterm";
 
 import { api } from "./api";
-import type { Kitty } from "./kitty";
+import type { Kitty } from "../term/kitty";
 import { reconcile } from "./reconcile";
 import type { StateView, WorkspaceView } from "./types";
 
@@ -53,14 +53,18 @@ export function getState(): StateView | null {
 }
 
 export function activeWorkspace(): WorkspaceView | null {
-  if (!state) return null;
+  if (!state) {
+    return null;
+  }
   const id = state.active_workspace_id;
   return state.workspaces.find((w) => w.id === id) ?? null;
 }
 
 export function activeSession(): Session | null {
   const ws = activeWorkspace();
-  if (!ws || !ws.active_tab_id) return null;
+  if (!ws || !ws.active_tab_id) {
+    return null;
+  }
   return sessions.get(ws.active_tab_id) ?? null;
 }
 
@@ -98,7 +102,9 @@ async function fetchState(): Promise<void> {
   });
   expectedActiveWs = next.ws;
   expectedActiveTabByWs.clear();
-  for (const [k, v] of next.tabs) expectedActiveTabByWs.set(k, v);
+  for (const [k, v] of next.tabs) {
+    expectedActiveTabByWs.set(k, v);
+  }
   state = fetched;
 }
 
@@ -140,9 +146,13 @@ async function localApply(): Promise<void> {
 export async function setActiveWorkspaceOptimistic(
   wsId: string,
 ): Promise<void> {
-  if (!state || state.active_workspace_id === wsId) return;
+  if (!state || state.active_workspace_id === wsId) {
+    return;
+  }
   const w = state.workspaces.find((x) => x.id === wsId);
-  if (!w) return;
+  if (!w) {
+    return;
+  }
   state.active_workspace_id = wsId;
   w.status = "active";
   for (const other of state.workspaces) {
@@ -170,9 +180,13 @@ export async function setActiveTabOptimistic(
   wsId: string,
   tid: string,
 ): Promise<void> {
-  if (!state) return;
+  if (!state) {
+    return;
+  }
   const w = state.workspaces.find((x) => x.id === wsId);
-  if (!w || w.active_tab_id === tid) return;
+  if (!w || w.active_tab_id === tid) {
+    return;
+  }
   w.active_tab_id = tid;
   expectedActiveTabByWs.set(wsId, tid);
   await localApply();

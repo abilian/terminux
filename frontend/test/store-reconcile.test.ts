@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { reconcile } from "../src/reconcile";
-import type { StateView, TabView, WorkspaceView } from "../src/types";
+import { reconcile } from "../src/state/reconcile";
+import type { StateView, TabView, WorkspaceView } from "../src/state/types";
 
 function ws(
   id: string,

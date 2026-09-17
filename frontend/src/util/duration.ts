@@ -11,10 +11,14 @@
 
 export function formatDuration(secs: number): string {
   const s = Math.max(0, Math.floor(secs));
-  if (s < 60) return `${s}s`;
+  if (s < 60) {
+    return `${s}s`;
+  }
   const m = Math.floor(s / 60);
   const r = s % 60;
-  if (m < 60) return `${m}m ${String(r).padStart(2, "0")}s`;
+  if (m < 60) {
+    return `${m}m ${String(r).padStart(2, "0")}s`;
+  }
   const h = Math.floor(m / 60);
   const rm = m % 60;
   return `${h}h ${String(rm).padStart(2, "0")}m`;

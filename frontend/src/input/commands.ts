@@ -8,7 +8,9 @@ type CommandRun = () => void | Promise<void>;
 const registry = new Map<string, CommandRun>();
 
 export function register(id: string, run: CommandRun): void {
-  if (registry.has(id)) console.warn(`command "${id}" re-registered`);
+  if (registry.has(id)) {
+    console.warn(`command "${id}" re-registered`);
+  }
   registry.set(id, run);
 }
 

@@ -40,14 +40,18 @@ export function createKitty(): Kitty {
       return keep.slice(-16);
     },
     encodeEnter(e: KeyboardEvent): string | null {
-      if (!this.enabled) return null;
+      if (!this.enabled) {
+        return null;
+      }
       const mod =
         1 +
         (e.shiftKey ? 1 : 0) +
         (e.altKey ? 2 : 0) +
         (e.ctrlKey ? 4 : 0) +
         (e.metaKey ? 8 : 0);
-      if (mod === 1) return null; // plain Enter stays legacy CR
+      if (mod === 1) {
+        return null;
+      } // plain Enter stays legacy CR
       return `\x1b[13;${mod}u`;
     },
   };
