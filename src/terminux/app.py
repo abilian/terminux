@@ -216,6 +216,11 @@ def main() -> None:
 
     port = args.port or _free_port()
     app = build_app(persist=True)
+    # Tell the app how it was bound, so "Show remote connection URL" can
+    # say whether a tunnel is needed and whether the URL outlives the run.
+    app.state.bind_host = args.host
+    app.state.bind_port = port
+    app.state.token_persistent = bool(args.server)
     config = uvicorn.Config(
         app,
         host=args.host,
@@ -527,6 +532,7 @@ def _build_menu(webview_mod: _WebviewModuleLike) -> list[Menu]:
                 MenuSeparator(),
                 MenuAction("Find…", _cmd("view.find")),
                 MenuAction("Usage Stats", _cmd("view.stats")),
+                MenuAction("Remote Connection URL", _cmd("view.connect-info")),
                 MenuSeparator(),
                 MenuAction("Zoom In", _cmd("view.zoom.in")),
                 MenuAction("Zoom Out", _cmd("view.zoom.out")),

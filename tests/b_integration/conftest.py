@@ -16,6 +16,8 @@ from terminux.server.asgi import AppController, build_app
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from starlette.applications import Starlette
+
 
 def free_port() -> int:
     with socket.socket() as s:
@@ -27,6 +29,7 @@ def free_port() -> int:
 class LiveServer:
     url: str
     controller: AppController
+    app: Starlette
 
 
 @pytest.fixture
@@ -46,7 +49,7 @@ def server() -> Iterator[LiveServer]:
     while not srv.started:
         time.sleep(0.02)
     try:
-        yield LiveServer(f"http://127.0.0.1:{port}", app.state.controller)
+        yield LiveServer(f"http://127.0.0.1:{port}", app.state.controller, app)
     finally:
         srv.should_exit = True
         thread.join(timeout=5)

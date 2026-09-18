@@ -16,6 +16,9 @@ UI = 15_000  # ms; shells (login → fish) can be slow to first prompt
 # the frontend's appMod() picks Cmd on macOS, Ctrl+Shift on Linux — mirror
 # that here so keyboard shortcuts work in both CI (Linux) and local dev.
 APP_MOD = "Meta" if sys.platform == "darwin" else "Control+Shift"
+# The command launcher is Cmd+Shift+P on macOS; on Linux that chord is
+# the quick switcher, so the launcher lives on F1 (see keymap.ts).
+CMD_PALETTE = "Meta+Shift+p" if sys.platform == "darwin" else "F1"
 
 
 def test_app_loads_workspace_tab_and_terminal(page: Page, app_url: str) -> None:
@@ -215,3 +218,32 @@ def test_terminal_reconnects_after_socket_drop(page: Page, app_url: str) -> None
     assert _run_in_terminal(page, "echo before_drop_marker", "before_drop_marker")
     page.evaluate("[...window.__terminux.sessions.values()][0].ws.close()")
     assert _run_in_terminal(page, "echo after_drop_marker", "after_drop_marker")
+
+
+def test_connect_info_command_shows_the_recipe(page: Page, app_url: str) -> None:
+    """End to end: the command palette entry reaches the overlay, which
+    asks the real backend and renders copyable commands. The test server
+    is loopback-bound, so the SSH-tunnel branch is the one shown."""
+    page.goto(app_url)
+    expect(page.locator(".xterm")).to_be_visible(timeout=UI)
+    overlay = page.locator("#connect-overlay")
+    expect(overlay).to_be_hidden()
+
+    page.keyboard.press(CMD_PALETTE)
+    pal = page.locator("#cmdpalette")
+    expect(pal).to_be_visible()
+    pal.locator("input").type("remote connection")
+    pal.locator("input").press("Enter")
+
+    expect(overlay).to_be_visible()
+    commands = overlay.locator(".connect-cmd code")
+    expect(commands).to_have_count(2, timeout=UI)  # tunnel, then --connect
+    expect(commands.first).to_contain_text("ssh -N -L 8443:localhost:")
+    expect(commands.last).to_contain_text(
+        "terminux --connect http://localhost:8443/?t="
+    )
+    # Per-session token here, so the "this address won't survive" warning shows.
+    expect(overlay.locator(".connect-warn")).to_contain_text("until terminux restarts")
+
+    page.keyboard.press("Escape")
+    expect(overlay).to_be_hidden()

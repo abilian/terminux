@@ -797,3 +797,43 @@ def test_malformed_numeric_bodies_return_400(server: LiveServer) -> None:
         )
     assert exc.value.code == 400
     assert _req(f"{base}/api/state?t={T}")["ui"]["sidebar_width"] == before
+
+
+def test_connect_info_reports_bind_and_stability(server: LiveServer) -> None:
+    """The overlay needs to know whether a tunnel is required and whether
+    the URL outlives the run; the test server is loopback + per-session."""
+    info = _req(f"{server.url}/api/connect-info?t={T}")
+    assert info["loopback_only"] is True
+    assert info["bind_host"] == "127.0.0.1"
+    assert info["stable_url"] is False
+    assert info["hostname"]  # always known, unlike the LAN address
+    # Port is None here: the fixture binds uvicorn itself rather than
+    # going through main(), which is what records it.
+    assert info["port"] is None
+    assert set(info) == {
+        "hostname",
+        "lan_ip",
+        "bind_host",
+        "port",
+        "loopback_only",
+        "stable_url",
+    }
+
+
+def test_connect_info_follows_the_bind_it_was_given(server: LiveServer) -> None:
+    """A server bound beyond loopback reports that a client can connect
+    straight to it — the branch that skips the SSH recipe."""
+    app_state = server.app.state
+    app_state.bind_host = "0.0.0.0"  # noqa: S104 — the case under test
+    app_state.bind_port = 8443
+    app_state.token_persistent = True
+    try:
+        info = _req(f"{server.url}/api/connect-info?t={T}")
+        assert info["loopback_only"] is False
+        assert info["stable_url"] is True
+        # The server's own port, not the one this client connected to.
+        assert info["port"] == 8443
+    finally:
+        app_state.bind_host = "127.0.0.1"
+        app_state.bind_port = None
+        app_state.token_persistent = False

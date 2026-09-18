@@ -19,7 +19,9 @@ lock is ever held across disk I/O.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
+import socket
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -51,6 +53,11 @@ SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX = 120, 600
 FONT_SIZE_MIN, FONT_SIZE_MAX = 6, 32
 WIN_DIM_MIN = 200  # px; smaller would make the window unrecoverable
 
+# Bind addresses that make the server unreachable from the network, so a
+# remote client needs a tunnel. Anything else (0.0.0.0, ::, a specific
+# interface) is listening where other machines can knock.
+_LOOPBACK_BINDS = frozenset({"127.0.0.1", "localhost", "::1"})
+
 # Reject scrollback uploads well past the on-disk cap up front; anything
 # under this still gets tail-trimmed to SCROLLBACK_MAX_BYTES by the
 # persistence helper. The 2x headroom tolerates a client whose local
@@ -75,6 +82,32 @@ class Api:
 
     def get_state(self, _request: Request) -> Response:
         return JSONResponse(self.ctl.state_view())
+
+    @staticmethod
+    async def connect_info(request: Request) -> Response:
+        """What another machine needs to reach this server.
+
+        The frontend knows its own port and token, but not how this
+        process was bound nor what this machine is called — both decide
+        whether a remote client needs an SSH tunnel and what to put in
+        it.
+        """
+        state = request.app.state
+        # gethostname can consult the resolver, so keep it off the loop.
+        hostname, lan_ip = await asyncio.to_thread(_network_identity)
+        return JSONResponse({
+            "hostname": hostname,
+            "lan_ip": lan_ip,
+            "bind_host": state.bind_host,
+            # The port the server itself listens on. In --connect mode
+            # the client's own location says the tunnel's local port,
+            # which is the wrong end to put in an ssh -L recipe.
+            "port": state.bind_port,
+            "loopback_only": state.bind_host in _LOOPBACK_BINDS,
+            # False in desktop mode: the port is ephemeral and the code
+            # is regenerated per run, so the URL dies with the process.
+            "stable_url": state.token_persistent,
+        })
 
     def create_workspace(self, _request: Request) -> Response:
         # Display name tracks the shell's cwd (see _workspace_label); the
@@ -355,6 +388,25 @@ class Api:
         finally:
             out_task.cancel()
             term.unsubscribe(sub)
+
+
+def _network_identity() -> tuple[str, str | None]:
+    """This machine's hostname and best-effort LAN address.
+
+    The address is found by pointing a UDP socket at an unroutable
+    documentation address (RFC 5737): that makes the kernel pick the
+    interface it would route through and assign a source address, with
+    no packet sent and nothing to be reachable. ``None`` when the host
+    has no route out (offline, or loopback only).
+    """
+    hostname = socket.gethostname()
+    with (
+        contextlib.suppress(OSError),
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock,
+    ):
+        sock.connect(("192.0.2.1", 53))
+        return hostname, str(sock.getsockname()[0])
+    return hostname, None
 
 
 def _ui_updates(body: dict[str, Any]) -> dict[str, Any]:

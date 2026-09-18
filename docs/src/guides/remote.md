@@ -57,6 +57,13 @@ the server bound to loopback:
 That completes the common case. SSH already solved the hard parts, so
 there are no new ports, certificates, or auth layers to manage.
 
+!!! tip "Let the app write the commands for you"
+    Running terminux already? Open the command palette (`F1` on Linux,
+    `Cmd+Shift+P` on macOS) and pick **Show remote connection URL**. It
+    reports this machine's name and address, tells you whether a tunnel
+    is needed, and gives you the `ssh -L` and `terminux --connect` lines
+    with the live port and access code filled in, ready to copy.
+
 ## Multiple clients
 
 The server's WebSocket fan-out already supports multiple subscribers per

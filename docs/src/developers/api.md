@@ -18,6 +18,7 @@ Errors come back as JSON (`{"error": "..."}`) with 400/403/404/413 as appropriat
 | Method & path | Body | Returns |
 | --- | --- | --- |
 | `GET /api/state` | *none* | Full state snapshot: workspaces (with status and active seconds), tabs, UI prefs |
+| `GET /api/connect-info` | *none* | How to reach this server from elsewhere: `hostname`, `lan_ip`, `bind_host`, `port`, `loopback_only`, `stable_url` |
 | `POST /api/workspaces` | *none* | `{"id": ...}`; creates a workspace with one tab and activates it |
 | `PATCH /api/workspaces/{id}` | any of `name`, `active: true`, `active_tab_id`, `order` (workspace ids), `tab_order` (tab ids) | `{"ok": true}` |
 | `DELETE /api/workspaces/{id}` | *none* | Kills its terminals, drops its scrollback; at least one workspace always remains |

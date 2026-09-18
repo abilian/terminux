@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   openCmdPalette: vi.fn(),
   openFind: vi.fn(),
   openStatsPanel: vi.fn(),
+  openConnectInfo: vi.fn(),
   toggleSidebar: vi.fn(),
   renderTabs: vi.fn(),
   closeTab: vi.fn(),
@@ -42,6 +43,9 @@ vi.mock("../src/ui/cmdpalette", () => ({
 vi.mock("../src/ui/find", () => ({ openFind: mocks.openFind }));
 vi.mock("../src/ui/statspanel", () => ({
   openStatsPanel: mocks.openStatsPanel,
+}));
+vi.mock("../src/ui/connectinfo", () => ({
+  openConnectInfo: mocks.openConnectInfo,
 }));
 vi.mock("../src/ui/layout", () => ({ toggleSidebar: mocks.toggleSidebar }));
 vi.mock("../src/ui/sidebar", () => ({
@@ -116,6 +120,8 @@ describe("command dispatch table", () => {
     expect(mocks.openPalette).toHaveBeenCalled();
     invoke("view.stats");
     expect(mocks.openStatsPanel).toHaveBeenCalled();
+    invoke("view.connect-info");
+    expect(mocks.openConnectInfo).toHaveBeenCalled();
   });
 
   it("closes the active tab, or the workspace when it is the last tab", () => {

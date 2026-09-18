@@ -405,7 +405,8 @@ body {
 .pal-row.pinned .pal-label {
   color: var(--accent);
 }
-#stats-overlay {
+#stats-overlay,
+#connect-overlay {
   position: absolute;
   inset: 0;
   z-index: 30;
@@ -415,10 +416,12 @@ body {
   justify-content: center;
   padding-top: 80px;
 }
-#stats-overlay[hidden] {
+#stats-overlay[hidden],
+#connect-overlay[hidden] {
   display: none;
 }
-#stats-card {
+#stats-card,
+#connect-card {
   width: 560px;
   max-width: 92vw;
   max-height: 80vh;
@@ -511,4 +514,60 @@ body {
 }
 .tab.drop-after {
   box-shadow: inset -2px 0 0 0 var(--accent);
+}
+
+/* Remote-connection overlay: prose plus copyable command lines. */
+/* Header/body split mirrors the stats card, so a long recipe scrolls
+   inside the card instead of growing past it. */
+.connect-header {
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+.connect-body {
+  padding: 14px 18px 4px;
+  overflow-y: auto;
+}
+.connect-body p {
+  margin: 0 0 10px;
+  line-height: 1.5;
+  color: var(--dim);
+}
+.connect-body code {
+  color: var(--fg);
+}
+.connect-cmd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.connect-cmd code {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.connect-copy {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 11px;
+  color: var(--dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.connect-copy:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+.connect-body .connect-warn {
+  color: var(--busy);
 }

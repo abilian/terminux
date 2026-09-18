@@ -51,6 +51,7 @@ def build_app(*, persist: bool = True) -> Starlette:
     routes = [
         Route("/", api.index),
         Route("/api/state", api.get_state),
+        Route("/api/connect-info", api.connect_info),
         Route("/api/workspaces", api.create_workspace, methods=["POST"]),
         Route("/api/workspaces/{ws_id}", api.patch_workspace, methods=["PATCH"]),
         Route("/api/workspaces/{ws_id}", api.delete_workspace, methods=["DELETE"]),
@@ -121,4 +122,10 @@ def build_app(*, persist: bool = True) -> Starlette:
         name="assets",
     )
     app.state.controller = ctl
+    # How this process was bound, for ``/api/connect-info``. ``main()``
+    # overwrites both once it has parsed the CLI; the defaults describe
+    # the loopback, per-session app that tests and library callers build.
+    app.state.bind_host = "127.0.0.1"
+    app.state.bind_port = None  # None: not launched by main(), ask the request
+    app.state.token_persistent = False
     return app

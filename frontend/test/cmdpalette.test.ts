@@ -59,6 +59,11 @@ describe("command launcher", () => {
     expect(labels().some((l) => l.startsWith("Sort sidebar"))).toBe(true);
   });
 
+  it("lists the remote-connection command", () => {
+    cmdpalette.openCmdPalette();
+    expect(labels()).toContain("Show remote connection URL");
+  });
+
   it("toggle labels name the action that will run", () => {
     cmdpalette.openCmdPalette();
     expect(labels()).toContain("Enable auto-copy on selection");

@@ -12,6 +12,7 @@ import { applyFontSize, getFontSize, resetFontSize } from "../term/font";
 import { toggleSidebar } from "../ui/layout";
 import { openPalette } from "../ui/palette";
 import { closeWorkspace, switchWorkspace } from "../ui/sidebar";
+import { openConnectInfo } from "../ui/connectinfo";
 import { openStatsPanel } from "../ui/statspanel";
 import {
   activeWorkspace,
@@ -105,6 +106,7 @@ export function installCommands(): void {
 
   // ----- session activity ---------------------------------------------
   register("view.stats", () => openStatsPanel());
+  register("view.connect-info", () => openConnectInfo());
   register("view.activity.reset", () => {
     void api("/activity/reset", { method: "POST" }).then(refresh);
   });

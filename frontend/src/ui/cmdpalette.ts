@@ -26,6 +26,10 @@ function buildEntries(): FuzzyEntry[] {
   const commands: CommandEntry[] = [
     { label: "Display usage stats", commandId: "view.stats" },
     {
+      label: "Show remote connection URL",
+      commandId: "view.connect-info",
+    },
+    {
       label: "Sort sidebar by activity (most used first)",
       commandId: "workspace.reorder-by-activity",
       visible: () => (getState()?.workspaces.length ?? 0) > 1,
