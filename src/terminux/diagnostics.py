@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Generator
 
 log = logging.getLogger(__name__)
 
@@ -144,7 +144,7 @@ def _run_watchdog() -> None:
 
 
 @contextlib.contextmanager
-def time_op(name: str) -> Iterator[None]:
+def time_op(name: str) -> Generator[None]:
     """Log slow operations at WARNING (or all of them when --trace is on).
 
     Use around any synchronous I/O whose stall would freeze the server:

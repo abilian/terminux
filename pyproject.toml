@@ -19,7 +19,7 @@ dependencies = [
 terminux = "terminux.app:main"
 
 [build-system]
-requires = ["uv_build >= 0.11.7, <0.12.0"]
+requires = ["uv_build"]
 build-backend = "uv_build"
 
 [dependency-groups]
@@ -102,3 +102,10 @@ ignore-missing-imports = [
     "Foundation",
     "AppKit",
 ]
+
+#
+# ty
+#
+[tool.ty.analysis]
+# Windows-only dependency (pywinpty), absent from the macOS/Linux venv.
+allowed-unresolved-imports = ["winpty"]

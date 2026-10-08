@@ -33,7 +33,7 @@ from terminux.server.controller import (
 from terminux.server.middleware import SecurityHeadersMiddleware
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator
 
 
 __all__ = [
@@ -100,7 +100,7 @@ def build_app(*, persist: bool = True) -> Starlette:
             await asyncio.sleep(0.5)
 
     @contextlib.asynccontextmanager
-    async def lifespan(_app: Starlette) -> AsyncIterator[None]:
+    async def lifespan(_app: Starlette) -> AsyncGenerator[None]:
         ticker_task = asyncio.create_task(_activity_ticker())
         heartbeat_task = asyncio.create_task(_heartbeat_pulse())
         try:
