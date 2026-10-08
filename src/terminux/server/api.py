@@ -127,7 +127,7 @@ class Api:
 
         # All state access + the disk-touching ``save()`` runs in a worker
         # thread so a slow fsync (or anyone holding ``ctl.lock``) can't
-        # freeze the asyncio loop — see ``notes/lessons-learned.md``.
+        # freeze the asyncio loop — see ``notes/05-lessons-learned.md``.
         def _apply() -> bool:
             with self.ctl.lock:
                 ws = self.ctl.state.get_workspace(ws_id)

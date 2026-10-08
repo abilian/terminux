@@ -159,7 +159,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [0.5.0] - 2026-05-19
 
-First public preview. terminux is a cross-platform desktop terminal organized around a Workspaces sidebar and tabbed terminals, inspired by cmux but with a different architecture.
+First public preview. terminux is a cross-platform desktop terminal organized around a Workspaces sidebar and tabbed terminals.
 
 ### Workspaces and tabs
 

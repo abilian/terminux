@@ -133,8 +133,8 @@ class UnixPty:
     def cwd(self) -> str | None:
         """Best-effort current directory of the shell process.
 
-        Lets a new tab open where the previously active shell was (cmux
-        behaviour), without requiring shell-side OSC 7 configuration.
+        Lets a new tab open where the previously active shell was, without
+        requiring shell-side OSC 7 configuration.
         """
         pid = self._proc.pid
         if pid is None:

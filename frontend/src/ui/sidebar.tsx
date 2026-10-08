@@ -148,7 +148,7 @@ function WorkspaceRow({ w, idx, active, editing, setEditing }: RowProps) {
   );
 }
 
-// cmux parity: closing the last tab closes the workspace; the backend then
+// Closing the last tab closes the workspace; the backend then
 // activates a sibling (or creates a fresh one). The app never quits.
 export function closeWorkspace(wsId: string): void {
   const state = getState();

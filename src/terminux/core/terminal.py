@@ -2,7 +2,7 @@
 
 The reader is registered with the asyncio event loop (no thread-per-PTY).
 Each subscriber has a bounded pending buffer flushed on a short coalescing
-interval (terax's batched-flush pattern); if a slow consumer falls more than
+interval (batched flushes); if a slow consumer falls more than
 ``OUTBOUND_CAP`` behind, its buffer is dropped and a one-shot notice is sent
 so a runaway process can never freeze the UI or grow memory unbounded
 (technical spec §3.3, functional spec §10). A separate, smaller backlog is

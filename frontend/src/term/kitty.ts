@@ -1,6 +1,6 @@
 // Minimal kitty keyboard protocol support. Apps like Claude Code only emit a
 // distinct Shift+Enter when the terminal advertises kitty support and the app
-// has pushed kitty flags (this is how cmux/Ghostty makes it work). xterm.js
+// has pushed kitty flags (this is how Ghostty makes it work). xterm.js
 // has no kitty support, so we observe the app's protocol traffic in the PTY
 // output and answer it, then encode modified Enter ourselves.
 

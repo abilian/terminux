@@ -15,7 +15,7 @@ import { invoke } from "./commands";
 import { IS_MAC, appMod } from "./platform";
 
 // Linux-only chords that live outside the ``appMod`` gate: F1 for the
-// command palette (provisional, see notes/future-considerations.md).
+// command palette (provisional, see notes/03-future-considerations.md).
 // Everything else — including workspace digit jumps — uses the unified
 // Ctrl+Shift app modifier inside ``handleAppChord``.
 function handleLinuxOnlyChord(e: KeyboardEvent): boolean {
