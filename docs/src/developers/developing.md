@@ -69,11 +69,11 @@ for Home-tab pages) and add it to the `nav` array in `docs/zensical.toml`.
 
 ### `--debug` and `--trace`
 
-Two CLI flags raise the noise level when something goes wrong:
+Every log line starts with a full date and time, even without flags, so a log from a long-running instance can be matched against what happened when. Two CLI flags raise the noise level when something goes wrong:
 
 | Flag | What it does |
 | --- | --- |
-| `--debug` | `terminux.*` loggers at `DEBUG`, uvicorn `INFO` with access logs, ms-precision timestamps on every line. Slow-I/O warnings (see below) are surfaced. |
+| `--debug` | `terminux.*` loggers at `DEBUG`, uvicorn `INFO` with access logs, timestamps down to the millisecond. Slow-I/O warnings (see below) are surfaced. |
 | `--trace` | Everything `--debug` enables plus root logger at `DEBUG`: every `save_state`, `save_scrollback`, `load_scrollback`, and cwd lookup logs its individual duration. Very chatty; use only when actively chasing a freeze. |
 
 ```sh
@@ -107,6 +107,14 @@ includes whichever syscall the offending thread is parked in (`fsync`,
 `subprocess.communicate`, `os.write`, …), which is the exact evidence
 needed to find the root cause. It re-warns every 10 s while the stall
 persists.
+
+A stale heartbeat has a second, harmless cause: the whole process getting
+no CPU (heavy swapping, a debugger, or macOS App Nap, which terminux opts
+out of while its window is open). The watchdog tells the two apart by its
+own lateness: when its 1 s sleep overruns by more than 3 s, every thread
+was frozen. It then logs a single `INFO` line (`process got no CPU for
+…s`) with no stack dump, and gives the resumed loop a fresh 3 s before
+blaming it.
 
 The watchdog is started automatically by `terminux.app.main()`; no flag
 is required.

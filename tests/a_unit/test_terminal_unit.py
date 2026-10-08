@@ -26,9 +26,13 @@ class _FakePty:
 
     def __init__(self, code: int | None = 3) -> None:
         self._code = code
+        self.sizes: list[tuple[int, int]] = []  # every resize, in order
 
     def exit_code(self) -> int | None:
         return self._code
+
+    def resize(self, cols: int, rows: int) -> None:
+        self.sizes.append((cols, rows))
 
 
 def _bare_terminal(loop: _FakeLoop, pty: _FakePty) -> Terminal:
@@ -39,7 +43,8 @@ def _bare_terminal(loop: _FakeLoop, pty: _FakePty) -> Terminal:
     t._pty = pty  # type: ignore[attr-defined]
     t._loop = loop  # type: ignore[attr-defined]
     t._backlog = bytearray()
-    t._subscribers = set()
+    t._subscribers = {}
+    t._owner = None
     t._exited = False
     t._exit_code = None
     t.on_activity = None
@@ -361,3 +366,82 @@ def test_terminal_constructor_registers_reader() -> None:
         t.close()
 
     asyncio.run(scenario())
+
+
+# ----- ownership (several clients, one PTY size) ------------------------
+
+
+def _owner_news(*subs: Subscriber) -> list[bool | None]:
+    return [s.take_owner_news() for s in subs]
+
+
+def test_first_client_owns_and_later_ones_watch() -> None:
+    t = _bare_terminal(_FakeLoop(), _FakePty())
+    desk, laptop = t.subscribe(), t.subscribe()
+    assert _owner_news(desk, laptop) == [True, False]
+    assert t.is_owner(desk)
+    assert not t.is_owner(laptop)
+
+
+def test_a_watcher_attaching_never_resizes_the_owners_screen() -> None:
+    """The reported bug: the --connect window sent its size on attach and
+    re-flowed the desktop's screen. Now only the owner's size applies."""
+    pty = _FakePty()
+    t = _bare_terminal(_FakeLoop(), pty)
+    desk, laptop = t.subscribe(), t.subscribe()
+    t.report_size(desk, 200, 50)
+    t.report_size(laptop, 120, 35)  # recorded, not applied
+    assert pty.sizes == [(200, 50)]
+    assert laptop.size == (120, 35)
+
+
+def test_claiming_moves_ownership_and_size() -> None:
+    pty = _FakePty()
+    t = _bare_terminal(_FakeLoop(), pty)
+    desk, laptop = t.subscribe(), t.subscribe()
+    t.report_size(desk, 200, 50)
+    t.report_size(laptop, 120, 35)
+    _owner_news(desk, laptop)  # clear the attach-time news
+
+    t.claim(laptop)  # the user switches to the laptop
+    assert pty.sizes[-1] == (120, 35)
+    assert _owner_news(desk, laptop) == [False, True]
+
+    t.claim(desk)  # ...and comes back to the desktop
+    assert pty.sizes[-1] == (200, 50)
+    assert _owner_news(desk, laptop) == [True, False]
+
+
+def test_claiming_what_you_already_own_changes_nothing() -> None:
+    pty = _FakePty()
+    t = _bare_terminal(_FakeLoop(), pty)
+    desk = t.subscribe()
+    t.report_size(desk, 200, 50)
+    _owner_news(desk)
+    t.claim(desk)
+    assert pty.sizes == [(200, 50)]
+    assert _owner_news(desk) == [None]
+
+
+def test_when_the_owner_leaves_the_latest_watcher_takes_over() -> None:
+    pty = _FakePty()
+    t = _bare_terminal(_FakeLoop(), pty)
+    a, b, c = t.subscribe(), t.subscribe(), t.subscribe()
+    for sub, size in ((a, (200, 50)), (b, (80, 24)), (c, (120, 35))):
+        t.report_size(sub, *size)
+    _owner_news(a, b, c)
+
+    t.unsubscribe(a)  # the owner's window closes
+    assert t.is_owner(c)  # most recently attached
+    assert pty.sizes[-1] == (120, 35)
+    assert _owner_news(b, c) == [None, True]
+
+
+def test_after_the_last_client_leaves_the_next_one_owns() -> None:
+    t = _bare_terminal(_FakeLoop(), _FakePty())
+    only = t.subscribe()
+    t.unsubscribe(only)
+    assert t._owner is None
+    nxt = t.subscribe()
+    assert t.is_owner(nxt)
+    assert _owner_news(nxt) == [True]

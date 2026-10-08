@@ -247,3 +247,33 @@ def test_connect_info_command_shows_the_recipe(page: Page, app_url: str) -> None
 
     page.keyboard.press("Escape")
     expect(overlay).to_be_hidden()
+
+
+def test_each_window_gets_its_own_size_when_used(
+    page: Page, app_url: str, monkeypatch
+) -> None:
+    """Two windows of different sizes on one terminal (desktop + --connect,
+    the garbled-screen bug): typing in a window claims the terminal, so the
+    shell sees that window's size. Each round prints a unique marker so an
+    earlier round's output can't satisfy a later check."""
+    monkeypatch.setattr("terminux.server.controller.default_shell", lambda: ["/bin/sh"])
+    page.set_viewport_size({"width": 1200, "height": 800})
+    page.goto(app_url)
+    expect(page.locator(".xterm")).to_be_visible(timeout=UI)
+    other = page.context.new_page()
+    other.set_viewport_size({"width": 700, "height": 450})
+    other.goto(app_url)
+    expect(other.locator(".xterm")).to_be_visible(timeout=UI)
+
+    def dims(p: Page) -> str:  # "rows cols", as `stty size` prints them
+        return p.evaluate(
+            "(() => { const s = [...window.__terminux.sessions.values()][0];"
+            " return `${s.term.rows} ${s.term.cols}`; })()"
+        )
+
+    assert dims(page) != dims(other)  # otherwise the test proves nothing
+    for n, p in enumerate((page, other, page), start=1):
+        marker = f"M{n} {dims(p)}"
+        assert _run_in_terminal(p, f"echo M{n} $(stty size)", marker), (
+            f"round {n}: the shell did not see this window's size ({marker})"
+        )

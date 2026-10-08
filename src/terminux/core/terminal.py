@@ -186,6 +186,20 @@ class Subscriber:
         self._dropped = False
         self._closed = False
         self._event = asyncio.Event()
+        # This client's terminal size (cols, rows), as it last reported it.
+        # Applied to the PTY only while this client owns the terminal.
+        self.size: tuple[int, int] | None = None
+        self._owner_news: bool | None = None
+
+    def tell_owner(self, owner: bool) -> None:
+        """Queue an ownership change for this client's output pump."""
+        self._owner_news = owner
+        self._event.set()
+
+    def take_owner_news(self) -> bool | None:
+        """The pending ownership change, if any (cleared once taken)."""
+        news, self._owner_news = self._owner_news, None
+        return news
 
     def feed(self, data: bytes) -> None:
         if self._closed:
@@ -229,7 +243,12 @@ class Terminal:
         self._pty = pty
         self._loop = asyncio.get_running_loop()
         self._backlog = bytearray()
-        self._subscribers: set[Subscriber] = set()
+        # Insertion-ordered (a dict used as an ordered set), so ownership
+        # can fall back to the most recently attached client.
+        self._subscribers: dict[Subscriber, None] = {}
+        # The client in use: its size is the PTY's size and only its input
+        # reaches the shell. See ``claim``.
+        self._owner: Subscriber | None = None
         self._exited = False
         self._exit_code: int | None = None
         self.on_activity: Callable[[], None] | None = None
@@ -289,17 +308,65 @@ class Terminal:
     # ----- subscriptions ------------------------------------------------
 
     def subscribe(self) -> Subscriber:
-        """Register a subscriber; it first receives the replayed backlog."""
+        """Register a subscriber; it first receives the replayed backlog.
+
+        The first client to attach owns the terminal; later ones watch
+        until they ``claim`` it.
+        """
         sub = Subscriber()
         if self._backlog:
             sub.feed(bytes(self._backlog))
         if self._exited:
             sub.close()
-        self._subscribers.add(sub)
+        self._subscribers[sub] = None
+        if self._owner is None:
+            self._owner = sub
+        sub.tell_owner(self._owner is sub)
         return sub
 
     def unsubscribe(self, sub: Subscriber) -> None:
-        self._subscribers.discard(sub)
+        """Drop a subscriber; if it owned the terminal, the most recently
+        attached remaining client takes over (and its size applies)."""
+        self._subscribers.pop(sub, None)
+        if self._owner is sub:
+            self._owner = None
+            successor = next(reversed(self._subscribers), None)
+            if successor is not None:
+                self.claim(successor)
+
+    # ----- ownership ----------------------------------------------------
+    #
+    # A PTY has one size, but several clients (a desktop window and a
+    # remote --connect window, say) may show it at different sizes. The
+    # programs inside lay out their output for the PTY's size, so any other
+    # size renders garbled. Policy, as tmux's ``window-size latest``: the
+    # client in use owns the terminal. A client claims it when its user
+    # types, clicks, pastes, focuses the window, or switches to the tab.
+
+    def is_owner(self, sub: Subscriber) -> bool:
+        return self._owner is sub
+
+    def claim(self, sub: Subscriber) -> None:
+        """Make ``sub`` the owner and size the PTY to it."""
+        if self._owner is sub:
+            return
+        previous, self._owner = self._owner, sub
+        if previous is not None:
+            previous.tell_owner(False)
+        sub.tell_owner(True)
+        if sub.size is not None:
+            self.resize(*sub.size)
+
+    def report_size(self, sub: Subscriber, cols: int, rows: int) -> None:
+        """Record a client's size; it reaches the PTY only if it owns it.
+
+        A watcher's size is kept for the moment it claims, so merely
+        attaching (or resizing a window nobody is using) never re-flows
+        the screen of the client in use.
+        """
+        sub.size = (cols, rows)
+        if self._owner is sub:
+            self.resize(cols, rows)
 
     # ----- control ------------------------------------------------------
 

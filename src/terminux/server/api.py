@@ -382,7 +382,7 @@ class Api:
         sub = term.subscribe()
         out_task = asyncio.create_task(_pump_out(ws, sub, term))
         try:
-            await _pump_in(ws, term, self.ctl)
+            await _pump_in(ws, term, sub, self.ctl)
         except (WebSocketDisconnect, RuntimeError):
             pass
         finally:
@@ -444,6 +444,9 @@ def _ui_updates(body: dict[str, Any]) -> dict[str, Any]:
 async def _pump_out(ws: WebSocket, sub: Subscriber, term: Terminal) -> None:
     while True:
         dropped, data, closed = await sub.drain()
+        owner = sub.take_owner_news()
+        if owner is not None:
+            await ws.send_json({"type": "owner", "owner": owner})
         if dropped:
             await ws.send_json({"type": "dropped"})
         if data:
@@ -453,13 +456,21 @@ async def _pump_out(ws: WebSocket, sub: Subscriber, term: Terminal) -> None:
             return
 
 
-async def _pump_in(ws: WebSocket, term: Terminal, ctl: AppController) -> None:
+async def _pump_in(
+    ws: WebSocket, term: Terminal, sub: Subscriber, ctl: AppController
+) -> None:
     while True:
         message = await ws.receive()
         if message.get("type") == "websocket.disconnect":
             return
         data = message.get("bytes")
         if data is not None:
+            if not term.is_owner(sub):
+                # A watching client's bytes are its emulator's automatic
+                # answers to the program's queries (cursor position, device
+                # attributes) describing the wrong screen. Its user's real
+                # input always follows a "claim" that makes it the owner.
+                continue
             # Real keystrokes from the user — credit the active workspace
             # with active-session time until idle silences it.
             ctl.note_input()
@@ -474,7 +485,10 @@ async def _pump_in(ws: WebSocket, term: Terminal, ctl: AppController) -> None:
         text = message.get("text")
         if text is not None:
             msg = json.loads(text)
-            if msg.get("type") == "resize":
-                # ``resize`` is a ``TIOCSWINSZ`` ioctl — non-blocking, no
-                # offload needed.
-                term.resize(int(msg["cols"]), int(msg["rows"]))
+            # Both may resize the PTY — a ``TIOCSWINSZ`` ioctl, non-blocking,
+            # no offload needed.
+            kind = msg.get("type")
+            if kind == "resize":
+                term.report_size(sub, int(msg["cols"]), int(msg["rows"]))
+            elif kind == "claim":
+                term.claim(sub)

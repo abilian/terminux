@@ -32,6 +32,9 @@ export interface Session {
   // Marked when PTY output arrives; the periodic save loop clears it after
   // persisting the buffer.
   dirty: boolean;
+  // Whether this client currently owns the terminal on the server: its size
+  // is the PTY's and only its input is applied. Reset per connection.
+  owner: boolean;
 }
 
 // One live xterm per tab, kept alive while hidden (dormant streaming).

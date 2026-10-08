@@ -25,6 +25,7 @@ import {
 } from "./state/store";
 import {
   ensureActiveTerminal,
+  installOwnershipClaims,
   installScrollbackAutosave,
 } from "./term/terminal";
 import { renderTabs } from "./ui/tabs";
@@ -77,6 +78,7 @@ installConnectInfo();
 installShortcuts();
 installDragAndDrop();
 installScrollbackAutosave();
+installOwnershipClaims();
 
 // Light status polling so sidebar dots reflect background activity. A
 // transient network error (backend stall, sleeping laptop) must never kill

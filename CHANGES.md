@@ -2,6 +2,23 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **A command that tells you how to connect from another machine.** The command palette (and View menu) now has **Show remote connection URL**: it names this machine, works out whether the server is reachable from the network or needs an SSH tunnel, and hands you the `ssh -L` and `terminux --connect` lines to copy, with the live port and access code already filled in. It also says plainly when the address won't survive a restart, and points at `terminux --server` for one that will.
+
+### Fixed
+
+- **Screens no longer get garbled when a second window shows the same terminal.** With a `--connect` window open on another machine, terminals on the main machine could fill with text in the wrong places (shells, Claude Code, any full-screen program), and only closing the tab fixed it. A terminal has a single size, and the remote window was quietly imposing its own. Each terminal now follows the window you are actually using: typing, clicking, focusing the window, or switching to the tab makes it the owner, and the programs redraw for it. The window you're not using may look garbled until you come back to it, and then it snaps back. Stray automatic replies from the unused window (which could show up as junk like `^[[24;1R` in a prompt) no longer reach your programs.
+- **Hidden terminux windows no longer get throttled by macOS (App Nap).** When the window was covered, minimized, or the display slept while the Mac stayed awake, macOS slowed terminux down: hidden tabs' output was handled late, the green "ready" dot appeared late, and connections could drop and reconnect when you came back. terminux now opts out of App Nap while its window is open. It still lets the Mac go to sleep.
+- **No more false "event loop unresponsive" alarms.** When the whole app was paused by the system (App Nap, heavy swapping, a debugger), the freeze watchdog mistook the pause for a frozen server and wrote a full stack dump every few seconds; one field log grew to 4.4 MB of them. It now recognizes a system-wide pause and logs a single line, keeping stack dumps for real freezes.
+- **A full disk no longer turns saves into server errors.** When the disk had no room left even to create a temporary file, a scrollback or layout save escaped its error handling and failed the request. It is now logged like any other failed save; the previous saved file stays intact and the next save retries.
+
+### Changed
+
+- **Log lines now carry a date and time** in every mode, not only with `--debug`, so a log from a long-running instance can be matched against what happened when. `--debug` and `--trace` add milliseconds.
+
 ## [0.9.0] - 2026-09-17
 
 ### Changed

@@ -66,10 +66,19 @@ there are no new ports, certificates, or auth layers to manage.
 
 ## Multiple clients
 
-The server's WebSocket fan-out already supports multiple subscribers per
-PTY, so opening a second `--connect` window from a phone or a second
-laptop attaches to the same shells. Typing in one window is visible in
-all of them, like `tmux attach` from multiple sessions.
+The server's WebSocket fan-out supports multiple subscribers per PTY,
+so opening a second `--connect` window from a phone or a second laptop
+attaches to the same shells, like `tmux attach` from several places.
+Output appears in every window.
+
+A terminal has a single size, though, and windows rarely match. Each
+terminal therefore follows the window you are using: typing in it,
+clicking or pasting into it, focusing its window, or switching to its
+tab makes that window the owner, and the programs inside redraw for its
+size. Only the owner's input reaches the shell. A window you are not
+using may look garbled while another one owns the terminal; it snaps
+back the moment you use it again. (This is tmux's `window-size latest`
+policy.)
 
 ## What lives where
 

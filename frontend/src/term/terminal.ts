@@ -13,6 +13,7 @@ import { getFontSize } from "./font";
 import { createKitty } from "./kitty";
 import { appMod } from "../input/platform";
 import {
+  activeSession,
   activeWorkspace,
   getState,
   poll,
@@ -160,6 +161,38 @@ function sendInput(sess: Session, data: string): void {
   }
 }
 
+// Several clients (this window, a remote --connect window) may show the
+// same terminal at different sizes; the server sizes it to the one in use
+// and only takes that one's input. Claim before any real input so the
+// server switches owner (and size) ahead of the keystroke itself; the
+// server answers with {"type":"owner"} and revokes when another claims.
+function claim(sess: Session): void {
+  const w = sess.ws;
+  if (sess.owner || !w || w.readyState !== 1) {
+    return;
+  }
+  sess.owner = true; // optimistic: the server always grants a claim
+  w.send(JSON.stringify({ type: "claim" }));
+}
+
+// Claim only for the tab on screen in a focused window: a background tab
+// or an unattended window must not pull the size away from where the
+// user actually is.
+function claimIfInUse(sess: Session): void {
+  if (activeSession() === sess && document.hasFocus()) {
+    claim(sess);
+  }
+}
+
+export function installOwnershipClaims(): void {
+  window.addEventListener("focus", () => {
+    const s = activeSession();
+    if (s) {
+      claim(s);
+    }
+  });
+}
+
 /**
  * Spawn (or re-acquire) the tab's PTY and attach a fresh WebSocket.
  *
@@ -203,12 +236,19 @@ async function connect(
   }
   ws.binaryType = "arraybuffer";
   sess.ws = ws;
+  sess.owner = false; // per connection; the server reports it on attach
 
   let kittyCarry = "";
   ws.onmessage = (ev: MessageEvent): void => {
     if (typeof ev.data === "string") {
-      const msg = JSON.parse(ev.data) as { type: string; code?: number | null };
-      if (msg.type === "exit") {
+      const msg = JSON.parse(ev.data) as {
+        type: string;
+        code?: number | null;
+        owner?: boolean;
+      };
+      if (msg.type === "owner") {
+        sess.owner = msg.owner === true;
+      } else if (msg.type === "exit") {
         const code = msg.code != null ? ` with code ${msg.code}` : "";
         sess.exited = true;
         sess.term.write(
@@ -255,6 +295,7 @@ async function connect(
       rows: sess.term.rows,
     }),
   );
+  claimIfInUse(sess); // e.g. a reconnect while the user is looking at it
   return "ok";
 }
 
@@ -368,8 +409,15 @@ async function doOpenTerminal(tid: string, restore: boolean): Promise<void> {
     reconnecting: false,
     kitty: createKitty(),
     dirty: false,
+    owner: false,
   };
   sessions.set(tid, sess);
+
+  // Clicking or pasting into this terminal is using it. Capture phase, so
+  // the claim reaches the server before xterm turns the event into input
+  // (mouse reports, pasted text).
+  host.addEventListener("mousedown", () => claim(sess), true);
+  host.addEventListener("paste", () => claim(sess), true);
 
   // Auto-copy on selection (iTerm2-style), gated by the persisted pref. We
   // read the pref live each time so a toggle takes effect immediately.
@@ -408,6 +456,9 @@ async function doOpenTerminal(tid: string, restore: boolean): Promise<void> {
   // macOS editing chords first (own every event type so the webview can't
   // act on them); then Shift+Enter / modified Enter as newline.
   term.attachCustomKeyEventHandler((e: KeyboardEvent): boolean => {
+    if (e.type === "keydown") {
+      claim(sess); // ahead of the bytes this key is about to produce
+    }
     if (sess.exited) {
       // The shell is gone; Enter relaunches it in the same tab.
       if (e.type === "keydown" && e.key === "Enter") {
@@ -535,5 +586,6 @@ export async function ensureActiveTerminal(): Promise<void> {
   if (s) {
     s.fit.fit();
     s.term.focus();
+    claimIfInUse(s); // switching to a tab is using it
   }
 }

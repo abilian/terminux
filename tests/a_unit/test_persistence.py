@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import errno
+import logging
 from pathlib import Path
 
 from terminux.core import persistence
@@ -123,3 +125,23 @@ def test_save_handles_replace_oserror(tmp_path: Path, monkeypatch) -> None:
     save_state(AppState.default(), p)  # error is logged, not raised
     assert not p.exists()
     assert not list(tmp_path.glob(".state-*.tmp"))  # temp cleaned up
+
+
+def test_save_logs_instead_of_raising_when_the_temp_file_cannot_be_created(
+    tmp_path: Path, monkeypatch, caplog
+) -> None:
+    """A full disk can fail the temp-file creation itself, before anything
+    is written. That must take the same log-and-continue path as any other
+    persist failure (it used to escape as a 500 from the request handler)."""
+    p = tmp_path / "state.json"
+    p.write_text("previous", encoding="utf-8")
+
+    def disk_full(*_a, **_k):
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(persistence.tempfile, "mkstemp", disk_full)
+    with caplog.at_level(logging.ERROR, logger=persistence.log.name):
+        save_state(AppState.default(), p)  # must not raise
+        save_scrollback("tab1", "content", base=tmp_path)  # same helper
+    assert p.read_text(encoding="utf-8") == "previous"  # old file intact
+    assert sum("failed to persist" in r.getMessage() for r in caplog.records) == 2

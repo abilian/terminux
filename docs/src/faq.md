@@ -116,5 +116,5 @@ kill -USR1 <pid>                         # Linux
 
 For a bug report, run the reproducer with `--debug` (slow-I/O warnings +
 access logs) or `--trace` (every persisted save and cwd lookup logged with
-its duration). Both flags emit ms-precision timestamps. See
+its duration). Both flags add millisecond timestamps. See
 [Debugging knobs](developers/developing.md#debugging-knobs) for the full menu.

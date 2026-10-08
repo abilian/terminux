@@ -837,3 +837,102 @@ def test_connect_info_follows_the_bind_it_was_given(server: LiveServer) -> None:
         app_state.bind_host = "127.0.0.1"
         app_state.bind_port = None
         app_state.token_persistent = False
+
+
+# ----- several clients on one terminal ------------------------------------
+
+
+async def _until(ws: Any, accept: Any, timeout: float = 8.0) -> Any:
+    """Receive frames until ``accept(frame)`` holds; return that frame."""
+
+    async def go() -> Any:
+        while True:
+            frame = await ws.recv()
+            if accept(frame):
+                return frame
+
+    return await asyncio.wait_for(go(), timeout)
+
+
+def _owner_frame(value: bool) -> Any:
+    return lambda m: (
+        isinstance(m, str) and json.loads(m) == {"type": "owner", "owner": value}
+    )
+
+
+async def _output_until(ws: Any, marker: bytes, timeout: float = 8.0) -> bytes:
+    """Collect PTY output bytes until ``marker`` shows up; return them all."""
+    buf = b""
+
+    async def go() -> bytes:
+        nonlocal buf
+        while marker not in buf:
+            frame = await ws.recv()
+            if isinstance(frame, bytes):
+                buf += frame
+        return buf
+
+    return await asyncio.wait_for(go(), timeout)
+
+
+def test_the_client_in_use_owns_the_terminal_size_and_input(
+    server: LiveServer, monkeypatch
+) -> None:
+    """A desktop window and a --connect window on the same terminal (the
+    garbled-screen bug): the watcher's size never reaches the PTY, its
+    emulator's stray answers never reach the shell, a claim moves both, and
+    the owner leaving hands everything back."""
+    monkeypatch.setattr("terminux.server.controller.default_shell", lambda: ["/bin/sh"])
+    base = server.url
+    tab = _req(f"{base}/api/state?t={T}")["workspaces"][0]["tab_ids"][0]
+    tid = _req(f"{base}/api/tabs/{tab}/spawn?t={T}", "POST", b"{}")["terminal_id"]
+    url = base.replace("http", "ws") + f"/pty/{tid}?t={T}"
+    term = server.controller.terminals.get(tid)
+    assert term is not None
+
+    def pty_size() -> tuple[int, int]:  # (cols, rows) as the kernel sees it
+        rows, cols = term._pty._proc.getwinsize()  # type: ignore[attr-defined]
+        return cols, rows
+
+    async def size_becomes(expected: tuple[int, int]) -> None:
+        for _ in range(250):
+            if pty_size() == expected:
+                return
+            await asyncio.sleep(0.02)
+        msg = f"PTY stayed {pty_size()}, expected {expected}"
+        raise AssertionError(msg)
+
+    async def scenario() -> None:
+        async with websockets.connect(url) as desk:
+            await _until(desk, _owner_frame(True))  # first to attach owns
+            await desk.send(json.dumps({"type": "resize", "cols": 100, "rows": 30}))
+            await size_becomes((100, 30))
+
+            async with websockets.connect(url) as laptop:
+                await _until(laptop, _owner_frame(False))  # attaches as watcher
+                # The watcher's size and bytes (like an emulator's answer to
+                # a cursor-position query) must not touch the terminal.
+                await laptop.send(
+                    json.dumps({"type": "resize", "cols": 60, "rows": 20})
+                )
+                await laptop.send(b"echo LAPTOP_EARLY\r")
+                await asyncio.sleep(0.5)
+                await desk.send(b"echo DESK_SEES\r")
+                seen = await _output_until(desk, b"DESK_SEES")
+                assert b"LAPTOP_EARLY" not in seen
+                assert pty_size() == (100, 30)
+
+                # The user moves to the laptop: one claim switches the
+                # owner, notifies both sides, and re-sizes the PTY.
+                await laptop.send(json.dumps({"type": "claim"}))
+                await _until(laptop, _owner_frame(True))
+                await _until(desk, _owner_frame(False))
+                await size_becomes((60, 20))
+                await laptop.send(b"echo LAPTOP_OWNS\r")
+                await _output_until(laptop, b"LAPTOP_OWNS")
+
+            # The laptop disconnects: the desktop owns it again, at its size.
+            await _until(desk, _owner_frame(True))
+            await size_becomes((100, 30))
+
+    asyncio.run(scenario())

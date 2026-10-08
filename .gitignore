@@ -22,6 +22,7 @@ node_modules/
 .envrc
 /sandbox/
 /notes/
+/sync.sh
 
 # Vitest coverage output
 /frontend/coverage/

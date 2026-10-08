@@ -435,7 +435,10 @@ def test_pump_in_offloads_term_write_off_event_loop() -> None:
         # the asyncio loop thread, else a wedged PTY would freeze the loop.
         write_thread[0] = threading.get_ident()
 
-    term = types.SimpleNamespace(write=slow_write, resize=lambda _c, _r: None)
+    term = types.SimpleNamespace(
+        write=slow_write,
+        is_owner=lambda _sub: True,  # the only client owns the terminal
+    )
 
     class FakeWS:
         def __init__(self) -> None:
@@ -457,7 +460,7 @@ def test_pump_in_offloads_term_write_off_event_loop() -> None:
     async def go() -> int | None:
         ws = FakeWS()
         ctl = FakeCtl()
-        await asyncio.wait_for(_pump_in(ws, term, ctl), timeout=2)
+        await asyncio.wait_for(_pump_in(ws, term, object(), ctl), timeout=2)
         assert ctl.input_count == 1
         return write_thread[0]
 
@@ -468,6 +471,42 @@ def test_pump_in_offloads_term_write_off_event_loop() -> None:
         "term.write ran on the asyncio thread — a blocking write would freeze "
         "the entire server. The fix must offload via asyncio.to_thread."
     )
+
+
+def test_pump_in_drops_input_from_a_client_that_does_not_own_the_terminal() -> None:
+    """A watching client's bytes (its emulator's automatic answers to the
+    program's queries) must neither reach the shell nor count as activity."""
+    import asyncio
+    import types
+
+    from terminux.server.api import _pump_in
+
+    written: list[bytes] = []
+    term = types.SimpleNamespace(
+        write=written.append,
+        is_owner=lambda _sub: False,
+    )
+
+    class FakeWS:
+        def __init__(self) -> None:
+            self._messages = [
+                {"bytes": b"\x1b[24;1R"},  # a cursor-position report
+                {"type": "websocket.disconnect"},
+            ]
+
+        async def receive(self) -> dict:
+            return self._messages.pop(0)
+
+    class FakeCtl:
+        input_count = 0
+
+        def note_input(self) -> None:
+            self.input_count += 1
+
+    ctl = FakeCtl()
+    asyncio.run(asyncio.wait_for(_pump_in(FakeWS(), term, object(), ctl), timeout=2))
+    assert written == []
+    assert ctl.input_count == 0
 
 
 def test_pump_out_emits_dropped_then_exit(monkeypatch) -> None:

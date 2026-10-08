@@ -15,11 +15,13 @@ and the heartbeat is published once and read from anywhere.
 from __future__ import annotations
 
 import contextlib
+import enum
 import faulthandler
 import logging
 import sys
 import threading
 import time
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -33,6 +35,8 @@ log = logging.getLogger(__name__)
 STALL_THRESHOLD = 3.0
 # Don't spam the log every second of a sustained stall.
 WARN_INTERVAL = 10.0
+# How long the watchdog sleeps between checks.
+POLL_INTERVAL = 1.0
 # Operations slower than this are logged at WARNING; faster ones at DEBUG.
 SLOW_OP_THRESHOLD = 0.2
 
@@ -70,21 +74,70 @@ def start_watchdog() -> None:
     thread.start()
 
 
+class Finding(enum.Enum):
+    """What a stale heartbeat means, as judged by the watchdog."""
+
+    # The whole process got no CPU (the watchdog was frozen too): App
+    # Nap, heavy swapping, a debugger. Stacks would show innocent frames.
+    SUSPENDED = "suspended"
+    # The loop missed its heartbeat while the process was running: a real
+    # stall worth a stack dump.
+    STALLED = "stalled"
+
+
+@dataclass
+class _Monitor:
+    """Tells a stalled event loop from a process that wasn't scheduled.
+
+    Both leave the heartbeat stale. The watchdog distinguishes them by its
+    own lateness: if it overslept by more than ``STALL_THRESHOLD``, every
+    thread was frozen, not just the loop. A stall is then measured only
+    over time the process actually ran, so a resumed loop gets a fresh
+    ``STALL_THRESHOLD`` to beat again before it is blamed.
+    """
+
+    resumed_at: float = float("-inf")
+    last_warned: float = float("-inf")
+
+    def observe(
+        self, *, slept_at: float, now: float, last_beat: float
+    ) -> tuple[Finding, float] | None:
+        """Judge one wake-up; return a finding and its seconds, or None."""
+        overslept = now - slept_at - POLL_INTERVAL
+        if overslept >= STALL_THRESHOLD:
+            self.resumed_at = now
+            return Finding.SUSPENDED, overslept
+        stalled_for = now - max(last_beat, self.resumed_at)
+        if stalled_for < STALL_THRESHOLD or now - self.last_warned < WARN_INTERVAL:
+            return None
+        self.last_warned = now
+        return Finding.STALLED, stalled_for
+
+
 def _run_watchdog() -> None:
-    last_warned = 0.0
+    monitor = _Monitor()
     while True:
-        time.sleep(1.0)
-        now = time.monotonic()
-        stalled_for = now - _WatchdogState.last_beat
-        if stalled_for < STALL_THRESHOLD:
+        slept_at = time.monotonic()
+        time.sleep(POLL_INTERVAL)
+        result = monitor.observe(
+            slept_at=slept_at,
+            now=time.monotonic(),
+            last_beat=_WatchdogState.last_beat,
+        )
+        if result is None:
             continue
-        if now - last_warned < WARN_INTERVAL:
+        finding, seconds = result
+        if finding is Finding.SUSPENDED:
+            log.info(
+                "process got no CPU for %.1fs (App Nap, heavy swapping, or a "
+                "debugger); not an event-loop stall",
+                seconds,
+            )
             continue
-        last_warned = now
         log.warning(
             "event loop unresponsive for %.1fs — dumping per-thread stacks "
             "(send SIGINFO/SIGUSR1 for additional dumps)",
-            stalled_for,
+            seconds,
         )
         with contextlib.suppress(Exception):
             faulthandler.dump_traceback(file=sys.stderr, all_threads=True)

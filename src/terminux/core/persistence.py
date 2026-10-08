@@ -54,19 +54,32 @@ def _scrollback_file(tab_id: str, base: Path | None = None) -> Path | None:
 
 
 def _atomic_write(path: Path, data: bytes, *, prefix: str, label: str) -> None:
-    """Write ``data`` to ``path`` atomically (temp file + fsync + replace)."""
-    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=prefix, suffix=".tmp")
-    tmp_path = Path(tmp_name)
+    """Write ``data`` to ``path`` atomically (temp file + fsync + replace).
+
+    Best-effort by contract: any ``OSError`` — creating the temp file on a
+    full disk included — is logged and swallowed. The in-memory state stays
+    authoritative, the previous file is left intact, and the next save
+    retries; callers (request handlers, window shutdown) never see it.
+    """
+    tmp_path: Path | None = None
     try:
-        with os.fdopen(fd, "wb") as fh:
-            fh.write(data)
-            fh.flush()
-            os.fsync(fh.fileno())
+        fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=prefix, suffix=".tmp")
+        tmp_path = Path(tmp_name)
+        _write_synced(fd, data)
         tmp_path.replace(path)
     except OSError:
         log.exception("failed to persist %s", label)
-        with contextlib.suppress(OSError):
-            tmp_path.unlink(missing_ok=True)
+        if tmp_path is not None:
+            with contextlib.suppress(OSError):
+                tmp_path.unlink(missing_ok=True)
+
+
+def _write_synced(fd: int, data: bytes) -> None:
+    """Write ``data`` through ``fd`` and fsync it before closing."""
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(data)
+        fh.flush()
+        os.fsync(fh.fileno())
 
 
 def save_scrollback(tab_id: str, content: str, base: Path | None = None) -> None:

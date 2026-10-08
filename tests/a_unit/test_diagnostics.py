@@ -109,3 +109,111 @@ def test_watchdog_warns_on_stall(monkeypatch, caplog) -> None:
         "event loop unresponsive" in r.message and r.levelno == logging.WARNING
         for r in caplog.records
     )
+
+
+# ----- stall vs. suspension ---------------------------------------------
+# ``_Monitor.observe`` is pure over explicit clock values, so these drive
+# it with numbers instead of sleeping. Thresholds are the real defaults:
+# STALL_THRESHOLD = 3 s, WARN_INTERVAL = 10 s, POLL_INTERVAL = 1 s.
+
+Finding = diagnostics.Finding
+
+
+def test_monitor_quiet_when_the_loop_beats() -> None:
+    m = diagnostics._Monitor()
+    assert m.observe(slept_at=100.0, now=101.0, last_beat=100.8) is None
+
+
+def test_monitor_reports_a_stall_while_the_process_runs() -> None:
+    """On-time wake-ups but a stale heartbeat: the loop is stuck."""
+    m = diagnostics._Monitor()
+    assert m.observe(slept_at=100.0, now=101.0, last_beat=95.0) == (
+        Finding.STALLED,
+        6.0,
+    )
+
+
+def test_monitor_rate_limits_repeat_stall_reports() -> None:
+    m = diagnostics._Monitor()
+    assert m.observe(slept_at=100.0, now=101.0, last_beat=95.0) is not None
+    # Same stall 5 s later: inside WARN_INTERVAL, stays quiet.
+    assert m.observe(slept_at=105.0, now=106.0, last_beat=95.0) is None
+    # 10 s after the first report it speaks again.
+    assert m.observe(slept_at=110.0, now=111.0, last_beat=95.0) == (
+        Finding.STALLED,
+        16.0,
+    )
+
+
+def test_monitor_blames_the_process_not_the_loop_when_it_overslept() -> None:
+    """A 1 s sleep that took 301 s means every thread was frozen (App Nap,
+    swapping): one SUSPENDED finding, never a stall dump — even though the
+    heartbeat is 302 s stale."""
+    m = diagnostics._Monitor()
+    assert m.observe(slept_at=100.0, now=401.0, last_beat=99.0) == (
+        Finding.SUSPENDED,
+        300.0,
+    )
+
+
+def test_monitor_gives_a_resumed_loop_a_fresh_threshold() -> None:
+    m = diagnostics._Monitor()
+    m.observe(slept_at=100.0, now=401.0, last_beat=99.0)  # suspended
+    # 1 s after resuming, the loop hasn't beaten yet: not its fault.
+    assert m.observe(slept_at=401.0, now=402.0, last_beat=99.0) is None
+    # Still silent 4 s after resuming while the process runs: a real stall,
+    # measured from the resume, not from before the suspension.
+    assert m.observe(slept_at=404.0, now=405.0, last_beat=99.0) == (
+        Finding.STALLED,
+        4.0,
+    )
+
+
+def test_monitor_turns_the_field_log_pattern_into_suspensions() -> None:
+    """The 2026-10 field log: watchdog wake-ups 67 s and 334 s apart while
+    the loop was idle. Before, each was a 110-line stack dump; now each is
+    a suspension and nothing is blamed on the loop."""
+    m = diagnostics._Monitor()
+    findings = [
+        m.observe(slept_at=0.0, now=67.5, last_beat=0.0),
+        m.observe(slept_at=67.5, now=401.5, last_beat=0.0),
+        m.observe(slept_at=401.5, now=402.5, last_beat=401.9),  # loop beat
+    ]
+    assert [f[0] if f else None for f in findings] == [
+        Finding.SUSPENDED,
+        Finding.SUSPENDED,
+        None,
+    ]
+
+
+def test_watchdog_logs_a_suspension_as_one_line(monkeypatch, caplog) -> None:
+    """End to end through ``_run_watchdog``: an oversleep logs one INFO line
+    and no stack dump."""
+    # slept_at, a 300 s-late wake-up, then the next slept_at before the
+    # second sleep ends the loop.
+    clock = iter([100.0, 401.0, 401.0])
+    monkeypatch.setattr(diagnostics.time, "monotonic", lambda: next(clock))
+    calls = {"n": 0}
+
+    def fake_sleep(_seconds: float) -> None:
+        calls["n"] += 1
+        if calls["n"] >= 2:
+            raise _WatchdogStopError
+
+    monkeypatch.setattr(diagnostics.time, "sleep", fake_sleep)
+    dumps: list[object] = []
+    monkeypatch.setattr(
+        diagnostics.faulthandler, "dump_traceback", lambda **k: dumps.append(k)
+    )
+    monkeypatch.setattr(diagnostics._WatchdogState, "last_beat", 99.0)
+
+    with (
+        caplog.at_level(logging.INFO, logger=diagnostics.log.name),
+        contextlib.suppress(_WatchdogStopError),
+    ):
+        diagnostics._run_watchdog()
+
+    messages = [r.getMessage() for r in caplog.records]
+    assert any("process got no CPU for 300.0s" in m for m in messages)
+    assert not any("event loop unresponsive" in m for m in messages)
+    assert dumps == []

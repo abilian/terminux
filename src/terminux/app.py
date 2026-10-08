@@ -111,17 +111,23 @@ def _configure_logging(*, debug: bool, trace: bool) -> None:
     --trace:  everything (root) at DEBUG, uvicorn access logs, the
               I/O instrumentation also logs every operation (not just
               slow ones) by checking ``logging.DEBUG``.
+
+    Every mode stamps a full date: a long-running instance's log spans
+    days, and a stall can only be explained by what happened when.
+    --debug and --trace add milliseconds.
     """
-    fmt = "%(asctime)s.%(msecs)03d %(levelname)s %(name)s: %(message)s"
-    datefmt = "%H:%M:%S"
+    datefmt = "%Y-%m-%d %H:%M:%S"
+    precise = "%(asctime)s.%(msecs)03d %(levelname)s %(name)s: %(message)s"
     if trace:
-        logging.basicConfig(level=logging.DEBUG, format=fmt, datefmt=datefmt)
+        logging.basicConfig(level=logging.DEBUG, format=precise, datefmt=datefmt)
     elif debug:
-        logging.basicConfig(level=logging.INFO, format=fmt, datefmt=datefmt)
+        logging.basicConfig(level=logging.INFO, format=precise, datefmt=datefmt)
         logging.getLogger("terminux").setLevel(logging.DEBUG)
     else:
         logging.basicConfig(
-            level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
+            level=logging.INFO,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+            datefmt=datefmt,
         )
     # Every request URL carries ``?t=<token>``; without this, enabling
     # access logs (--debug/--trace) would write the token — persistent in
@@ -300,6 +306,37 @@ def _disable_macos_press_and_hold() -> None:
     )
 
 
+def _disable_macos_app_nap() -> object | None:
+    """Keep macOS from App-Napping terminux while its window is hidden.
+
+    App Nap stretches the timers and lowers the CPU priority of an app
+    whose window is covered or hidden, or of every app while the display
+    sleeps with the Mac awake. A terminal must keep draining its hidden
+    tabs, firing the "ready" signal, and answering websocket keepalives.
+
+    Returns the activity token, which the caller must hold for as long as
+    the window lives: releasing it ends the opt-out. The option still
+    *allows idle system sleep*, so terminux never keeps the Mac awake.
+    """
+    if sys.platform != "darwin":
+        return None
+    try:
+        from Foundation import (  # noqa: PLC0415
+            NSActivityUserInitiatedAllowingIdleSystemSleep,  # ty: ignore[unresolved-import]  # pyrefly: ignore[missing-module-attribute]
+            NSProcessInfo,  # ty: ignore[unresolved-import]  # pyrefly: ignore[missing-module-attribute]
+        )
+    except ImportError:
+        log.warning("pyobjc Foundation not available; App Nap left enabled")
+        return None
+    return cast(
+        "object",
+        NSProcessInfo.processInfo().beginActivityWithOptions_reason_(
+            NSActivityUserInitiatedAllowingIdleSystemSleep,
+            "terminux streams live terminals, including hidden tabs",
+        ),
+    )
+
+
 def _set_macos_dock_icon() -> None:
     """Override the generic Python rocket in the dock when launched from the CLI.
 
@@ -328,6 +365,7 @@ def _run_windowed(
     url: str, ctl: AppController, server: uvicorn.Server, *, debug: bool = False
 ) -> None:
     _disable_macos_press_and_hold()
+    _app_nap = _disable_macos_app_nap()  # held: releasing it re-enables App Nap
     import webview  # noqa: PLC0415  (heavy GUI import; only when windowing)
     from webview.dom import DOMEventHandler  # noqa: PLC0415
 
@@ -433,6 +471,7 @@ def _run_connected(remote_url: str, *, debug: bool = False) -> None:
     rather than calling a local controller).
     """
     _disable_macos_press_and_hold()
+    _app_nap = _disable_macos_app_nap()  # held: releasing it re-enables App Nap
     import webview  # noqa: PLC0415  (heavy GUI import; only when windowing)
     from webview.dom import DOMEventHandler  # noqa: PLC0415
 

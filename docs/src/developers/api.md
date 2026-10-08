@@ -48,8 +48,10 @@ curl -X POST "$BASE/api/tabs/$TAB/spawn$T" -d '{"cols":120,"rows":30}'
 Connect with the token (`/pty/<terminal_id>?t=<token>`) after obtaining a `terminal_id` from `spawn`. The protocol:
 
 - **Binary frames, both directions**: raw PTY bytes. Client to server is keyboard input; server to client is terminal output.
-- **Text frames are JSON control messages.** The client sends `{"type": "resize", "cols": N, "rows": N}`. The server sends `{"type": "exit", "code": N}` when the shell ends, and `{"type": "dropped"}` once if a slow consumer's backlog had to be discarded.
+- **Text frames are JSON control messages.** The client sends `{"type": "resize", "cols": N, "rows": N}` to report its size and `{"type": "claim"}` to take ownership (below). The server sends `{"type": "owner", "owner": true|false}` on attach and whenever ownership changes, `{"type": "exit", "code": N}` when the shell ends, and `{"type": "dropped"}` once if a slow consumer's backlog had to be discarded.
 
-On connect the server replays its retained output backlog (up to 512 KB), which is what lets a reconnecting client repaint the screen. A terminal accepts **multiple simultaneous subscribers**: two windows attached to the same terminal both see all output and can both type, like `tmux attach` from two places.
+On connect the server replays its retained output backlog (up to 512 KB), which is what lets a reconnecting client repaint the screen. A terminal accepts **multiple simultaneous subscribers**, and every one of them receives all output.
+
+**Ownership.** A PTY has one size, so one subscriber at a time owns the terminal. The first to attach owns it. A `resize` from the owner resizes the PTY; a `resize` from anyone else is only recorded. A `claim` makes the sender the owner and resizes the PTY to its recorded size. Binary input from a non-owner is dropped: in practice it is the emulator's automatic answers to the program's queries (cursor position, device attributes), which describe the wrong screen. A client must therefore send `claim` before any real input; the bundled frontend does so on keystrokes, clicks, pastes, window focus, and tab switches. When the owner disconnects, the most recently attached remaining subscriber takes over.
 
 The close codes are `4403` (bad token) and `4404` (unknown terminal id).

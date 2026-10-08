@@ -41,7 +41,7 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/abilian/terminux"
+Homepage = "https://terminux.lab.abilian.com/"
 Documentation = "https://terminux.lab.abilian.com/"
 Repository = "https://github.com/abilian/terminux.git"
 Issues = "https://github.com/abilian/terminux/issues"
