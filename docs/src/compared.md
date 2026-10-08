@@ -1,12 +1,12 @@
 # Compared to…
 
-Where terminux sits among the tools you may already use. The short version: terminux is a **desktop app for organizing many shells by project**, and it composes with most of the tools below.
+Where terminux sits among the tools you may already use. In short, terminux is a desktop app that organizes many shells by project. It works alongside most of the tools below.
 
 ## …terminal emulators (iTerm2, kitty, Ghostty, WezTerm, Alacritty)
 
-These are terminal *emulators*: their center of gravity is rendering speed, emulation fidelity, and per-window features. terminux sits one level up. Its center of gravity is the **workspace model**: a persistent, reorderable sidebar of projects, activity and "ready" signals per workspace, and a layout that survives restarts with scrollback included.
+These are terminal *emulators*: their center of gravity is rendering speed, emulation fidelity, and per-window features. terminux sits one level up. Its center of gravity is the **workspace model**: a persistent, reorderable sidebar of projects, activity and "ready" signals per workspace, and a layout that comes back after a restart, scrollback included.
 
-terminux gives up some emulator ground for that. Rendering runs on xterm.js in a WebKit view: fast for interactive work, measurably behind kitty or Alacritty on raw throughput. Split panes are still on the roadmap, and the long tail of emulator features (profiles, triggers, tmux integration) is absent.
+terminux gives up some emulator ground for that. Rendering runs on xterm.js in a WebKit view, which is fast for interactive work but measurably behind kitty or Alacritty on raw throughput. Split panes are still on the roadmap. The long tail of emulator features (profiles, triggers, tmux integration) is absent.
 
 It answers with the sidebar and its per-project status dots, restart persistence that includes each tab's scrollback, and a client/server mode where your shells outlive your laptop.
 
@@ -28,5 +28,5 @@ An IDE's integrated terminal is scoped to the project the IDE has open. terminux
 
 - You need split panes today, or Windows: both are still on the terminux roadmap.
 - Raw rendering throughput is your top criterion: choose kitty, Alacritty, or Ghostty.
-- You need sessions to survive on your *local* machine across a backend crash or reboot: a multiplexer holds that ground (terminux restores layout and scrollback, while live processes end with the backend that owns them).
+- You need sessions to keep running on your *local* machine across a backend crash or reboot: a multiplexer holds that ground (terminux restores layout and scrollback, while live processes end with the backend that owns them).
 - Your team standardized on tmux scripting: terminux has no equivalent automation surface yet.

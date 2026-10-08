@@ -14,7 +14,7 @@ processes are *not* restored.
 ## Can I turn scrollback persistence off?
 
 Yes. It defaults to **on**, capped at 2 MB per tab, and the files are deleted
-when the tab or workspace is closed. To disable it entirely:
+when the tab or workspace is closed. You can turn it off with one API call:
 
 ```sh
 curl -X PATCH "http://127.0.0.1:<port>/api/ui?t=<token>" \

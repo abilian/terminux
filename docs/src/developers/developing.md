@@ -133,7 +133,7 @@ kill -USR1 <pid>
 ```
 
 `<pid>` comes from `ps aux | grep terminux | grep -v grep`. The dump
-lands on the same stderr stream as the watchdog's output.
+goes to the same stderr stream as the watchdog's output.
 
 ### `TERMINUX_PTY_LOG`
 

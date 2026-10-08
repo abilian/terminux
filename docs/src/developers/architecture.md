@@ -72,7 +72,7 @@ divider resize) stay outside Preact's render cycle on purpose.
 - **Structure and scrollback, never processes.** The layout and each tab's
   visible buffer are saved; live processes are not. State is written atomically
   and versioned, so a port or version change doesn't lose your workspaces.
-- **Loopback + token by default.** HTTP responses carry a strict CSP and
+- **Loopback + token by default.** HTTP responses include a strict CSP and
   security headers; a per-session token authenticates every request and
   WebSocket. Binding beyond loopback (`--host 0.0.0.0`) makes the token the only
   line of defense. Keep the URL private.
@@ -80,5 +80,5 @@ divider resize) stay outside Preact's render cycle on purpose.
   or file navigator. The data model leaves the door open to split panes without
   committing to them in v1.
 
-For the full rationale, see `notes/vision.md`, `notes/functional-spec.md`, and
-`notes/technical-spec.md`.
+For the full rationale, see `notes/00-vision.md`, `notes/01-functional-spec.md`, and
+`notes/02-technical-spec.md` in the repository.

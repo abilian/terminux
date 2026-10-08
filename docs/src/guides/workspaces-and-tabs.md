@@ -17,13 +17,13 @@ reorderable list of them.
   working directory automatically. Drag a different tab into slot 0 to
   promote it into the naming role; jumping between tabs within a workspace
   doesn't keep renaming it. An explicit rename *pins* the name so it stops
-  tracking, and the pinned name persists across restarts. Inline rename
-  works for both workspaces and tabs.
+  tracking; the pinned name persists across restarts. You can rename both
+  workspaces and tabs inline.
 - **Status dot.** Each workspace shows a lightweight status indicator.
 - **Visible even without the sidebar.** When the sidebar is hidden
   (`Cmd/Ctrl+B`), the active workspace's dot, number, and name appear as a
   chip at the left of the tab bar; click it to bring the sidebar back. The
-  window title carries the workspace name as well.
+  window title shows the workspace name as well.
 - **Closing the last tab** of a workspace closes the *workspace* and activates
   another one; it does not quit the app.
 
@@ -56,7 +56,7 @@ right-aligned next to the name). Hover for the same value as a tooltip.
 
 The **command palette** (`F1`, provisional, on Linux; `Cmd+Shift+P` on
 macOS) is a launcher: verbs only, fuzzy-filtered. Three of its commands
-touch activity stats:
+act on activity stats:
 
 - **Display usage stats**: opens a focused overlay listing every
   workspace ranked by active time, with a bar showing each one's share of
@@ -69,7 +69,7 @@ touch activity stats:
 
 ## Working vs ready
 
-Two indicators carry meaning in the sidebar:
+The sidebar uses two indicators:
 
 - **Amber dot (*working*).** A foreground task is actively producing
   output. You can ignore unless you want to check on it.
@@ -152,7 +152,7 @@ are *not* still running.
 !!! warning "Not persisted"
     Running processes are **not** restored; only their visible output is.
     Split panes and the Windows PTY backend are still on the roadmap (see
-    `notes/technical-spec.md` §11–§14).
+    the [FAQ](../faq.md)).
 
 !!! info "Full-screen TUIs (Claude Code, vim, less, tmux, fzf…)"
     Full-screen apps draw into the terminal's **alternate screen buffer**,

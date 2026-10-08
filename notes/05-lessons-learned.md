@@ -144,7 +144,7 @@ Sequel to this lesson: the sidebar then also showed a 🔔 attention badge (BEL/
 
 ### Discuss non-trivial features before implementing
 
-The "Discuss → Yes, ship all three" pattern worked well: surface 2–3 design decisions (defaults, tradeoffs) before committing to an implementation. That costs less than redoing work after a wrong default.
+Before implementing a non-trivial feature, write down its 2–3 open design decisions (defaults, tradeoffs) and settle them first. That costs less than redoing work after a wrong default.
 
 ### Say up front what *can't* be restored
 

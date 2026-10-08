@@ -76,7 +76,7 @@ The shell will have to report its cwd. Windows offers no supported API for readi
 pywinpty's terminate closes the pseudo console, which sends `CTRL_CLOSE_EVENT` to the console processes attached to it. Detached children (a `Start-Process`, a GUI app, a server started in the background) keep running. Plan:
 
 1. Start with pywinpty's terminate and check in the spike which processes keep running.
-2. If needed, put the shell in a Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` right after spawn (`ctypes`, no pywin32), and close the job handle on `terminate`. That's what terax did; see the "process-tree kill" lesson referenced in §10.
+2. If needed, put the shell in a Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` right after spawn (`ctypes`, no pywin32), and close the job handle on `terminate`. It's the standard way to kill a whole process tree on Windows.
 
 ### 6. Shell choice
 

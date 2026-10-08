@@ -142,7 +142,7 @@ simplest options are:
   that runs `uv run terminux --server`. The token file persists across
   service restarts, so your bookmarked URL keeps working.
 - **tmux session**: `tmux new-session -d -s terminux 'uv run terminux
-  --server'`. Trivial, and it keeps running after logout.
+  --server'`. It's trivial to set up and keeps running after logout.
 - **macOS launchd**: a per-user `LaunchAgent` plist if you want it to
   auto-start at login.
 

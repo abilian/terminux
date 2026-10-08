@@ -1,6 +1,6 @@
 # Configuration
 
-terminux has no dotfile. Every preference is changed from inside the app (command palette, menu, or shortcut) and persists server-side automatically, so it survives restarts and applies to every window on the same backend.
+terminux has no dotfile. Every preference is changed from inside the app (command palette, menu, or shortcut) and persists server-side automatically, so it stays set across restarts and applies to every window on the same backend.
 
 ## Preferences
 
@@ -13,7 +13,7 @@ terminux has no dotfile. Every preference is changed from inside the app (comman
 | Scrollback persistence | Command palette or View menu | on |
 | Window size and position | Just move/resize the window | 1100 × 720 |
 
-The command palette is `F1` on Linux and `Cmd+Shift+P` on macOS; the full chord list is in [Keyboard shortcuts](../guides/keyboard-shortcuts.md). It also carries **Show remote connection URL**, which prints the exact commands another machine needs to reach this one (see [Remote access](../guides/remote.md)).
+The command palette is `F1` on Linux and `Cmd+Shift+P` on macOS; the full chord list is in [Keyboard shortcuts](../guides/keyboard-shortcuts.md). It also lists **Show remote connection URL**, which prints the exact commands another machine needs to reach this one (see [Remote access](../guides/remote.md)).
 
 ## Where state lives
 

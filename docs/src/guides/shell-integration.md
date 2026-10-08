@@ -11,7 +11,7 @@ shell:
 
 The BEL that closes an `OSC 0/2;<title>\x07` title update **does not
 count**: tools like Claude Code update the title constantly while they
-work, and the sidebar would never stop ringing if it counted those.
+work, so counting those would keep the sidebar ringing forever.
 
 ## Why you want OSC 133
 

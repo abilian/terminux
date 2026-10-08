@@ -10,7 +10,7 @@ title: Home
 
 You have several projects on the go: each one is a different directory, a different mental context, a different set of running shells. terminux gives each of them a home (a **workspace** in a persistent sidebar), keeps its tabbed terminals streaming in the background, and brings everything back after a restart.
 
-Three things carry the pitch:
+The pitch comes down to three things:
 
 - **Workspaces with signals.** Every workspace shows a status dot that reads like a CI traffic light: amber while a foreground task works, green once it finishes and wants a look. Tens of projects stay scannable at a glance, and `Cmd/Ctrl+1..9` jumps straight to the first nine.
 - **Everything comes back.** Quit and relaunch: workspaces, tabs, window geometry, font size, each shell's working directory, and each tab's visible scrollback are restored, with fresh shells spawned where you left off.
@@ -36,5 +36,5 @@ uv run terminux
 
 </div>
 
-!!! note "Status: 0.8 preview"
-    terminux is a 0.8 preview. The workspace + tabbed-terminal core, scrollback persistence, and remote access work well; split panes and the Windows PTY backend are not done yet. See the [FAQ](faq.md).
+!!! note "Status: 0.9 preview"
+    terminux is a 0.9 preview. The workspace + tabbed-terminal core, scrollback persistence, and remote access work well; split panes and the Windows PTY backend are not done yet. See the [FAQ](faq.md).

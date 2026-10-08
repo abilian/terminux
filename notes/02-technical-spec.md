@@ -1,8 +1,8 @@
 # Technical Specification: terminux v1
 
-**Status:** Historical v1 technical design. Implementation has shipped and evolved beyond this baseline; see [`CHANGES.md`](../CHANGES.md) for what landed, [`docs/src/developers/architecture.md`](../docs/src/developers/architecture.md) for the current shape, and [`backlog.md`](backlog.md) for what's still ahead. This doc is kept as the record of original architectural decisions.
+**Status:** Historical v1 technical design. Implementation has shipped and evolved beyond this baseline; see [`CHANGES.md`](../CHANGES.md) for what landed, [`docs/src/developers/architecture.md`](../docs/src/developers/architecture.md) for the current shape, and [`04-backlog.md`](04-backlog.md) for what's still ahead. This doc is kept as the record of original architectural decisions.
 
-Implements [`functional-spec.md`](functional-spec.md). Architecture follows the terax model ([`OLD/terax-architecture.md`](OLD/terax-architecture.md)): a thin web UI rendering xterm.js, separated from a backend process that owns the PTY and streams raw bytes. Unlike terax, the backend is **Python** and the desktop shell is **pywebview** (Tauri is not used).
+Implements [`01-functional-spec.md`](01-functional-spec.md). The architecture is a thin web UI rendering xterm.js, separated from a backend process that owns the PTY and streams raw bytes. The backend is **Python** and the desktop shell is **pywebview**.
 
 The decision of record is that the webview talks to Python over a **loopback HTTP + WebSocket server** hosted in the Python process; pywebview is only a window pointing at that local URL. This was chosen over the pure pywebview `js_api` bridge because it makes the later goals (web mode, client/server) near-free, where the bridge would have meant a rewrite.
 
@@ -15,12 +15,12 @@ The decision of record is that the webview talks to Python over a **loopback HTT
 | Backend server | **Starlette + uvicorn** (ASGI) | Lean: static files + WebSocket + (future) JSON HTTP. Web mode means serving the page to a browser; client/server means binding beyond loopback. |
 | PTY (Unix) | **`ptyprocess`** | Proven in production (pexpect lineage): spawn, winsize, signals. |
 | PTY (Windows) | **`pywinpty`** (ConPTY) | Staged after Unix (see §10). |
-| Terminal UI | **xterm.js** + WebGL/canvas addon, fit addon | Same component terax uses; fast, well-supported. |
+| Terminal UI | **xterm.js** + WebGL/canvas addon, fit addon | Fast, well-supported, widely used. |
 | App-data paths | **`platformdirs`** | Correct per-OS config/data dirs. |
 | Frontend build | Vanilla TS + **Vite** (or plain ESM, no build) | UI is tiny in v1; keep build minimal. Decide in impl. |
 | Tooling | uv, ruff, mypy/ty/pyrefly, pytest (existing) | Already configured in repo. |
 
-Runtime Python deps to add: `pywebview`, `starlette`, `uvicorn`, `ptyprocess`, `platformdirs`, `websockets` is not needed (Starlette's WS is used). Windows adds `pywinpty`.
+Runtime Python deps: `pywebview`, `starlette`, `uvicorn`, `ptyprocess`, `platformdirs`, and `websockets` (the WebSocket implementation uvicorn runs Starlette's WS endpoints on). Windows adds `pywinpty`.
 
 ## 2. Process & threading model
 
@@ -37,13 +37,13 @@ main() ──┬─ start backend (uvicorn) in a daemon thread, its own asyncio 
 ```
 
 - **Main thread:** pywebview GUI loop. Required (GUI toolkits demand the main thread).
-- **Backend thread:** the asyncio event loop running uvicorn/Starlette. Owns all PTYs and all state. The webview never touches the OS directly: every privileged action is an HTTP/WS message (terax's sandboxed-webview property, preserved).
-- **PTY I/O:** on Unix the master fd is registered with the backend loop via `loop.add_reader`; reads are drained into a per-terminal buffer and flushed on a ~4–8 ms timer to the terminal's WebSocket as binary frames (terax's batched-flush pattern: no per-byte context switch, no JSON/base64 on the hot path). No thread-per-PTY on Unix.
+- **Backend thread:** the asyncio event loop running uvicorn/Starlette. Owns all PTYs and all state. The webview never touches the OS directly: every privileged action is an HTTP/WS message, so the webview stays sandboxed.
+- **PTY I/O:** on Unix the master fd is registered with the backend loop via `loop.add_reader`; reads are drained into a per-terminal buffer and flushed on a ~4–8 ms timer to the terminal's WebSocket as binary frames (batched flushes: no per-byte context switch, no JSON/base64 on the hot path). No thread-per-PTY on Unix.
 - **Shutdown:** window close → set a shutdown event → backend gracefully terminates all child shells (SIGHUP→SIGTERM→SIGKILL escalation with a short grace), stops uvicorn, process exits. No zombies (functional spec §10).
 
 ## 3. Transport / protocol
 
-The transport has two planes, mirroring cmux (control vs. data) and terax (command vs. channel):
+The transport has two planes, control and data:
 
 ### 3.1 Control plane: HTTP + JSON (request/response)
 
@@ -70,7 +70,7 @@ Rationale for per-terminal WS: isolates backpressure per terminal, keeps framing
 
 ### 3.3 Backpressure
 
-Per-terminal output buffer has a cap (e.g., 4 MiB, matching terax). On overflow: drop the buffered output, send one `{"type":"dropped"}` notice, log at WARN. UI shows a `[output dropped]` marker. Never let a runaway process freeze the UI or grow memory unbounded (functional spec §10).
+Per-terminal output buffer has a cap (e.g., 4 MiB). On overflow: drop the buffered output, send one `{"type":"dropped"}` notice, log at WARN. UI shows a `[output dropped]` marker. Never let a runaway process freeze the UI or grow memory unbounded (functional spec §10).
 
 ## 4. Backend module layout
 
@@ -129,14 +129,14 @@ class AppState:
 
 **Persistence file:** `platformdirs.user_data_dir("terminux")/state.json`, schema-versioned (`{"version": 1, ...}`). Writes are atomic (write temp file, `os.replace`). Autosave is debounced (~500 ms after the last mutating control-plane action) plus a save on graceful shutdown. Live terminals/scrollback are **not** persisted (functional spec §7); a restored tab spawns a fresh shell. Corrupt/missing file → log + start from a one-workspace/one-tab default; never crash.
 
-**Forward-compatibility for splits:** `Tab` is the persistence unit now. To allow tmux/zellij-style panes later without a migration headache, reserve an optional `panes` field shape in the schema design (a recursive `{leaf|split}` node, terax's `PaneNode`) even though v1 only ever has the implicit single pane. Document it as reserved; don't implement it.
+**Forward-compatibility for splits:** `Tab` is the persistence unit now. To allow tmux/zellij-style panes later without a migration headache, reserve an optional `panes` field shape in the schema design (a recursive `{leaf|split}` node) even though v1 only ever has the implicit single pane. Document it as reserved; don't implement it.
 
 ## 6. Security
 
 A loopback HTTP server is reachable by *any* local process or browser tab, so the design does the following:
 
 - Bind strictly to `127.0.0.1` on an OS-assigned ephemeral port.
-- Generate a random 256-bit **session token** at startup. The webview URL includes it (`/?t=…`); every HTTP request and WS upgrade must present it (header or query). Reject otherwise. This stops other local apps/pages from driving terminals or reading output.
+- Generate a random **session token** at startup. (It shipped as a 9-letter code, about 43 bits, so it can be read aloud; per-IP lockout after repeated failures guards against brute force. See `server/auth.py`.) The webview URL includes it (`/?t=…`); every HTTP request and WS upgrade must present it (header or query). Reject otherwise. This stops other local apps/pages from driving terminals or reading output.
 - Restrictive CSP on the served page; no remote origins; WS only to same origin.
 - No network egress; nothing is sent off-machine.
 - (Client/server mode later will replace the token with a real auth story before binding beyond loopback. This is explicitly a future concern, called out so it isn't forgotten.)
@@ -158,7 +158,7 @@ A loopback HTTP server is reachable by *any* local process or browser tab, so th
 ## 8. Concurrency & correctness rules
 
 - All `AppState` mutation happens on the backend asyncio loop (single-threaded), so state needs no locks; the GUI thread only sends messages.
-- One serialization point for PTY spawn (an asyncio lock) to avoid pipe-stall races under rapid tab creation (terax's `SPAWN_LOCK` lesson).
+- One serialization point for PTY spawn (an asyncio lock) to avoid pipe-stall races under rapid tab creation.
 - Bounded per-terminal buffers; flush coalescing; drop-with-notice on overflow.
 - Idempotent spawn: `POST /tabs/{id}/spawn` returns the existing `terminal_id` if already live (handles UI reconnects).
 - WS reconnect: if the UI WS drops but the PTY lives, the UI can reopen `WS /pty/{tid}`; backend resumes streaming from "now" (no replay in v1, consistent with no-scrollback-persistence).
@@ -175,7 +175,7 @@ A loopback HTTP server is reachable by *any* local process or browser tab, so th
 
 - **macOS:** primary target. pywebview uses the WKWebView backend; Unix PTY via `ptyprocess`.
 - **Linux:** same Unix PTY path; pywebview GTK/Qt backend (document the chosen backend + its system deps).
-- **Windows:** **staged.** Needs `pywinpty` (ConPTY) behind the `PtyBackend` protocol, ConPTY resize, and process-tree kill (Job Object equivalent, the terax Windows lesson). Default shell probe: `pwsh` → `powershell` → `cmd`. Land Unix first; Windows behind the same interface so it's additive, not a rewrite.
+- **Windows:** **staged.** Needs `pywinpty` (ConPTY) behind the `PtyBackend` protocol, ConPTY resize, and process-tree kill (a Job Object). See [`06-windows-port.md`](06-windows-port.md). Default shell probe: `pwsh` → `powershell` → `cmd`. Land Unix first; Windows behind the same interface so it's additive, not a rewrite.
 
 `core/pty_backend.py` defines a `PtyBackend` Protocol (`spawn`, `read`-source/fd, `write`, `resize`, `kill`, `wait`) with `UnixPty` and `WindowsPty` implementations; the rest of the code is OS-agnostic.
 
@@ -193,7 +193,7 @@ CI runs Unix tiers; Windows e2e added when the Windows PTY lands.
 
 - **Web mode:** the UI is already an HTTP-served page + WS. Add a flag to bind the server to a chosen interface and serve the page to a normal browser; replace the loopback token with real auth (§6 note). No UI rewrite.
 - **Client/server mode:** the backend already *is* a server owning the PTYs. Detach it from pywebview (run headless), let a UI connect over the same HTTP/WS protocol; terminals keep running across UI restarts because the server process outlives the window. Persistence schema already separates structure from live processes.
-- **Split panes:** UI introduces a per-tab pane tree (terax's `PaneNode`); each leaf is just another `WS /pty/{tid}`. Persistence schema reserved the shape (§5). Backend per-terminal model is unchanged: a tab holds N terminals where it held 1.
+- **Split panes:** UI introduces a per-tab pane tree; each leaf is just another `WS /pty/{tid}`. Persistence schema reserved the shape (§5). Backend per-terminal model is unchanged: a tab holds N terminals where it held 1.
 
 Each future item is additive along an interface that already exists, which is the whole reason for choosing the local-server transport over the `js_api` bridge.
 
@@ -215,4 +215,4 @@ Each future item is additive along an interface that already exists, which is th
 3. pywebview GUI backend per OS (esp. Linux GTK vs. Qt) and its packaging implications.
 4. Packaging/distribution (PyInstaller / briefcase / uv tool) is out of v1 spec scope; note it's unaddressed.
 5. Eager-vs-lazy shell spawn tuning on restore (also a functional-spec open question).
-6. Exact backpressure thresholds and flush interval (start from terax's 4 MiB / ~4 ms, tune).
+6. Exact backpressure thresholds and flush interval (start from 4 MiB / ~4 ms, tune).

@@ -1,6 +1,6 @@
 # Developers
 
-Everything for hacking on terminux, or scripting against a running instance.
+This section covers hacking on terminux and scripting against a running instance.
 
 - [**Architecture**](architecture.md): the two-process design (a Python backend owning the PTYs, a TypeScript/Preact UI in a native window), the source layout on both sides, and the key design decisions.
 - [**HTTP & WebSocket API**](api.md): the control plane and the per-terminal WebSocket protocol, with auth, payloads, and a curl walkthrough.

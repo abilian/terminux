@@ -3,13 +3,13 @@
 The frontend drives the backend over a JSON control plane (`/api/...`) and one WebSocket per terminal (`/pty/{terminal_id}`). The same API serves the desktop window, browser mode, and `--connect` clients, so everything the UI does can be done with `curl` and a WebSocket client.
 
 !!! warning "Internal API"
-    This API ships in lockstep with its only client, the bundled frontend. It is documented for debugging, scripting against your own instance, and contributing; it carries no stability promise, and any release may change it.
+    This API ships in lockstep with its only client, the bundled frontend. It is documented for debugging, scripting against your own instance, and contributing. It comes with no stability promise: any release may change it.
 
 ## Authentication
 
-Every request and WebSocket carries the session token as a query parameter: `?t=<token>`. The token is printed in the startup URL (`http://127.0.0.1:<port>/?t=abc-def-ghi`); `--server` mode persists it in `server.token`. Requests without a valid token get `403 {"error": "forbidden"}`. Only the static asset bundle under `/assets/` is served without a token.
+Every request and WebSocket must include the session token as a query parameter: `?t=<token>`. The token is printed in the startup URL (`http://127.0.0.1:<port>/?t=abc-def-ghi`); `--server` mode persists it in `server.token`. Requests without a valid token get `403 {"error": "forbidden"}`. Only the static asset bundle under `/assets/` is served without a token.
 
-Non-loopback clients are rate-limited: 10 bad tokens from one IP lock that IP out for 60 s.
+The server rate-limits non-loopback clients. After 10 bad tokens from one IP, it locks that IP out for 60 s.
 
 ## Control plane
 

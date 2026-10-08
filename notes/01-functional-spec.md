@@ -2,13 +2,13 @@
 
 **Status:** Historical v1 design baseline. The app has shipped features beyond what's described here (native menu, scrollback persistence, per-workspace activity tracking, the "ready" dot, …); current behaviour lives in [`docs/`](../docs/) and [`CHANGES.md`](../CHANGES.md). This doc is kept as the record of original v1 scope and decisions.
 
-Scope and intent come from [`vision.md`](vision.md); UX references from [`OLD/cmux-features.md`](OLD/cmux-features.md) and [`OLD/terax-features.md`](OLD/terax-features.md). This document defines *what the app does* from the user's point of view; [`technical-spec.md`](technical-spec.md) describes the technical design.
+Scope and intent come from [`00-vision.md`](00-vision.md). This document defines *what the app does* from the user's point of view; [`02-technical-spec.md`](02-technical-spec.md) describes the technical design.
 
 ## 1. Product summary
 
 terminux is a cross-platform desktop terminal application. The window has two regions: a **Workspaces** sidebar on the left and a **terminal area** on the right. Each workspace holds one or more **tabs**; each tab is a live interactive terminal. Workspaces and their tabs persist across restarts.
 
-v1 ships the smallest thing that works well, on purpose. Reliability is the priority: the rebuild exists because cmux is buggy.
+v1 ships the smallest thing that works well, on purpose. Reliability is the priority.
 
 ## 2. Primary concepts
 
@@ -37,7 +37,7 @@ v1 leaves out a "description" field on workspaces, split panes, an embedded brow
 - The sidebar is vertically resizable-width (drag the divider) with a sensible min/default; width is persisted. The sidebar can be collapsed/expanded with a shortcut and a toggle control; collapsed state is persisted.
 - The tab bar shows the active workspace's tabs left-to-right, plus a "new tab" (`+`) affordance.
 - The terminal viewport fills the remaining area and reflows the PTY on resize.
-- A single application window in v1 (no multi-window; cmux's multi-window is out of scope).
+- A single application window in v1 (multi-window is out of scope).
 - Window size/position/maximized state persist across restarts.
 
 ## 4. Workspaces sidebar
@@ -49,7 +49,7 @@ Each row shows:
 - **Name** (single line, ellipsized if long).
 - An unobtrusive affordance on hover/selection for the row context menu.
 
-The active workspace row is visually highlighted. No branch/PR/cwd/ports/notification metadata (that was cmux's agent-oriented surface; out of scope).
+The active workspace row is visually highlighted. No branch/PR/cwd/ports/notification metadata (an agent-oriented surface, out of scope).
 
 ### 4.2 Operations
 
@@ -63,7 +63,7 @@ The active workspace row is visually highlighted. No branch/PR/cwd/ports/notific
 
 - **New workspace** is created with one default tab running the user's default shell, and is selected immediately. Default name: `workspace N` (first integer not already in use); the user can rename it.
 - **Closing a workspace** with running terminals prompts for confirmation ("Close workspace 'X'? N running terminal(s) will be terminated."). On confirm, all its terminals are terminated and the workspace is removed from persistence. Closing the last workspace immediately creates a fresh empty one (the app always has ≥1 workspace).
-- New-workspace placement: appended to the end of the list in v1 (cmux's configurable placement policy is deferred).
+- New-workspace placement: appended to the end of the list in v1 (a configurable placement policy is deferred).
 
 ### 4.3 Selection behavior
 
@@ -80,7 +80,7 @@ Status is a small, automatically-derived indicator (no manual setting in v1):
 | **Idle** | A non-selected workspace with no unseen activity | hollow/dim dot |
 | **Exited** | All tabs' shells have exited (workspace has no live terminal) | dim dot with a small ✕ / distinct treatment |
 
-"Unseen activity" resets when the workspace becomes active. This is intentionally simpler than cmux's notification system: v1 has neither OSC notifications, sounds, badges, nor hooks. (Status state machine refinements can follow in implementation.)
+"Unseen activity" resets when the workspace becomes active. This is intentionally simpler than a full notification system: v1 has neither OSC notifications, sounds, badges, nor hooks. (Status state machine refinements can follow in implementation.)
 
 ## 5. Tabs
 
@@ -107,7 +107,7 @@ The tab bar shows each tab's title. The active tab is highlighted. Each tab has 
 
 - Full interactive terminal: VT100/ANSI, 256/true color, mouse reporting, bracketed paste, UTF-8, resize/reflow.
 - Rendered with a mature web terminal component (xterm.js) inside the webview.
-- **Background tabs keep running and keep streaming.** Switching tabs/workspaces never pauses or tears down a PTY; output produced while a tab is hidden is buffered and present when the tab is shown again (terax's "dormant" behavior). No cold-start jank on switch.
+- **Background tabs keep running and keep streaming.** Switching tabs/workspaces never pauses or tears down a PTY; output produced while a tab is hidden is buffered and present when the tab is shown again. No cold-start jank on switch.
 - Keyboard input goes only to the active tab's terminal. Standard copy/paste: selection copy, `Cmd/Ctrl+Shift+C` / `Cmd/Ctrl+Shift+V` (platform-appropriate; right-click paste optional).
 - Scrollback buffer with a bounded size (default e.g. 5,000 lines, configurable later). Mouse wheel / `Shift+PgUp`/`PgDn` scroll; any input jumps to bottom.
 - Find-in-terminal: `Cmd/Ctrl+F` opens an inline search over the visible scrollback (basic substring; nice-to-have, may slip).
@@ -145,7 +145,7 @@ Modifier is `Cmd` on macOS, `Ctrl` on Linux/Windows.
 | `Mod+=` / `Mod+-` / `Mod+0` | Font zoom in / out / reset |
 | `Mod+Shift+C` / `Mod+Shift+V` | Copy / paste |
 
-Shortcuts are fixed in v1 (no remap UI; cmux's customizable keymap is deferred). Shortcuts must not shadow common in-terminal control keys (e.g., plain `Ctrl+C`, `Ctrl+D`, `Ctrl+L` always reach the shell).
+Shortcuts are fixed in v1 (no remap UI; a customizable keymap is deferred). Shortcuts must not shadow common in-terminal control keys (e.g., plain `Ctrl+C`, `Ctrl+D`, `Ctrl+L` always reach the shell).
 
 ## 9. Settings (v1 scope)
 
@@ -154,7 +154,7 @@ v1 has no settings *window*. The few adjustable values (font zoom, sidebar width
 ## 10. Non-functional expectations
 
 - **Reliability first:** no lost input, no zombie processes, clean shutdown terminates all child shells, robust against malformed persisted state.
-- **Responsiveness:** typing latency comparable to a native terminal; smooth output under high-throughput (e.g., `yes`, large build logs) without freezing the UI or unbounded memory growth (backpressure/drop with a visible notice, like terax).
+- **Responsiveness:** typing latency comparable to a native terminal; smooth output under high-throughput (e.g., `yes`, large build logs) without freezing the UI or unbounded memory growth (backpressure/drop with a visible notice).
 - **Cross-platform:** macOS first; Linux and Windows targeted (Windows shell support may be staged; see technical spec).
 - **Startup:** window visible and interactive quickly; lazy shell spawn for non-active workspaces.
 - **No network** in v1 except the loopback transport between the webview and the local backend (see technical spec); nothing leaves the machine.
@@ -163,7 +163,7 @@ v1 has no settings *window*. The few adjustable values (font zoom, sidebar width
 
 v1 designs around these without building them; the architecture must not foreclose them:
 
-- **Split panes** within a tab (tmux/zellij-style). Data model should leave room for a per-tab pane tree later (terax's `PaneNode` is the reference).
+- **Split panes** within a tab (tmux/zellij-style). Data model should leave room for a per-tab pane tree later (a recursive leaf/split node).
 - **Client/server mode**: a detachable backend, so terminals outlive a UI restart and can be driven remotely. The chosen transport (local WebSocket) is forward-compatible.
 - **Web mode**: serving the same UI to a normal browser. Also enabled cheaply by the chosen transport.
 - Scrollback persistence / session replay, multi-window, settings UI, themes, keymap customization, notifications/hooks, agent integrations, remote SSH daemon, file navigator, embedded browser.

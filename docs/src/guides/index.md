@@ -12,7 +12,7 @@ The same guide's [Working vs ready](workspaces-and-tabs.md#working-vs-ready) sec
 
 ## Work on another machine
 
-[**Remote access**](remote.md): run `terminux --server` on a host, `terminux --connect` on your laptop, and your shells outlive lid-closes, network hops, and client restarts. Includes the SSH-tunnel recipe, multi-client attach, and running the server under systemd.
+[**Remote access**](remote.md) shows how to run `terminux --server` on a host and `terminux --connect` on your laptop, so your shells outlive lid-closes, network hops, and client restarts. It includes the SSH-tunnel recipe, multi-client attach, and running the server under systemd.
 
 ## Drive everything from the keyboard
 
