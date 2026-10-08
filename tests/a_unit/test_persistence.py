@@ -53,7 +53,7 @@ def test_state_path_uses_platformdirs(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
         persistence.platformdirs,
         "user_data_dir",
-        lambda _name: str(tmp_path / "tnx"),
+        lambda _name, **_kw: str(tmp_path / "tnx"),
     )
     p = state_path()
     assert p == tmp_path / "tnx" / "state.json"
@@ -64,7 +64,7 @@ def test_save_default_path(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
         persistence.platformdirs,
         "user_data_dir",
-        lambda _name: str(tmp_path / "d"),
+        lambda _name, **_kw: str(tmp_path / "d"),
     )
     save_state(AppState.default())
     assert (tmp_path / "d" / "state.json").exists()
@@ -145,3 +145,17 @@ def test_save_logs_instead_of_raising_when_the_temp_file_cannot_be_created(
         save_scrollback("tab1", "content", base=tmp_path)  # same helper
     assert p.read_text(encoding="utf-8") == "previous"  # old file intact
     assert sum("failed to persist" in r.getMessage() for r in caplog.records) == 2
+
+
+def test_data_dir_has_no_doubled_author_folder(monkeypatch) -> None:
+    """platformdirs' default appauthor gives AppData\\Local\\terminux\\terminux
+    on Windows; it must be turned off."""
+    seen: dict[str, object] = {}
+
+    def fake(name: str, **kw: object) -> str:
+        seen.update(kw, name=name)
+        return "/x"
+
+    monkeypatch.setattr(persistence.platformdirs, "user_data_dir", fake)
+    persistence.data_dir()
+    assert seen == {"name": "terminux", "appauthor": False}

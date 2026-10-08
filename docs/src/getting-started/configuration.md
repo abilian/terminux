@@ -23,6 +23,7 @@ All persistent state sits in one directory:
 | --- | --- |
 | macOS | `~/Library/Application Support/terminux/` |
 | Linux | `~/.local/share/terminux/` |
+| Windows (client mode only, for now) | `%LOCALAPPDATA%\terminux\` |
 
 Inside it: `state.json` (workspaces, tabs, UI preferences; written atomically and versioned), `scrollback/<tab>.ansi` (one capped file per tab, deleted when the tab closes), and `server.token` (only in `--server` mode). Deleting the directory resets terminux completely.
 

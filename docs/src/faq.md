@@ -54,7 +54,7 @@ Both are still on the roadmap.
 
 ## Does terminux work on Windows?
 
-Not yet. macOS and Linux are supported; the Windows PTY backend is deferred.
+Partly. A Windows machine can run terminux as a client (`terminux --connect <url>`) and open the terminals of a terminux server running on a Mac or a Linux box; see [Remote access](guides/remote.md). Running the terminals on Windows itself needs a Windows PTY backend, which is not written yet.
 
 ## Is it safe to expose terminux on the network?
 

@@ -6,18 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Added
 
-- **A command that tells you how to connect from another machine.** The command palette (and View menu) now has **Show remote connection URL**: it names this machine, works out whether the server is reachable from the network or needs an SSH tunnel, and hands you the `ssh -L` and `terminux --connect` lines to copy, with the live port and access code already filled in. It also says plainly when the address won't survive a restart, and points at `terminux --server` for one that will.
+- **A command that tells you how to connect from another machine.** The command palette (and View menu) now has **Show remote connection URL**: it names this machine, works out whether the server is reachable from the network or needs an SSH tunnel, and hands you the `ssh -L` and `terminux --connect` lines to copy, with the live port and access code already filled in. It also warns when the address will stop working at the next restart, and points at `terminux --server` for one that lasts.
 
 ### Fixed
 
-- **Screens no longer get garbled when a second window shows the same terminal.** With a `--connect` window open on another machine, terminals on the main machine could fill with text in the wrong places (shells, Claude Code, any full-screen program), and only closing the tab fixed it. A terminal has a single size, and the remote window was quietly imposing its own. Each terminal now follows the window you are actually using: typing, clicking, focusing the window, or switching to the tab makes it the owner, and the programs redraw for it. The window you're not using may look garbled until you come back to it, and then it snaps back. Stray automatic replies from the unused window (which could show up as junk like `^[[24;1R` in a prompt) no longer reach your programs.
+- **First steps on Windows: client mode.** `terminux --connect <url>` now runs on Windows, so a Windows machine can open the terminals of a terminux server on a Mac or Linux box. Before, the window crashed at launch with `Argument 'picture' must be a picture that can be used as a Icon`, and links clicked in a terminal did nothing. On Windows, settings now live in `AppData\Local\terminux` (it was `AppData\Local\terminux\terminux`). Running terminals on Windows itself is not supported yet.
+- **Screens no longer get garbled when a second window shows the same terminal.** With a `--connect` window open on another machine, terminals on the main machine could fill with text in the wrong places (shells, Claude Code, any full-screen program), and only closing the tab fixed it. A terminal has a single size; the remote window was imposing its own without any sign of it. Each terminal now follows the window you are actually using: typing, clicking, focusing the window, or switching to the tab makes it the owner, and the programs redraw for it. The window you're not using may look garbled until you come back to it, and then it snaps back. Stray automatic replies from the unused window (which could show up as junk like `^[[24;1R` in a prompt) no longer reach your programs.
 - **Hidden terminux windows no longer get throttled by macOS (App Nap).** When the window was covered, minimized, or the display slept while the Mac stayed awake, macOS slowed terminux down: hidden tabs' output was handled late, the green "ready" dot appeared late, and connections could drop and reconnect when you came back. terminux now opts out of App Nap while its window is open. It still lets the Mac go to sleep.
 - **No more false "event loop unresponsive" alarms.** When the whole app was paused by the system (App Nap, heavy swapping, a debugger), the freeze watchdog mistook the pause for a frozen server and wrote a full stack dump every few seconds; one field log grew to 4.4 MB of them. It now recognizes a system-wide pause and logs a single line, keeping stack dumps for real freezes.
 - **A full disk no longer turns saves into server errors.** When the disk had no room left even to create a temporary file, a scrollback or layout save escaped its error handling and failed the request. It is now logged like any other failed save; the previous saved file stays intact and the next save retries.
 
 ### Changed
 
-- **Log lines now carry a date and time** in every mode, not only with `--debug`, so a log from a long-running instance can be matched against what happened when. `--debug` and `--trace` add milliseconds.
+- **Log lines now include a date and time** in every mode (they used to need `--debug`), so a log from a long-running instance can be matched against what happened when. `--debug` and `--trace` add milliseconds.
 
 ## [0.9.0] - 2026-09-17
 
@@ -32,39 +33,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Internal
 
-- The frontend's chrome (sidebar, tab bar, palettes, stats, find) is now rendered with Preact, which retires the hand-written "don't repaint while the user is typing or dragging" guards: background refreshes patch the DOM instead of rebuilding it, and the two palettes share one fuzzy-overlay component. Frontend modules are grouped into `state/`, `term/`, `ui/`, `input/`, and `util/` layers; frontend unit tests grew from 27 to 80 (`make frontend-cov` reports coverage), and `make help` lists every target.
+- The frontend's chrome (sidebar, tab bar, palettes, stats, find) is now rendered with Preact, which retires the hand-written "don't repaint while the user is typing or dragging" guards: background refreshes patch the existing DOM in place, and the two palettes share one fuzzy-overlay component. Frontend modules are grouped into `state/`, `term/`, `ui/`, `input/`, and `util/` layers; frontend unit tests grew from 27 to 80 (`make frontend-cov` reports coverage), and `make help` lists every target.
 
 ## [0.8.1] - 2026-08-30
 
 ### Added
 
-- **You can always see which workspace you're in.** With the sidebar hidden (`Cmd/Ctrl+B`), the active workspace's status dot, number, and name now appear as a chip at the left of the tab bar; clicking it brings the sidebar back. The window and browser-tab title also carry the workspace name, so the answer to "where am I?" survives even minimizing the app.
+- **You can always see which workspace you're in.** With the sidebar hidden (`Cmd/Ctrl+B`), the active workspace's status dot, number, and name now appear as a chip at the left of the tab bar; clicking it brings the sidebar back. The window and browser-tab title also show the workspace name, so the answer to "where am I?" stays visible even when the app is minimized.
 
 ## [0.8.0] - 2026-08-30
 
 ### Added
 
-- **Terminals now reconnect automatically.** A lost connection — a backend stall, a network blip, a laptop waking from sleep — used to leave tabs permanently dead even though the shells were fine; the only cure was reopening the app. Each terminal now shows "[connection lost — reconnecting…]", redials with backoff until the server answers, and repaints from the server's output buffer. This is what makes remote mode's "disconnect and come back later" actually hold.
+- **Terminals now reconnect automatically.** A lost connection (a backend stall, a network blip, a laptop waking from sleep) used to leave tabs permanently dead even though the shells were fine; the only cure was reopening the app. Each terminal now shows "[connection lost — reconnecting…]", redials with backoff until the server answers, and repaints from the server's output buffer. This is what makes remote mode's "disconnect and come back later" actually hold.
 - **`--debug` now also opens the door to frontend debugging** in the desktop window: right-click → Inspect Element brings up the web inspector.
 
 ### Fixed
 
-- **Web/remote mode: the page no longer reveals the access code.** Fetching the app's address without a valid code used to return the page with the code embedded in it — anyone who could reach the port could let themselves in. Every route now requires the code; your own links (which always carry it) are unaffected.
+- **Web/remote mode: the page no longer reveals the access code.** Fetching the app's address without a valid code used to return the page with the code embedded in it, so anyone who could reach the port could let themselves in. Every route now requires the code; your own links (which always include it) are unaffected.
 - **A stale browser tab can no longer lock you out.** Requests with an outdated code from your own machine could trip the brute-force guard and block the real window for a minute at a time. Local connections are now exempt from the lockout, which still protects servers exposed to a network.
-- **Terminals open again on older Macs.** Two stacked problems broke every shell on e.g. Big Sur while the rest of the UI worked: a dependency upgrade had raised the frontend's minimum browser requirement past the WebKit that older macOS versions ship, and the security policy only declared `connect-src 'self'`, which older engines refuse to apply to websockets — so even a working terminal couldn't attach its data stream. The terminal library is pinned back to its proven line, the build explicitly targets Safari-14-era WebKit, and the policy now names the websocket origin explicitly. Applies wherever an older engine renders the UI: the desktop app, a `--connect` client, or a browser.
+- **Terminals open again on older Macs.** Two stacked problems broke every shell on e.g. Big Sur while the rest of the UI worked: a dependency upgrade had raised the frontend's minimum browser requirement past the WebKit that older macOS versions ship, and the security policy only declared `connect-src 'self'`, which older engines refuse to apply to websockets, so even a working terminal couldn't attach its data stream. The terminal library is pinned back to its proven line, the build explicitly targets Safari-14-era WebKit, and the policy now names the websocket origin explicitly. Applies wherever an older engine renders the UI: the desktop app, a `--connect` client, or a browser.
 - **Hyperlinks printed by programs now open.** Clicking a link a program emitted as a real terminal hyperlink (Claude Code's artifact URLs, `ls --hyperlink`, modern CLI tools) used to show a browser warning popup whose OK button then did nothing. Such links now behave exactly like plain-text URLs: Cmd+click (macOS) / Ctrl+click (Linux) opens them in your default browser, with no popup; only `http`, `https`, and `mailto` links are ever opened.
-- **Starting on a port that's already in use now fails with a clear error** instead of hanging forever with no output.
+- **Starting on a port that's already in use now fails with a clear error.** It used to hang forever with no output.
 - **Access codes no longer appear in request logs** when running with `--debug` or `--trace`.
 
 ### Internal
 
-- The controller never holds its state lock across a disk write, and new shells are forked off the event loop — closing the remaining freeze vectors found in a full audit. For anyone stuck on an older build, `notes/05-lessons-learned.md` documents how to unfreeze a live server without killing it.
+- The controller never holds its state lock across a disk write, and new shells are forked off the event loop. This closes the remaining freeze vectors found in a full audit. For anyone stuck on an older build, `notes/05-lessons-learned.md` documents how to unfreeze a live server without killing it.
 
 ## [0.7.2] - 2026-07-29
 
 ### Added
 
-- **Remote access.** Run terminux on one machine and use it from another. Start `terminux --server` on the host and `terminux --connect <url>` on your laptop: you get the normal desktop window, but every shell lives on the server — long-running builds keep going while you close the lid, change networks, or switch devices. Access is protected by a short persistent code (`abc-def-ghi` style, rate-limited against guessing); the recommended setup keeps the server private behind an SSH port-forward. Dragging files into a remote window pastes their paths, same as locally. Full guide: `docs/src/guides/remote.md`.
+- **Remote access.** Run terminux on one machine and use it from another. Start `terminux --server` on the host and `terminux --connect <url>` on your laptop: you get the normal desktop window, but every shell lives on the server: long-running builds keep going while you close the lid, change networks, or switch devices. Access is protected by a short persistent code (`abc-def-ghi` style, rate-limited against guessing); the recommended setup keeps the server private behind an SSH port-forward. Dragging files into a remote window pastes their paths, same as locally. Full guide: `docs/src/guides/remote.md`.
 
 ### Fixed
 
@@ -84,27 +85,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Added
 
-- **The app now diagnoses its own stalls.** If the server stops responding for more than ~3 seconds, it automatically logs a warning with a snapshot of what it was doing at the time — so a freeze report comes with evidence attached. You can request the same snapshot at any moment with `kill -INFO <pid>` (macOS) or `kill -USR1 <pid>` (Linux), and disk operations that turn suspiciously slow are flagged in the log before they escalate into a freeze.
+- **The app now diagnoses its own stalls.** If the server stops responding for more than ~3 seconds, it automatically logs a warning with a snapshot of what it was doing at the time, so a freeze report comes with evidence attached. You can request the same snapshot at any moment with `kill -INFO <pid>` (macOS) or `kill -USR1 <pid>` (Linux), and disk operations that turn suspiciously slow are flagged in the log before they escalate into a freeze.
 - **`--debug` and `--trace` flags** for verbose logging when investigating or reporting a problem. See `docs/src/developers/developing.md#debugging-knobs`.
 
 ## [0.7.0] - 2026-05-28
 
 ### Added
 
-- **Native application menu.** File / View / Workspace / Help — everything the keyboard shortcuts can do, now discoverable at a glance. On macOS it lives in the global menu bar, on Linux in the window frame. Menu items, keyboard shortcuts, and the command palette all trigger the same actions, so they can't drift apart. Help → Documentation opens the docs in your default browser.
-- **App icon.** A stylized `>_` prompt on a dark rounded square — in the Finder and dock on macOS, the window/taskbar on Linux. Launching from the CLI on macOS no longer shows the generic Python rocket in the dock.
+- **Native application menu.** File / View / Workspace / Help: everything the keyboard shortcuts can do, now discoverable at a glance. On macOS it lives in the global menu bar, on Linux in the window frame. Menu items, keyboard shortcuts, and the command palette all trigger the same actions, so they can't drift apart. Help → Documentation opens the docs in your default browser.
+- **App icon.** A stylized `>_` prompt on a dark rounded square appears in the Finder and dock on macOS, and in the window/taskbar on Linux. Launching from the CLI on macOS no longer shows the generic Python rocket in the dock.
 
 ## [0.6.3] - 2026-05-28
 
 ### Fixed
 
-- Renaming a workspace or tab is no longer interrupted by the background refresh — the edit stays open until you press Enter (save) or Escape (cancel).
+- Renaming a workspace or tab is no longer interrupted by the background refresh: the edit stays open until you press Enter (save) or Escape (cancel).
 
 ## [0.6.2] - 2026-05-27
 
 ### Changed
 
-- **One attention indicator instead of two.** The sidebar 🔔 bell badge is gone; the colored dot is now the single signal. The dot turns green ("ready") only when a task actually finishes — a command ending, a build completing, an interactive tool returning to its prompt — and this works with or without shell integration. Mere output no longer marks a workspace as ready.
+- **A single attention indicator.** The sidebar 🔔 bell badge is gone; the colored dot is now the only signal. The dot turns green ("ready") only when a task actually finishes (a command ending, a build completing, an interactive tool returning to its prompt), and this works with or without shell integration. Mere output no longer marks a workspace as ready.
 
 ### Fixed
 
@@ -115,7 +116,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Changed
 
-- **Workspace names follow the first tab's directory**, not the active tab's. Switching between tabs no longer keeps renaming the workspace; drag a different tab into the first slot to hand it the naming role.
+- **Workspace names follow the first tab's directory**, whichever tab is active. Switching between tabs no longer keeps renaming the workspace; drag a different tab into the first slot to hand it the naming role.
 
 ### Fixed
 
@@ -128,8 +129,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Added
 
 - Per-workspace **active-time tracking** for the current session, with an inline column in the sidebar, a dedicated stats overlay, and a command palette (`Cmd+Shift+P` on macOS, `F1` on Linux) exposing "Display usage stats", "Reorder sidebar by activity", "Reset session activity counters", and toggles for auto-copy-on-select and scrollback persistence.
-- Amber **"busy" dot** in the sidebar when a workspace has a foreground task running — using shell-integration signals when available, otherwise by watching the shell's foreground process.
-- **Scrollback persistence**: each tab's last ~5000 lines are saved and replayed into the fresh shell after a restart, under a dim "session resumed @ <time>" separator. Capped at 2 MB per tab, dropped when you deliberately close a tab, and can be turned off from the command palette.
+- Amber **"busy" dot** in the sidebar when a workspace has a foreground task running. It uses shell-integration signals when available, otherwise by watching the shell's foreground process.
+- **Scrollback persistence**: each tab's last ~5000 lines are saved and replayed into the fresh shell after a restart, under a dim "session resumed @ <time>" separator. Capped at 2 MB per tab, dropped when you close a tab yourself, and can be turned off from the command palette.
 - **Numbered workspace slots** in the sidebar (1-9) surface the matching jump shortcut.
 - **Clickable URLs**: `Cmd`-click (macOS) or `Ctrl`-click (Linux) opens links in your default browser.
 - **Auto-copy on selection** (iTerm2-style), off by default, toggleable from the command palette.
@@ -149,12 +150,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Fixed a race that could corrupt workspace/tab state** when two actions landed at the same moment.
 - **Holding a key now repeats it** in vim / less / fzf on macOS (press-and-hold accent popup disabled inside the terminal).
 - **The stats overlay closes on Escape.**
-- **Tab bar overflow**: tabs shrink gracefully as more open, and the `+` button stays visible.
-- **macOS no longer mis-fires `Ctrl+P` / `Ctrl+B` as app shortcuts** — they reach the shell as typed.
+- **Tab bar overflow**: tabs shrink gracefully as more open, while the `+` button stays visible.
+- **macOS no longer mis-fires `Ctrl+P` / `Ctrl+B` as app shortcuts**: they reach the shell as typed.
 
 ### Performance
 
-- **Workspace and tab switches feel instant** — the UI updates in the same frame instead of waiting for the backend round-trip.
+- **Workspace and tab switches feel instant**: the UI updates in the same frame, without waiting for the backend round-trip.
 
 ## [0.5.0] - 2026-05-19
 
@@ -166,7 +167,7 @@ First public preview. terminux is a cross-platform desktop terminal organized ar
 - Workspace names track the active shell's working directory automatically; an explicit rename pins the name. Inline rename for both workspaces and tabs.
 - Tab titles follow the shell's title escape sequences unless pinned by a manual rename.
 - New tabs open in the working directory of the previously active shell.
-- Closing the last tab of a workspace closes the workspace and activates another, rather than quitting the app.
+- Closing the last tab of a workspace closes the workspace and activates another; the app keeps running.
 - An exited tab can be restarted in place.
 - Drag-and-drop reordering of workspaces and tabs, with live drop feedback.
 
@@ -199,7 +200,7 @@ First public preview. terminux is a cross-platform desktop terminal organized ar
 
 - Python backend (Starlette/uvicorn on loopback) owning real PTYs, with a TypeScript/xterm.js frontend in a native window; also runnable in a plain browser via `--host`.
 - Hardened HTTP responses and a per-session auth token.
-- State is saved atomically and versioned; live processes are never persisted — a restored tab always starts a fresh shell.
+- State is saved atomically and versioned; live processes are never persisted, so a restored tab always starts a fresh shell.
 
 ### Packaging
 

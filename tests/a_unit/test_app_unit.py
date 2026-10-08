@@ -111,3 +111,13 @@ def test_debug_log_lines_add_milliseconds() -> None:
         r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} WARNING terminux\.x: hello",
         _line_from_configured_logging(debug=True),
     )
+
+
+def test_windows_gets_an_ico_window_icon() -> None:
+    """WinForms builds the window icon with System.Drawing.Icon, which
+    rejects a PNG and crashes the UI thread (first launch on Windows)."""
+    ico = app_mod._ASSETS_DIR / "icon.ico"
+    assert ico.read_bytes()[:4] == b"\x00\x00\x01\x00"  # ICO magic
+    expected = "icon.ico" if sys.platform == "win32" else "icon.png"
+    assert app_mod.WINDOW_ICON.name == expected
+    assert app_mod.WINDOW_ICON.exists()

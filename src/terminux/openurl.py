@@ -11,6 +11,7 @@ Used by:
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess  # noqa: S404 — argv form only, no shell, opener path resolved via shutil.which
 import sys
@@ -36,26 +37,33 @@ def open_url_in_default_app(url: str) -> bool:
     if parsed.scheme.lower() not in OPENABLE_SCHEMES:
         return False
 
+    try:
+        return _launch(url)
+    except OSError:
+        log.exception("failed to open url")
+        return False
+
+
+def _launch(url: str) -> bool:
+    if sys.platform == "win32":
+        # ShellExecute's "open" verb: no subprocess and no command line to
+        # parse, so the URL stays opaque here too.
+        os.startfile(url)  # noqa: S606 — scheme-whitelisted URL, no shell parsing
+        return True
     if sys.platform == "darwin":
         opener = "open"
     elif sys.platform.startswith("linux"):
         opener = "xdg-open"
     else:
-        return False  # Windows path is unreachable in v1 (no PTY support).
-
+        return False
     if shutil.which(opener) is None:
         return False
-
-    try:
-        # No shell, no env munging — argv only, so the URL is opaque.
-        subprocess.Popen(  # noqa: S603 — argv form, opener is a literal
-            [opener, url],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
-            close_fds=True,
-        )
-    except OSError:
-        log.exception("failed to spawn %s for url", opener)
-        return False
+    # No shell, no env munging — argv only, so the URL is opaque.
+    subprocess.Popen(  # noqa: S603 — argv form, opener is a literal
+        [opener, url],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
+        close_fds=True,
+    )
     return True

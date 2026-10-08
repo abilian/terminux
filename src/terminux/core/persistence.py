@@ -25,10 +25,17 @@ from terminux.diagnostics import time_op
 log = logging.getLogger(__name__)
 
 
+def data_dir() -> Path:
+    """Per-user data folder. ``appauthor=False``: on Windows the default
+    author doubles the name (``AppData\\Local\\terminux\\terminux``);
+    other platforms ignore it."""
+    return Path(platformdirs.user_data_dir("terminux", appauthor=False))
+
+
 def state_path() -> Path:
-    data_dir = Path(platformdirs.user_data_dir("terminux"))
-    data_dir.mkdir(parents=True, exist_ok=True)
-    return data_dir / "state.json"
+    path = data_dir()
+    path.mkdir(parents=True, exist_ok=True)
+    return path / "state.json"
 
 
 # Hard cap so a runaway capture can't fill the disk. SerializeAddon output

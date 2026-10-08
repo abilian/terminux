@@ -23,10 +23,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 from urllib.parse import urlparse
 
-import platformdirs
 import uvicorn
 
 from terminux.constants import DOCS_URL
+from terminux.core import persistence
 from terminux.diagnostics import start_watchdog
 from terminux.openurl import open_url_in_default_app
 from terminux.server import auth as auth_mod
@@ -36,11 +36,15 @@ from terminux.server.auth import SESSION_TOKEN
 _ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 ICON_PNG = _ASSETS_DIR / "icon.png"
 ICON_ICNS = _ASSETS_DIR / "icon.icns"
+# pywebview's window icon: WinForms needs a .ico (System.Drawing.Icon
+# rejects a PNG and kills the UI thread); GTK/Qt take the PNG; macOS
+# ignores it (see _set_macos_dock_icon).
+WINDOW_ICON = _ASSETS_DIR / ("icon.ico" if sys.platform == "win32" else "icon.png")
 
 
 def server_token_path() -> Path:
     """Where ``--server`` persists its auth token."""
-    return Path(platformdirs.user_data_dir("terminux")) / "server.token"
+    return persistence.data_dir() / "server.token"
 
 
 if TYPE_CHECKING:
@@ -422,7 +426,7 @@ def _run_windowed(
     # does have, but the module stubs don't declare).
     webview.start(
         menu=_build_menu(cast("_WebviewModuleLike", webview)),
-        icon=str(ICON_PNG) if ICON_PNG.exists() else None,
+        icon=str(WINDOW_ICON),
         # --debug: enables pywebview's web inspector (right-click ->
         # Inspect Element) so frontend errors are debuggable in-window.
         debug=debug,
@@ -502,7 +506,7 @@ def _run_connected(remote_url: str, *, debug: bool = False) -> None:
 
     webview.start(
         menu=_build_menu(cast("_WebviewModuleLike", webview)),
-        icon=str(ICON_PNG) if ICON_PNG.exists() else None,
+        icon=str(WINDOW_ICON),
         # --debug: enables pywebview's web inspector (right-click ->
         # Inspect Element) so frontend errors are debuggable in-window.
         debug=debug,
