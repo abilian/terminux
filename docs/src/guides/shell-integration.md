@@ -11,7 +11,10 @@ shell:
 
 The BEL that closes an `OSC 0/2;<title>\x07` title update **does not
 count**: tools like Claude Code update the title constantly while they
-work, so counting those would keep the sidebar ringing forever.
+work, so counting those would keep the sidebar ringing forever. Neither
+do the ConEmu-style `OSC 9;<n>;…` subcommands, such as `OSC 9;4`
+(progress, emitted by winget and others) and `OSC 9;9` (current
+directory).
 
 ## Why you want OSC 133
 
@@ -72,6 +75,37 @@ You need a small snippet in your shell init file. Pick yours:
       end
     end
     ```
+
+=== "PowerShell (Windows)"
+
+    Add to your profile (`notepad $PROFILE` opens it):
+
+    ```powershell
+    if ($env:TERM_PROGRAM -eq 'terminux') {
+      $global:__terminuxPrompt = $function:prompt
+      function global:prompt {
+        $ok = $?
+        $esc = [char]27; $bel = [char]7
+        $cwd = $executionContext.SessionState.Path.CurrentLocation.ProviderPath
+        "$esc]133;D;$(if ($ok) { 0 } else { 1 })$bel" +
+          "$esc]9;9;`"$cwd`"$bel" +
+          "$esc]133;A$bel" + (& $global:__terminuxPrompt)
+      }
+      if (Get-Module PSReadLine) {
+        Set-PSReadLineKeyHandler -Chord Enter -ScriptBlock {
+          [Microsoft.PowerShell.PSConsoleReadLine]::AcceptLine()
+          [Console]::Write("$([char]27)]133;C$([char]7)")
+        }
+      }
+    }
+    ```
+
+    It wraps your existing prompt (oh-my-posh, Starship, …) rather than
+    replacing it. Besides OSC 133, it reports the current directory
+    (`OSC 9;9`): on Windows, that's the only way terminux learns it, for
+    the workspace name and for opening new tabs in the same directory.
+    Windows PowerShell 5.1 runs no profile until scripts are allowed:
+    `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 
 !!! note "Why guard on `TERM_PROGRAM`"
     Other terminals (Ghostty, iTerm2 with their own integration, …) may

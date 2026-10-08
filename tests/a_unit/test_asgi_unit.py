@@ -20,6 +20,18 @@ def test_shell_quote_escapes_single_quote() -> None:
     assert _shell_quote("a'b") == "'a'\\''b'"
 
 
+def test_shell_quote_powershell_doubles_single_quotes() -> None:
+    pwsh = r"C:\Program Files\PowerShell\7\pwsh.exe"
+    assert _shell_quote(r"C:\a b\it's.txt", pwsh) == r"'C:\a b\it''s.txt'"
+    assert _shell_quote("x", "powershell.exe") == "'x'"
+
+
+def test_shell_quote_cmd_uses_double_quotes() -> None:
+    assert _shell_quote(r"C:\a b\c.txt", r"C:\Windows\system32\cmd.exe") == (
+        r'"C:\a b\c.txt"'
+    )
+
+
 def test_active_terminal_none_when_no_active_workspace() -> None:
     ctl = AppController(persist=False)
     ctl.state.active_workspace_id = None

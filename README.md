@@ -127,7 +127,7 @@ The e2e tier drives the served UI with a real browser (no pywebview); install it
 
 **Works today:** workspaces sidebar (create / rename / reorder / close, working/ready dot), tabs with multiple live terminals, real PTY shells streaming in the background, layout *and scrollback* restored across restarts (always with fresh shells), remote mode (`--server` / `--connect`) with automatic reconnection, program-printed hyperlinks, self-diagnosing freeze watchdog, macOS & Linux bundles. Recent releases hardened the remote-auth path, restored support for older Macs (Safari-14-era WebKit), and moved the UI chrome to Preact.
 
-**Not yet:** split panes, Windows PTY, multi-user.
+**Not yet:** split panes, multi-user.
 
 ## Architecture in one breath
 

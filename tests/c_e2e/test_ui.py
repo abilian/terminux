@@ -70,11 +70,16 @@ def test_exited_tab_restarts_on_enter(page: Page, app_url: str) -> None:
     rows = page.locator(".xterm-rows")
     # Ctrl+D (EOF) at a ready, empty prompt deterministically exits the
     # shell — more robust than typing a word the line editor may repaint.
+    # PowerShell ignores Ctrl+D, so on Windows it's `exit`.
     exited = False
     for _ in range(15):
         _wait_shell_ready(page)
         page.locator(".xterm-helper-textarea").focus()
-        page.keyboard.press("Control+d")
+        if sys.platform == "win32":
+            page.keyboard.type("exit")
+            page.keyboard.press("Enter")
+        else:
+            page.keyboard.press("Control+d")
         try:
             expect(rows).to_contain_text("process exited", timeout=2500)
         except AssertionError:
@@ -250,13 +255,15 @@ def test_connect_info_command_shows_the_recipe(page: Page, app_url: str) -> None
 
 
 def test_each_window_gets_its_own_size_when_used(
-    page: Page, app_url: str, monkeypatch
+    page: Page, app_url: str, monkeypatch, test_shell
 ) -> None:
     """Two windows of different sizes on one terminal (desktop + --connect,
     the garbled-screen bug): typing in a window claims the terminal, so the
     shell sees that window's size. Each round prints a unique marker so an
     earlier round's output can't satisfy a later check."""
-    monkeypatch.setattr("terminux.server.controller.default_shell", lambda: ["/bin/sh"])
+    monkeypatch.setattr(
+        "terminux.server.controller.default_shell", lambda: test_shell.argv
+    )
     page.set_viewport_size({"width": 1200, "height": 800})
     page.goto(app_url)
     expect(page.locator(".xterm")).to_be_visible(timeout=UI)
@@ -265,7 +272,7 @@ def test_each_window_gets_its_own_size_when_used(
     other.goto(app_url)
     expect(other.locator(".xterm")).to_be_visible(timeout=UI)
 
-    def dims(p: Page) -> str:  # "rows cols", as `stty size` prints them
+    def dims(p: Page) -> str:  # "rows cols", as size_command prints them
         return p.evaluate(
             "(() => { const s = [...window.__terminux.sessions.values()][0];"
             " return `${s.term.rows} ${s.term.cols}`; })()"
@@ -274,6 +281,6 @@ def test_each_window_gets_its_own_size_when_used(
     assert dims(page) != dims(other)  # otherwise the test proves nothing
     for n, p in enumerate((page, other, page), start=1):
         marker = f"M{n} {dims(p)}"
-        assert _run_in_terminal(p, f"echo M{n} $(stty size)", marker), (
+        assert _run_in_terminal(p, test_shell.size_command(f"M{n}"), marker), (
             f"round {n}: the shell did not see this window's size ({marker})"
         )

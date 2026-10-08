@@ -706,9 +706,15 @@ def test_spawn_is_idempotent(server: LiveServer) -> None:
 # ----- controller helpers backed by a real terminal --------------------
 
 
-def test_paste_inherit_and_active_terminal(server: LiveServer, tmp_path: Any) -> None:
+def test_paste_inherit_and_active_terminal(
+    server: LiveServer, tmp_path: Any, monkeypatch, test_shell
+) -> None:
     from pathlib import Path
 
+    # On Windows the cwd comes from the shell (the test shell reports it).
+    monkeypatch.setattr(
+        "terminux.server.controller.default_shell", lambda: test_shell.argv
+    )
     base = server.url
     ctl = server.controller
     ws = ctl.state.workspaces[0]
@@ -876,13 +882,15 @@ async def _output_until(ws: Any, marker: bytes, timeout: float = 8.0) -> bytes:
 
 
 def test_the_client_in_use_owns_the_terminal_size_and_input(
-    server: LiveServer, monkeypatch
+    server: LiveServer, monkeypatch, test_shell
 ) -> None:
     """A desktop window and a --connect window on the same terminal (the
     garbled-screen bug): the watcher's size never reaches the PTY, its
     emulator's stray answers never reach the shell, a claim moves both, and
     the owner leaving hands everything back."""
-    monkeypatch.setattr("terminux.server.controller.default_shell", lambda: ["/bin/sh"])
+    monkeypatch.setattr(
+        "terminux.server.controller.default_shell", lambda: test_shell.argv
+    )
     base = server.url
     tab = _req(f"{base}/api/state?t={T}")["workspaces"][0]["tab_ids"][0]
     tid = _req(f"{base}/api/tabs/{tab}/spawn?t={T}", "POST", b"{}")["terminal_id"]
@@ -890,9 +898,18 @@ def test_the_client_in_use_owns_the_terminal_size_and_input(
     term = server.controller.terminals.get(tid)
     assert term is not None
 
-    def pty_size() -> tuple[int, int]:  # (cols, rows) as the kernel sees it
-        rows, cols = term._pty._proc.getwinsize()  # type: ignore[attr-defined]
-        return cols, rows
+    # Record what reaches the backend (portable: no ConPTY size getter).
+    sizes: list[tuple[int, int]] = [(80, 24)]
+    real_resize = term._pty.resize
+
+    def recording_resize(cols: int, rows: int) -> None:
+        sizes.append((cols, rows))
+        real_resize(cols, rows)
+
+    term._pty.resize = recording_resize  # type: ignore[method-assign]
+
+    def pty_size() -> tuple[int, int]:  # (cols, rows) as last set on the PTY
+        return sizes[-1]
 
     async def size_becomes(expected: tuple[int, int]) -> None:
         for _ in range(250):

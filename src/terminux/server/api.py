@@ -358,8 +358,8 @@ class Api:
             return JSONResponse({"error": "invalid body"}, status_code=400)
         # Serialize PTY creation: concurrent openpty+spawn can stall output
         # pipes under rapid tab creation (technical spec §8). The fork/exec
-        # itself runs in a worker thread inside ensure_terminal; only the
-        # ``add_reader`` registration happens here on the loop.
+        # itself runs in a worker thread inside ensure_terminal; only
+        # attaching the reader to the loop happens here.
         async with self.ctl.spawn_lock:
             term = await self.ctl.ensure_terminal(
                 request.path_params["tab_id"], cols, rows

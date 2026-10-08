@@ -14,6 +14,9 @@ Run specific test types:
 
 from __future__ import annotations
 
+import shutil
+import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -39,4 +42,59 @@ def pytest_collection_modifyitems(config, items):
 # Shared Fixtures
 # -----------------------------------------------------------------------------
 
-# Add shared fixtures here
+IS_WINDOWS = sys.platform == "win32"
+
+# A profile-free PowerShell whose prompt reports the cwd (OSC 9;9): on
+# Windows that's the only way terminux learns it (no /proc, no libproc).
+_PS_PROMPT = 'function prompt { "$([char]27)]9;9;$($PWD.ProviderPath)$([char]7)PS> " }'
+
+
+@dataclass(frozen=True)
+class PortableShell:
+    """A fast shell for tests (no user profile), with portable commands.
+
+    ``/bin/sh`` on Unix; ``pwsh`` (or Windows PowerShell) on Windows.
+    Type commands with ``\r`` (Enter), which both accept.
+    """
+
+    argv: list[str]
+
+    @property
+    def is_powershell(self) -> bool:
+        return Path(self.argv[0]).stem.lower() in {"pwsh", "powershell"}
+
+    def exit_argv(self, code: int) -> list[str]:
+        """A shell that exits at once with ``code``."""
+        if self.is_powershell:
+            return [self.argv[0], "-NoLogo", "-NoProfile", "-Command", f"exit {code}"]
+        return [self.argv[0], "-c", f"exit {code}"]
+
+    def size_command(self, marker: str) -> str:
+        """Prints ``<marker> <rows> <cols>`` as the shell sees its tty."""
+        if self.is_powershell:
+            size = "$Host.UI.RawUI.WindowSize"
+            return f'Write-Host "{marker} $({size}.Height) $({size}.Width)"'
+        return f"echo {marker} $(stty size)"
+
+    @property
+    def exit_command(self) -> str:
+        return "exit"
+
+
+def _test_shell() -> PortableShell:
+    if not IS_WINDOWS:
+        return PortableShell(["/bin/sh"])
+    exe = shutil.which("pwsh") or shutil.which("powershell") or "powershell.exe"
+    return PortableShell([
+        exe,
+        "-NoLogo",
+        "-NoProfile",
+        "-NoExit",
+        "-Command",
+        _PS_PROMPT,
+    ])
+
+
+@pytest.fixture(scope="session")
+def test_shell() -> PortableShell:
+    return _test_shell()

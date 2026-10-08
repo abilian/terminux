@@ -11,6 +11,7 @@ from terminux.core.shellprobe import default_cwd, default_shell
 def test_default_shell_uses_env_shell(monkeypatch) -> None:
     monkeypatch.setattr(shellprobe.sys, "platform", "darwin")
     monkeypatch.setenv("SHELL", "/bin/sh")
+    monkeypatch.setattr(Path, "exists", lambda self: str(self) == str(Path("/bin/sh")))
     assert default_shell() == ["/bin/sh", "-l"]
 
 

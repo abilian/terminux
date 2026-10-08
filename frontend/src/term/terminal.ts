@@ -12,6 +12,7 @@ import { macEditingSeq } from "./editing";
 import { getFontSize } from "./font";
 import { createKitty } from "./kitty";
 import { appMod } from "../input/platform";
+import { typingElsewhere } from "../util/focus";
 import {
   activeSession,
   activeWorkspace,
@@ -585,7 +586,10 @@ export async function ensureActiveTerminal(): Promise<void> {
   const s = sessions.get(tid);
   if (s) {
     s.fit.fit();
-    s.term.focus();
+    // The await above can outlast the user opening the palette.
+    if (!typingElsewhere()) {
+      s.term.focus();
+    }
     claimIfInUse(s); // switching to a tab is using it
   }
 }

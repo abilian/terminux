@@ -55,6 +55,10 @@ def test_terminate_returns_when_already_dead() -> None:
     assert p.kills == []
 
 
+unix_only = pytest.mark.skipif(sys.platform == "win32", reason="POSIX PTY")
+
+
+@unix_only  # SIGHUP and SIGKILL don't exist on Windows
 def test_terminate_escalates_through_signals() -> None:
     # alive for the isalive() guard, then alive after HUP and TERM, dead after KILL
     p = _FakeProc(alive_seq=[True, True, True, False])
@@ -62,6 +66,7 @@ def test_terminate_escalates_through_signals() -> None:
     assert p.kills == [signal.SIGHUP, signal.SIGTERM, signal.SIGKILL]
 
 
+@unix_only
 def test_terminate_stops_when_signal_oserrors() -> None:
     p = _FakeProc(alive_seq=[True, True])
 
@@ -210,6 +215,7 @@ def test_unixpty_write_retries_on_eagain_and_partial(monkeypatch) -> None:
     assert attempts == [b"abcd", b"abcd", b"cd"]
 
 
+@unix_only
 def test_spawn_pty_unix_smoke() -> None:
     from pathlib import Path
 
@@ -222,3 +228,149 @@ def test_spawn_pty_unix_smoke() -> None:
         assert os.get_blocking(pty.fd) is False
     finally:
         pty.terminate()
+
+
+# ----- UnixPty reading (attach / _on_readable / foreground_busy) ---------
+
+
+class _FakeLoop:
+    def __init__(self) -> None:
+        self.readers: dict[int, object] = {}
+
+    def add_reader(self, fd: int, cb: object) -> None:
+        self.readers[fd] = cb
+
+    def remove_reader(self, fd: int) -> None:
+        self.readers.pop(fd, None)
+
+
+def _attached(monkeypatch, read) -> tuple[UnixPty, _FakeLoop, list[bytes]]:
+    p = _FakeProc()
+    p.fd = 7
+    pty = _unixpty(p)
+    pty._loop = None  # type: ignore[attr-defined]
+    pty._on_data = None  # type: ignore[attr-defined]
+    loop = _FakeLoop()
+    got: list[bytes] = []
+    pty.attach(loop, got.append)  # type: ignore[arg-type]
+    monkeypatch.setattr(pty_backend.os, "read", read)
+    return pty, loop, got
+
+
+def test_unixpty_reads_on_the_loop_and_detaches_at_eof(monkeypatch) -> None:
+    chunks = [b"hello", b""]
+    pty, loop, got = _attached(monkeypatch, lambda *_a: chunks.pop(0))
+    assert 7 in loop.readers  # no thread: the loop watches the fd
+    pty._on_readable()
+    pty._on_readable()
+    assert got == [b"hello", b""]
+    assert loop.readers == {}  # EOF removed the reader
+    pty._on_readable()  # a late wakeup after detach is ignored
+    assert got == [b"hello", b""]
+
+
+def test_unixpty_spurious_wakeup_is_noop(monkeypatch) -> None:
+    def eagain(*_a: object) -> bytes:
+        raise BlockingIOError
+
+    pty, loop, got = _attached(monkeypatch, eagain)
+    pty._on_readable()
+    # EAGAIN is not EOF: the tab must stay open.
+    assert got == []
+    assert 7 in loop.readers
+
+
+def test_unixpty_read_oserror_is_eof(monkeypatch) -> None:
+    def eio(*_a: object) -> bytes:
+        raise OSError  # EIO on Linux when the child exits
+
+    pty, loop, got = _attached(monkeypatch, eio)
+    pty._on_readable()
+    assert got == [b""]
+    assert loop.readers == {}
+    pty.detach()  # idempotent
+
+
+def test_unixpty_foreground_busy_compares_pgrp_to_shell(monkeypatch) -> None:
+    pty = _unixpty(_FakeProc(pid=4242))
+    pty._proc.fd = 7  # type: ignore[attr-defined]
+    monkeypatch.setattr(pty_backend.os, "tcgetpgrp", lambda _fd: 4242, raising=False)
+    assert pty.foreground_busy() is False  # the shell is in the foreground
+    monkeypatch.setattr(pty_backend.os, "tcgetpgrp", lambda _fd: 9999, raising=False)
+    assert pty.foreground_busy() is True
+
+    def boom(_fd: int) -> int:
+        raise OSError
+
+    monkeypatch.setattr(pty_backend.os, "tcgetpgrp", boom, raising=False)
+    assert pty.foreground_busy() is None  # can't tell
+
+
+# ----- WindowsPty helpers -------------------------------------------------
+
+
+class _FakeWinpty:
+    def __init__(self, reads: list[object]) -> None:
+        self._reads = reads
+
+    def read(self, blocking: bool = False) -> str:
+        item = self._reads.pop(0) if self._reads else ""
+        if isinstance(item, Exception):
+            raise item
+        return str(item)
+
+
+def test_drain_nonblocking_stops_at_empty_limit_or_error() -> None:
+    assert pty_backend._drain_nonblocking(_FakeWinpty(["a", "b", "", "c"])) == "ab"
+    assert (
+        pty_backend._drain_nonblocking(_FakeWinpty(["aaa", "bbb", "c"]), 4) == "aaabbb"
+    )
+    pipe_done = _FakeWinpty(["a", RuntimeError("EOF"), "b"])
+    assert pty_backend._drain_nonblocking(pipe_done) == "a"
+
+
+def test_windowspty_answers_conpty_startup_query_once() -> None:
+    pty = pty_backend.WindowsPty.__new__(pty_backend.WindowsPty)
+    pty._startup_seen = 0  # type: ignore[attr-defined]
+    written: list[bytes] = []
+    pty.write = written.append  # type: ignore[method-assign]
+    assert pty._answer_startup_query("\x1b[1t") == "\x1b[1t"
+    assert pty._answer_startup_query("\x1b[c\x1b[?1004h") == "\x1b[?1004h"
+    assert written == [b"\x1b[?1;2c"]
+    assert pty._startup_seen is None  # handled: stop looking
+
+
+def test_windowspty_stops_looking_after_the_startup_window() -> None:
+    pty = pty_backend.WindowsPty.__new__(pty_backend.WindowsPty)
+    pty._startup_seen = 0  # type: ignore[attr-defined]
+    pty.write = lambda _d: None  # type: ignore[method-assign]
+    pty._answer_startup_query("x" * pty_backend._STARTUP_WINDOW)
+    assert pty._startup_seen is None
+
+
+def test_wait_for_process_polls_without_a_handle(monkeypatch) -> None:
+    monkeypatch.setattr(pty_backend.sys, "platform", "linux")  # no OpenProcess
+    monkeypatch.setattr(pty_backend.time, "sleep", lambda _s: None)
+    alive = [True, True, False]
+    pty_backend._wait_for_process(1, lambda: alive.pop(0))
+    assert alive == []
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Toolhelp is Windows-only")
+def test_win_has_child_sees_a_real_child() -> None:
+    # Not sys.executable: a venv's python.exe is a launcher with a child.
+    child = subprocess.Popen(
+        ["ping", "-n", "30", "127.0.0.1"],  # noqa: S607
+        stdout=subprocess.DEVNULL,
+    )
+    try:
+        assert pty_backend._win_has_child(os.getpid()) is True
+        assert pty_backend._win_has_child(child.pid) is False
+    finally:
+        child.kill()
+        child.wait()
+
+
+def test_win_has_child_is_unknown_off_windows(monkeypatch) -> None:
+    monkeypatch.setattr(pty_backend.sys, "platform", "linux")
+    assert pty_backend._win_has_child(1) is None

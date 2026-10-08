@@ -48,13 +48,13 @@ It's a small traffic-light:
 
 Hover any dot for a tooltip with the same explanation.
 
-## What about split panes and Windows?
+## What about split panes?
 
-Both are still on the roadmap.
+They're still on the roadmap.
 
 ## Does terminux work on Windows?
 
-Partly. A Windows machine can run terminux as a client (`terminux --connect <url>`) and open the terminals of a terminux server running on a Mac or a Linux box; see [Remote access](guides/remote.md). Running the terminals on Windows itself needs a Windows PTY backend, which is not written yet.
+Yes, on Windows 10 and 11. The shell is PowerShell 7 if it's installed, else Windows PowerShell, else `cmd`; there's no setting to pick another one (Git Bash, MSYS2) yet. Windows can't tell terminux which directory a shell is in, so add the PowerShell snippet from [Shell integration](guides/shell-integration.md) to get workspace names and new tabs that open in the same directory. A Windows machine can also be a client of a terminux server on a Mac or a Linux box; see [Remote access](guides/remote.md).
 
 ## Is it safe to expose terminux on the network?
 

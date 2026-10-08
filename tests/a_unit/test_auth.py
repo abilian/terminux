@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -137,7 +138,10 @@ def test_persistent_token_generates_and_writes(
     assert TOKEN_RE.match(token)
     assert target.read_text(encoding="utf-8").strip() == token
     assert token == auth.SESSION_TOKEN  # module-level was updated
-    assert (target.stat().st_mode & 0o777) == 0o600
+    # On Windows chmod only toggles read-only; the per-user profile's ACL
+    # is what protects the token there.
+    if sys.platform != "win32":
+        assert (target.stat().st_mode & 0o777) == 0o600
 
 
 def test_persistent_token_reuses_existing(tmp_path: Path, isolated_token: None) -> None:

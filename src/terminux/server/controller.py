@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import threading
 import time
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from terminux.core.model import AppState, Workspace
@@ -47,8 +47,17 @@ UNSEEN_GRACE_SECONDS = 5.0
 READY_TRANSITION_SECONDS = 5.0
 
 
-def _shell_quote(path: str) -> str:
-    """POSIX single-quote escaping so paths with spaces/specials are safe."""
+def _shell_quote(path: str, shell: str = "sh") -> str:
+    """Quote ``path`` for ``shell`` so spaces and specials are safe.
+
+    POSIX single quotes by default; on Windows, PowerShell single quotes
+    (``'`` doubled) or cmd double quotes (``"`` can't occur in a path).
+    """
+    name = PureWindowsPath(shell).stem.lower()
+    if name == "cmd":
+        return '"' + path + '"'
+    if name in {"pwsh", "powershell"}:
+        return "'" + path.replace("'", "''") + "'"
     return "'" + path.replace("'", "'\\''") + "'"
 
 
@@ -174,8 +183,8 @@ class AppController:
         """Return the tab's live terminal, spawning a fresh shell if needed.
 
         Two-phase: the fork/exec/disk work runs in a worker thread so it
-        can never stall the event loop; only the ``add_reader``
-        registration (which must happen on the loop) runs here. Callers
+        can never stall the event loop; only attaching the reader (which
+        must happen on the loop) runs here. Callers
         serialize through ``spawn_lock``, so the unlocked gap between the
         phases sees no concurrent spawn for the same tab.
         """
@@ -271,7 +280,7 @@ class AppController:
         a ``"busy"`` status promotion when a workspace has a foreground task
         running and nothing more urgent to signal (priority: active > exited
         > busy > unseen > idle). Computed on demand at view time so we never
-        pay the ``tcgetpgrp`` syscall outside the ~2 Hz frontend poll.
+        pay the busy probe (a syscall) outside the ~2 Hz frontend poll.
 
         ``busy`` beats ``unseen`` because a chatty long-running task (Claude
         Code's spinner, a build's progress lines, ``tail -f``) would
@@ -317,13 +326,14 @@ class AppController:
     def paste_paths(self, paths: list[str]) -> None:
         """Insert dropped file paths (shell-quoted) into the active terminal.
 
-        Called from the pywebview thread; ``Terminal.write`` is a plain
-        ``os.write`` to the PTY master, which is safe across threads.
+        Called from the pywebview thread; ``Terminal.write`` is safe across
+        threads (a plain ``os.write`` on Unix, a locked write on Windows).
         """
         term = self.active_terminal()
         if term is None or not paths:
             return
-        text = " ".join(_shell_quote(p) for p in paths) + " "
+        shell = default_shell()[0]
+        text = " ".join(_shell_quote(p, shell) for p in paths) + " "
         term.write(text.encode())
 
     def _mark_activity(self, tab_id: str) -> None:

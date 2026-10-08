@@ -9,24 +9,31 @@ from terminux.core.terminal import Subscriber, Terminal
 
 
 class _FakeLoop:
-    def __init__(self, *, remove_raises: bool = False) -> None:
-        self.remove_raises = remove_raises
-
-    def add_reader(self, *_a) -> None:
-        pass
-
-    def remove_reader(self, *_a) -> None:
-        if self.remove_raises:
-            raise OSError
+    """Stands in for the loop: the fake PTY never schedules anything."""
 
 
 class _FakePty:
-    fd = 7
     pid = 4242
 
     def __init__(self, code: int | None = 3) -> None:
         self._code = code
         self.sizes: list[tuple[int, int]] = []  # every resize, in order
+        self.busy: bool | None = False  # what foreground_busy() reports
+        self.attached: object = None
+        self.detached = 0
+        self.cwd_value: str | None = None
+
+    def attach(self, loop: object, on_data: object) -> None:
+        self.attached = on_data
+
+    def detach(self) -> None:
+        self.detached += 1
+
+    def foreground_busy(self) -> bool | None:
+        return self.busy
+
+    def cwd(self) -> str | None:
+        return self.cwd_value
 
     def exit_code(self) -> int | None:
         return self._code
@@ -54,6 +61,7 @@ def _bare_terminal(loop: _FakeLoop, pty: _FakePty) -> Terminal:
     # is_busy() requires recent PTY output; seed at "now" so freshly
     # built test terminals fall inside the activity window by default.
     t._last_output_at = time.monotonic()
+    t._cwd_cache = None
     return t
 
 
@@ -104,50 +112,29 @@ def test_subscriber_close_drains_closed() -> None:
 # ----- Terminal fan-out (fake pty/loop) --------------------------------
 
 
-def test_on_readable_feeds_subscribers_and_trims_backlog(monkeypatch) -> None:
+def test_on_data_feeds_subscribers_and_trims_backlog(monkeypatch) -> None:
     t = _bare_terminal(_FakeLoop(), _FakePty())
     sub = t.subscribe()
     seen = []
     t.on_activity = lambda: seen.append(1)
     monkeypatch.setattr(term_mod, "BACKLOG_CAP", 4)
-    monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"abcdefgh")
-    t._on_readable()
+    t._on_data(b"abcdefgh")
     assert sub._pending == bytearray(b"abcdefgh")
     assert len(t._backlog) == 4  # trimmed to cap
     assert seen == [1]
 
 
-def test_on_readable_spurious_wakeup_is_noop(monkeypatch) -> None:
-    t = _bare_terminal(_FakeLoop(), _FakePty())
-    sub = t.subscribe()
-    exited = []
-    t.on_exit = lambda code: exited.append(code)
-
-    def eagain(*_a: object) -> bytes:
-        raise BlockingIOError
-
-    monkeypatch.setattr(term_mod.os, "read", eagain)
-    t._on_readable()
-    # EAGAIN is not EOF: the tab must stay open and subscribers untouched.
-    assert t._exited is False
-    assert exited == []
-    assert sub._pending == bytearray()
-
-
-def test_on_readable_detects_bell_and_osc9(monkeypatch) -> None:
+def test_on_data_detects_bell_and_osc9() -> None:
     t = _bare_terminal(_FakeLoop(), _FakePty())
     t.subscribe()
     hits = []
     t.on_attention = lambda: hits.append(1)
 
-    monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"plain output")
-    t._on_readable()
+    t._on_data(b"plain output")
     assert hits == []  # no BEL / OSC 9 → no attention
 
-    monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"done\x07")
-    t._on_readable()
-    monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"\x1b]9;ready\x07")
-    t._on_readable()
+    t._on_data(b"done\x07")
+    t._on_data(b"\x1b]9;ready\x07")
     assert hits == [1, 1]  # BEL and OSC 9 each fire it
 
 
@@ -161,15 +148,9 @@ def test_osc_title_bel_does_not_trigger_attention(monkeypatch) -> None:
     t.on_attention = lambda: hits.append(1)
 
     # OSC 0;<title>BEL repeated — common for tools showing live state.
-    monkeypatch.setattr(
-        term_mod.os,
-        "read",
-        lambda *_a: b"\x1b]0;thinking\x07\x1b]0;tool: read\x07",
-    )
-    t._on_readable()
+    t._on_data(b"\x1b]0;thinking\x07\x1b]0;tool: read\x07")
     # And an OSC terminated by the two-byte ST (ESC '\\') instead of BEL.
-    monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"\x1b]2;done\x1b\\")
-    t._on_readable()
+    t._on_data(b"\x1b]2;done\x1b\\")
     assert hits == []
 
 
@@ -181,67 +162,60 @@ def test_osc_split_across_reads_does_not_fire(monkeypatch) -> None:
     hits = []
     t.on_attention = lambda: hits.append(1)
 
-    monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"\x1b]0;par")
-    t._on_readable()
-    monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"tial\x07")
-    t._on_readable()
+    t._on_data(b"\x1b]0;par")
+    t._on_data(b"tial\x07")
     assert hits == []
 
 
-def test_is_busy_uses_tcgetpgrp_when_no_osc133(monkeypatch) -> None:
-    """Without shell integration, is_busy() compares the foreground process
-    group to the shell's pid: same → ready (at the prompt); different →
-    busy (a child is foregrounded)."""
-    t = _bare_terminal(_FakeLoop(), _FakePty())
+def test_is_busy_asks_the_backend_when_no_osc133() -> None:
+    """Without shell integration, is_busy() asks the backend whether a
+    command is in the foreground (tcgetpgrp on Unix, a child process on
+    Windows)."""
+    pty = _FakePty()
+    t = _bare_terminal(_FakeLoop(), pty)
 
-    monkeypatch.setattr(term_mod.os, "tcgetpgrp", lambda _fd: t._pty.pid)
-    assert t.is_busy() is False  # fg pgrp == shell pid → ready
+    pty.busy = False
+    assert t.is_busy() is False  # the shell is at its prompt → ready
 
-    monkeypatch.setattr(term_mod.os, "tcgetpgrp", lambda _fd: 9999)
+    pty.busy = True
     assert t.is_busy() is True  # something else is foregrounded → busy
 
-    # tcgetpgrp raising → defensively False, never busy on a broken fd.
-    def boom(_fd: int) -> int:
-        raise OSError
-
-    monkeypatch.setattr(term_mod.os, "tcgetpgrp", boom)
+    pty.busy = None  # the backend can't tell → never busy
     assert t.is_busy() is False
 
-    # An exited terminal is never busy regardless of fg pgrp.
+    # An exited terminal is never busy whatever the backend says.
     t._exited = True
-    monkeypatch.setattr(term_mod.os, "tcgetpgrp", lambda _fd: 9999)
+    pty.busy = True
     assert t.is_busy() is False
 
 
-def test_is_busy_trusts_osc133_once_seen(monkeypatch) -> None:
+def test_is_busy_trusts_osc133_once_seen() -> None:
     """Once any OSC 133 sequence has come through, the OSC state takes
-    precedence over tcgetpgrp — the shell is the authoritative source."""
-    t = _bare_terminal(_FakeLoop(), _FakePty())
-    # tcgetpgrp would say "busy", but we'll override via OSC 133.
-    monkeypatch.setattr(term_mod.os, "tcgetpgrp", lambda _fd: 9999)
+    precedence over the backend — the shell is the authoritative source."""
+    pty = _FakePty()
+    t = _bare_terminal(_FakeLoop(), pty)
+    # The backend would say "busy", but we'll override via OSC 133.
+    pty.busy = True
 
-    # OSC 133;C → inside a command → busy, regardless of tcgetpgrp.
-    monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"\x1b]133;C\x07")
-    t.subscribe()
-    t._on_readable()
+    # OSC 133;C → inside a command → busy, regardless of the backend.
+    t._on_data(b"\x1b]133;C\x07")
     assert t.is_busy() is True
 
-    # OSC 133;D → back at the prompt → ready, even though tcgetpgrp lies.
-    monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"\x1b]133;D;0\x07")
-    t._on_readable()
+    # OSC 133;D → back at the prompt → ready, even though the backend lies.
+    t._on_data(b"\x1b]133;D;0\x07")
     assert t.is_busy() is False
 
 
-def test_is_busy_requires_recent_output(monkeypatch) -> None:
+def test_is_busy_requires_recent_output() -> None:
     """A foreground child without recent PTY output is treated as
     quiescent — covers parked TUIs (Claude Code waiting for input,
     idle vim) that would otherwise keep the kernel signal lit
     forever even though nothing is happening."""
     import time
 
-    t = _bare_terminal(_FakeLoop(), _FakePty())
-    # Kernel says "something else is foregrounded" — a child exists.
-    monkeypatch.setattr(term_mod.os, "tcgetpgrp", lambda _fd: 9999)
+    pty = _FakePty()
+    t = _bare_terminal(_FakeLoop(), pty)
+    pty.busy = True  # the kernel says a command is in the foreground
 
     # Recent output → busy.
     t._last_output_at = time.monotonic()
@@ -252,14 +226,13 @@ def test_is_busy_requires_recent_output(monkeypatch) -> None:
     assert t.is_busy() is False
 
 
-def test_is_busy_recovers_from_stuck_osc133(monkeypatch) -> None:
+def test_is_busy_recovers_from_stuck_osc133() -> None:
     """A shell that emits ``OSC 133;C`` but never the matching ``;D``
     used to keep the workspace amber forever; the recent-output veto
     now releases it once the workspace falls silent."""
     import time
 
     t = _bare_terminal(_FakeLoop(), _FakePty())
-    monkeypatch.setattr(term_mod.os, "tcgetpgrp", lambda _fd: 9999)
     # Simulate the stuck state: in_command=True, no ;D ever.
     t._attention._osc133_seen = True
     t._attention._in_command = True
@@ -284,32 +257,90 @@ def test_osc133_fires_only_for_long_commands(monkeypatch) -> None:
     monkeypatch.setattr(term_mod.time, "monotonic", lambda: clock["t"])
 
     # Short command (< 2 s): C, then D ≈ 100 ms later → no fire.
-    monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"\x1b]133;C\x07")
-    t._on_readable()
+    t._on_data(b"\x1b]133;C\x07")
     clock["t"] += 0.1
-    monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"\x1b]133;D;0\x07")
-    t._on_readable()
+    t._on_data(b"\x1b]133;D;0\x07")
     assert hits == []
 
     # Long command: C, then D 5 s later → fires.
-    monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"\x1b]133;C\x07")
-    t._on_readable()
+    t._on_data(b"\x1b]133;C\x07")
     clock["t"] += 5.0
-    monkeypatch.setattr(term_mod.os, "read", lambda *_a: b"\x1b]133;D;0\x07")
-    t._on_readable()
+    t._on_data(b"\x1b]133;D;0\x07")
     assert hits == [1]
 
 
-def test_on_readable_oserror_triggers_eof() -> None:
-    t = _bare_terminal(_FakeLoop(remove_raises=True), _FakePty(code=9))
+def test_on_data_eof_detaches_and_closes() -> None:
+    pty = _FakePty(code=9)
+    t = _bare_terminal(_FakeLoop(), pty)
     sub = t.subscribe()
-    import unittest.mock as m
-
-    with m.patch.object(term_mod.os, "read", side_effect=OSError):
-        t._on_readable()
+    t._on_data(b"")
     assert t.exited is True
-    assert t.exit_code == 9  # remove_reader OSError suppressed
+    assert t.exit_code == 9
+    assert pty.detached == 1
     assert sub._closed is True
+
+
+def test_constructor_attaches_the_backend() -> None:
+    async def scenario() -> None:
+        pty = _FakePty()
+        t = Terminal(pty)  # type: ignore[arg-type]
+        assert pty.attached == t._on_data
+
+    asyncio.run(scenario())
+
+
+# ----- OSC 9 subcommands and cwd reports --------------------------------
+
+
+def test_conemu_osc9_subcommands_are_not_notifications() -> None:
+    """``OSC 9;4`` (progress: winget, …) and ``OSC 9;9`` (cwd) came at every
+    prompt and lit the attention dot; only a plain ``OSC 9;<msg>`` counts."""
+    t = _bare_terminal(_FakeLoop(), _FakePty())
+    hits = []
+    t.on_attention = lambda: hits.append(1)
+    t._on_data(b"\x1b]9;4;1;50\x07\x1b]9;9;C:\\x\x07\x1b]9;12\x07\x1b]9;1;2\x07")
+    assert hits == []
+    t._on_data(b"\x1b]9;10 files copied\x07")  # a message starting with a digit
+    t._on_data(b"\x1b]9;42;answer\x07")  # not a ConEmu subcommand number
+    assert hits == [1, 1]
+
+
+def test_cwd_falls_back_to_what_the_shell_reports() -> None:
+    pty = _FakePty()  # like Windows: the backend can't tell
+    t = _bare_terminal(_FakeLoop(), pty)
+    assert t.cwd() is None
+    t._on_data(b'\x1b]9;9;"C:\\Users\\me"\x07')
+    assert t.cwd() == "C:\\Users\\me"
+    t._on_data(b"\x1b]7;file://host/home/me/a%20b\x1b\\")
+    assert t.cwd() == "/home/me/a b"
+
+
+def test_the_kernel_cwd_wins_over_a_reported_one() -> None:
+    """A reported cwd can be stale (an ssh session reports the remote
+    host's), so it's only used when the backend can't tell."""
+    pty = _FakePty()
+    pty.cwd_value = "/local"
+    t = _bare_terminal(_FakeLoop(), pty)
+    t._on_data(b"\x1b]7;file://remote/srv\x07")
+    assert t.cwd() == "/local"
+
+
+def test_cwd_report_split_across_reads_and_too_long() -> None:
+    t = _bare_terminal(_FakeLoop(), _FakePty())
+    t._on_data(b"\x1b]7;file://h/a-very-long-dir")
+    t._on_data(b"ectory/name\x07")
+    assert t._attention.reported_cwd == "/a-very-long-directory/name"
+    t._on_data(b"\x1b]7;file://h/" + b"x" * 5000 + b"\x07")
+    assert t._attention.reported_cwd == "/a-very-long-directory/name"  # ignored
+    t._on_data(b"\x1b]7;file:///C:/Users/me\x07")
+    assert t._attention.reported_cwd == "C:/Users/me"
+
+
+def test_cwd_from_osc_rejects_junk() -> None:
+    assert term_mod._cwd_from_osc(b"7;http://h/x") is None
+    assert term_mod._cwd_from_osc(b"7;file://h") is None
+    assert term_mod._cwd_from_osc(b"9;9;") is None
+    assert term_mod._cwd_from_osc(b"7;file://h/\xff") is None
 
 
 def test_handle_eof_idempotent_and_on_exit() -> None:
@@ -349,23 +380,11 @@ def test_close_marks_subscribers_closed() -> None:
             self.terminated = True
 
     p = P()
-    t = _bare_terminal(_FakeLoop(remove_raises=True), p)
+    t = _bare_terminal(_FakeLoop(), p)
     sub = t.subscribe()
     t.close()
     assert p.terminated is True
     assert sub._closed is True
-
-
-def test_terminal_constructor_registers_reader() -> None:
-    async def scenario() -> None:
-        from pathlib import Path
-
-        from terminux.core.pty_backend import spawn_pty
-
-        t = Terminal(spawn_pty(["/bin/sh", "-c", "exit 0"], str(Path.cwd()), 80, 24))
-        t.close()
-
-    asyncio.run(scenario())
 
 
 # ----- ownership (several clients, one PTY size) ------------------------

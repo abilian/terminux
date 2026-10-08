@@ -9,7 +9,8 @@ dependencies = [
     "pywebview>=5.0",
     "starlette>=0.40",
     "uvicorn>=0.30",
-    "ptyprocess>=0.7",
+    "ptyprocess>=0.7; sys_platform != 'win32'",
+    "pywinpty>=2; sys_platform == 'win32'",
     "platformdirs>=4.0",
     "websockets>=13.0",
 ]
@@ -85,7 +86,7 @@ exclude_lines = [
 strict = true
 
 [[tool.mypy.overrides]]
-module = ["ptyprocess", "webview", "webview.*", "Foundation", "AppKit"]
+module = ["ptyprocess", "winpty", "webview", "webview.*", "Foundation", "AppKit"]
 ignore_missing_imports = true
 
 #
@@ -95,6 +96,7 @@ ignore_missing_imports = true
 preset = "legacy"
 ignore-missing-imports = [
     "ptyprocess",
+    "winpty",
     "webview",
     "webview.*",
     "Foundation",

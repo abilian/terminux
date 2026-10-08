@@ -1,6 +1,6 @@
 # Windows port
 
-Status (2026-10-08): **client mode works** (`terminux --connect <url>`): the window icon, link opening and the data folder are fixed. **Terminals on Windows don't**: `spawn_pty` raises `NotImplementedError`. This note is the plan for the rest. It refines §10 of `02-technical-spec.md`.
+Status (2026-10-08): **milestones 0–3 are done, and the cwd half of 4.** Client mode works, and so do local terminals: `WindowsPty` in `core/pty_backend.py`, on pywinpty's low-level `PTY`. The full test suite passes on Windows 11 (Playwright e2e checked with `--browser-channel msedge`). Still open: the shell setting (§6), CI, packaging (milestone 5). This note started as the plan; the spike results and what changed from the plan are recorded below. It refines §10 of `02-technical-spec.md`.
 
 ## What's Unix-only today
 
@@ -87,17 +87,31 @@ Keep the `pwsh` → `powershell` → `cmd` default. Add one setting for the shel
 - `appMod` already treats non-Mac as Ctrl+Shift, which matches Windows Terminal. Nothing to do.
 - Decide whether Ctrl+C copies when there's a selection and Ctrl+V pastes (Windows Terminal's default). Optional; Ctrl+Shift+C/V works already.
 
+## Spike results (Windows 11, pywinpty 3.0.5)
+
+- **Types.** `PTY.read` returns `str`, decoded from ConPTY's UTF-8 by pywinpty: 3000 four-byte emoji over ~7000 reads came out whole. `write` takes `str` and returns 0 even when it wrote everything (ignore the value). The backend encodes/decodes at the boundary, with an incremental decoder on the write side.
+- **Chunking.** Blocking reads return a few characters at a time; the reader coalesces each blocking read with the non-blocking reads already available (up to 64 KiB) into one loop callback.
+- **EOF.** Arrives as a `WinptyError` raised by `read`, not as `iseof()`. **But not always:** if the child exits before the first blocking read starts, that read never returns (the output pipe lives as long as the pseudo console). Hence a second thread per terminal that waits on the process handle (`WaitForSingleObject`) and wakes the reader with `cancel_io()` until it has drained and stopped. `cancel_io` only wakes a read in progress, so it's repeated every 100 ms.
+- **3 s startup stall.** ConPTY sends DA1 (`ESC [ c`) at startup and holds the child up to 3 s for the answer. The backend answers it itself (`ESC [ ? 1 ; 2 c`, what xterm.js says) and strips the query from the stream, so a backlog replay (second window, reconnect) can't make xterm.js answer again into the shell's input. Startup went from 3.3 s to 0.3 s for pwsh.
+- **OSC.** Everything passes through: 0, 7, 8, 9, 9;9, 133. ConPTY also emits `ESC[1t ESC[?1004h ESC[?9001h` at startup (harmless for xterm.js).
+- **Resize, exit code:** work (`set_size`, `get_exitstatus`).
+- **Closing.** Dropping the `PTY` (`ClosePseudoConsole`) ends the shell and the console-attached children (`Start-Job`, `start /b`). Children with their own window (`Start-Process`) survive, as in Windows Terminal. So no Job Object. The release may block, so it happens on the reader thread, never on the loop.
+- **Busy.** "The shell has a child process" (Toolhelp snapshot via `ctypes`) works: true during `ping`, false at the prompt.
+- **Cwd.** As planned: OSC 7 / OSC 9;9 parsed by `_AttentionScanner`. Deviation from the plan: `Terminal.cwd()` prefers the kernel's answer and uses the reported one only when the backend can't tell (Windows), because a reported cwd goes stale (an `ssh` session reports the remote host's). The PowerShell snippet in `guides/shell-integration.md` (OSC 133 + OSC 9;9) was tested in pwsh 7 and in Windows PowerShell 5.1 (which needs scripts enabled to load a profile at all).
+- **Lint.** The checkers analyse for the host platform. On Windows they flag the POSIX-only code (`os.tcgetpgrp`, `signal.SIGHUP`, `faulthandler.register`, `openurl.opener`), as they did before this work; run `make lint` on macOS/Linux, or pass `--python-platform linux` / `--platform linux`.
+
 ## Milestones
 
 Each milestone can be released on its own.
 
 0. **Client mode** (done). `--connect` from Windows works. Icon, links, data folder.
-1. **Spike** (on a Windows machine, ~1 hour). A throwaway script that spawns `pwsh` through pywinpty and answers: read/write types (bytes or str); does a blocking read return promptly when the pty is closed; resize; exit code; which OSC sequences ConPTY passes through; which processes outlive terminate (start `Start-Process notepad` and a background `ping -t`, close, check Task Manager). Record the answers here.
-2. **Reader refactor** (macOS/Linux, no behavior change). Section 1 above, plus the OSC 9 fix. The full test suite must stay green; this is where most of the risk lives and it's testable here.
-3. **`WindowsPty`**. Sections 2, 3 and 5 (with the Job Object only if milestone 1 says so). Goal: open tabs, type, resize, close, restart a shell, scrollback persistence.
-4. **Cwd + shell choice**. Sections 4 and 6, plus the PowerShell snippet.
+1. **Spike** (done, results above). A throwaway script that spawns `pwsh` through pywinpty and answers: read/write types (bytes or str); does a blocking read return promptly when the pty is closed; resize; exit code; which OSC sequences ConPTY passes through; which processes outlive terminate (start `Start-Process notepad` and a background `ping -t`, close, check Task Manager). Record the answers here.
+2. **Reader refactor** (done; untested on macOS/Linux so far, run the suite there). Section 1 above, plus the OSC 9 fix. The full test suite must stay green; this is where most of the risk lives and it's testable here.
+3. **`WindowsPty`** (done). Sections 2, 3 and 5 (with the Job Object only if milestone 1 says so). Goal: open tabs, type, resize, close, restart a shell, scrollback persistence.
+4. **Cwd + shell choice** (cwd and the snippet done; the shell setting is open). Sections 4 and 6, plus the PowerShell snippet.
 5. **Tests, CI, docs, packaging.**
-   - CI: a `windows-latest` job. Unit tests first; integration tests need a shell-agnostic helper (many hardcode `/bin/sh` and `stty size`): mark the POSIX-specific ones `skipif(sys.platform == "win32")` and add Windows twins for spawn/echo/resize/exit (`pwsh -NoProfile -Command`, `$Host.UI.RawUI.WindowSize`). Playwright e2e runs unchanged once a shell echoes.
+   - Tests (done): the `test_shell` fixture in `tests/conftest.py` gives a fast, profile-free shell (`/bin/sh`, or pwsh whose prompt reports its cwd) with portable `exit_argv` / `size_command`; POSIX-only tests are skipped on Windows and there are Windows-only ones for ConPTY.
+   - CI: a `windows-latest` job (open).
    - Docs: installation (WebView2 ships with Windows 10/11; `uvx terminux` works as is), the "where state lives" table, and the FAQ/README "not yet" lines.
    - Packaging: a PyInstaller onedir build with `icon.ico` (`terminux.spec` currently assumes `.icns`), then decide whether to sign it. An installer can wait.
 
