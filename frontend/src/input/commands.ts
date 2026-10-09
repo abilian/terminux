@@ -3,7 +3,9 @@
 // registry pure (no imports from feature modules) lets it be
 // unit-tested in node without dragging in xterm / fetch / window.
 
-type CommandRun = () => void | Promise<void>;
+// A command returning ``false`` declines (e.g. copy with nothing
+// selected), so the key that triggered it reaches the terminal.
+type CommandRun = () => void | boolean | Promise<void>;
 
 const registry = new Map<string, CommandRun>();
 
@@ -20,7 +22,11 @@ export function invoke(id: string): boolean {
     console.warn(`command not found: "${id}"`);
     return false;
   }
-  void run();
+  const result = run();
+  if (result === false) {
+    return false;
+  }
+  void result; // an async command runs on its own
   return true;
 }
 

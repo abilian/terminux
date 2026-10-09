@@ -14,7 +14,7 @@
 // ``"="``→``"+"``) and a single check needs to fire on both platforms.
 
 import { invoke } from "./commands";
-import { IS_MAC, appMod } from "./platform";
+import { IS_MAC, IS_WINDOWS, appMod } from "./platform";
 
 // Zoom keys: the typed character wins (``-`` sits on the 6 key on AZERTY,
 // and the key in the US ``=`` position types ``-`` on the Mac French
@@ -55,6 +55,28 @@ function handleNonMacChord(e: KeyboardEvent): boolean {
     return invoke(zoom);
   }
   return false;
+}
+
+// Clipboard chords, Linux and Windows only (macOS has its native Edit
+// menu): Ctrl+Shift+C / V / A, plus bare Ctrl+C and Ctrl+V on Windows as
+// in Windows Terminal. Bare Ctrl+C copies only while something is
+// selected (``edit.copy`` declines otherwise), so it still interrupts.
+function clipboardCommand(e: KeyboardEvent): string | null {
+  if (IS_MAC || !e.ctrlKey || e.altKey || e.metaKey) {
+    return null;
+  }
+  if (e.shiftKey || IS_WINDOWS) {
+    if (e.code === "KeyC") {
+      return "edit.copy";
+    }
+    if (e.code === "KeyV") {
+      return "edit.paste.keyboard";
+    }
+  }
+  if (e.shiftKey && e.code === "KeyA") {
+    return "edit.select-all";
+  }
+  return null;
 }
 
 function handleAppChord(e: KeyboardEvent): boolean {
@@ -132,8 +154,18 @@ export function installShortcuts(): void {
   window.addEventListener(
     "keydown",
     (e: KeyboardEvent) => {
-      let handled = handleNonMacChord(e);
-      if (!handled && appMod(e)) {
+      const clip = clipboardCommand(e);
+      if (clip === "edit.paste.keyboard") {
+        // Keep the default action, the webview's own paste; only xterm
+        // must not see the key (it would send ^V).
+        e.stopPropagation();
+        invoke(clip);
+        return;
+      }
+      // Ctrl+Shift+C with nothing selected does nothing; only Windows'
+      // bare Ctrl+C falls through to the shell.
+      let handled = clip ? invoke(clip) || e.shiftKey : handleNonMacChord(e);
+      if (!handled && !clip && appMod(e)) {
         handled = handleAppChord(e);
       }
       if (handled) {

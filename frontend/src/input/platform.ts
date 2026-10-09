@@ -14,6 +14,7 @@
 // hijacks Ctrl+P / Ctrl+B / Ctrl+F / Ctrl+N / Ctrl+W from readline.
 
 export const IS_MAC = /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+export const IS_WINDOWS = /^Win/.test(navigator.platform);
 
 /** True for the key event's "app modifier": Cmd on macOS, Ctrl+Shift on Linux. */
 export function appMod(e: KeyboardEvent | MouseEvent): boolean {

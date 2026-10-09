@@ -5,10 +5,13 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(() => true) }));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(() => true), windows: false }));
 vi.mock("../src/input/commands", () => ({ invoke: mocks.invoke }));
 vi.mock("../src/input/platform", () => ({
   IS_MAC: false,
+  get IS_WINDOWS() {
+    return mocks.windows;
+  },
   appMod: (e: KeyboardEvent | MouseEvent) => e.ctrlKey && e.shiftKey,
 }));
 
@@ -25,6 +28,7 @@ installShortcuts();
 
 beforeEach(() => {
   mocks.invoke.mockClear();
+  mocks.windows = false;
 });
 
 describe("keymap (Linux conventions)", () => {
@@ -87,6 +91,51 @@ describe("keymap (Linux conventions)", () => {
   it("does not swallow a chord the bus rejects", () => {
     mocks.invoke.mockReturnValueOnce(false);
     const e = press({ code: "KeyB", ctrlKey: true, shiftKey: true });
+    expect(e.defaultPrevented).toBe(false);
+  });
+});
+
+describe("clipboard chords", () => {
+  it("copies and selects all with Ctrl+Shift", () => {
+    const e = press({ code: "KeyC", ctrlKey: true, shiftKey: true });
+    expect(mocks.invoke).toHaveBeenLastCalledWith("edit.copy");
+    expect(e.defaultPrevented).toBe(true);
+    press({ code: "KeyA", ctrlKey: true, shiftKey: true });
+    expect(mocks.invoke).toHaveBeenLastCalledWith("edit.select-all");
+  });
+
+  it("swallows Ctrl+Shift+C even with nothing selected", () => {
+    mocks.invoke.mockReturnValueOnce(false);
+    const e = press({ code: "KeyC", ctrlKey: true, shiftKey: true });
+    expect(e.defaultPrevented).toBe(true);
+  });
+
+  it("pastes with Ctrl+Shift+V, keeping the webview's own paste", () => {
+    const e = press({ code: "KeyV", ctrlKey: true, shiftKey: true });
+    expect(mocks.invoke).toHaveBeenCalledWith("edit.paste.keyboard");
+    expect(e.defaultPrevented).toBe(false);
+  });
+
+  it("leaves bare Ctrl+C and Ctrl+V to the shell on Linux", () => {
+    press({ code: "KeyC", ctrlKey: true });
+    press({ code: "KeyV", ctrlKey: true });
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+
+  it("copies with bare Ctrl+C on Windows only while text is selected", () => {
+    mocks.windows = true;
+    const copied = press({ code: "KeyC", ctrlKey: true });
+    expect(mocks.invoke).toHaveBeenCalledWith("edit.copy");
+    expect(copied.defaultPrevented).toBe(true);
+    mocks.invoke.mockReturnValueOnce(false); // nothing selected
+    const interrupt = press({ code: "KeyC", ctrlKey: true });
+    expect(interrupt.defaultPrevented).toBe(false);
+  });
+
+  it("pastes with bare Ctrl+V on Windows", () => {
+    mocks.windows = true;
+    const e = press({ code: "KeyV", ctrlKey: true });
+    expect(mocks.invoke).toHaveBeenCalledWith("edit.paste.keyboard");
     expect(e.defaultPrevented).toBe(false);
   });
 });

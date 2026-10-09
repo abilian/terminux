@@ -25,7 +25,7 @@ All shortcuts keep working while the terminal has focus.
 
 The quick switcher fuzzy-matches across every workspace and tab:
 
-![The fuzzy quick switcher overlay listing workspaces and tabs](images/quick-switcher.png){ loading=lazy }
+![The fuzzy quick switcher overlay listing workspaces and tabs](../images/quick-switcher.png){ loading=lazy }
 
 ## Workspace & tab lifecycle
 
@@ -57,8 +57,13 @@ one rather than quitting the app.
 
 | Action | Linux & Windows | macOS |
 | --- | --- | --- |
+| Copy the selection | ++ctrl+shift+c++ | ++cmd+c++ |
+| Paste | ++ctrl+shift+v++ | ++cmd+v++ |
+| Select all | ++ctrl+shift+a++ | ++cmd+a++ |
 | Toggle auto-copy on select (iTerm2-style) | ++ctrl+shift+alt+c++ | ++cmd+alt+c++ |
 | Open URL under cursor | ++ctrl+click++ | ++cmd+click++ |
+
+On Windows, plain ++ctrl+c++ also copies while text is selected (and interrupts the running program otherwise), and plain ++ctrl+v++ pastes, as in Windows Terminal. The **Edit** menu has the same commands on Windows and Linux.
 
 Auto-copy is **off by default**; toggling persists the preference across
 restarts. Linux users who rely on middle-click paste can leave it off.

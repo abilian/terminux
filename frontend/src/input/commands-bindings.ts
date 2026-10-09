@@ -13,6 +13,12 @@ import { toggleSidebar } from "../ui/layout";
 import { openPalette } from "../ui/palette";
 import { closeWorkspace, switchWorkspace } from "../ui/sidebar";
 import { openConnectInfo } from "../ui/connectinfo";
+import {
+  copySelection,
+  expectNativePaste,
+  pasteFromClipboard,
+  selectAll,
+} from "../term/clipboard";
 import { openStatsPanel } from "../ui/statspanel";
 import {
   activeWorkspace,
@@ -87,6 +93,12 @@ export function installCommands(): void {
   register("view.zoom.in", () => applyFontSize(getFontSize() + 1));
   register("view.zoom.out", () => applyFontSize(getFontSize() - 1));
   register("view.zoom.reset", resetFontSize);
+
+  // ----- clipboard (Windows/Linux; macOS uses its native Edit menu) -----
+  register("edit.copy", copySelection);
+  register("edit.paste", pasteFromClipboard);
+  register("edit.paste.keyboard", expectNativePaste);
+  register("edit.select-all", selectAll);
 
   // ----- prefs toggles -------------------------------------------------
   register("view.copy-on-select.toggle", () => {

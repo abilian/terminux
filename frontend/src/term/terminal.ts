@@ -167,7 +167,7 @@ function sendInput(sess: Session, data: string): void {
 // and only takes that one's input. Claim before any real input so the
 // server switches owner (and size) ahead of the keystroke itself; the
 // server answers with {"type":"owner"} and revokes when another claims.
-function claim(sess: Session): void {
+export function claim(sess: Session): void {
   const w = sess.ws;
   if (sess.owner || !w || w.readyState !== 1) {
     return;

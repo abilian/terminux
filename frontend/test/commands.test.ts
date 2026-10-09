@@ -14,6 +14,11 @@ describe("commands bus", () => {
     expect(called).toBe(1);
   });
 
+  it("reports false when the command declines", () => {
+    register("test.decline", () => false);
+    expect(invoke("test.decline")).toBe(false);
+  });
+
   it("returns false and warns for an unknown command", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(invoke("test.missing")).toBe(false);

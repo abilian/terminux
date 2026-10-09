@@ -6,6 +6,7 @@ import logging
 import re
 import sys
 import threading
+from types import SimpleNamespace
 
 import pytest
 
@@ -121,3 +122,21 @@ def test_windows_gets_an_ico_window_icon() -> None:
     expected = "icon.ico" if sys.platform == "win32" else "icon.png"
     assert app_mod.WINDOW_ICON.name == expected
     assert app_mod.WINDOW_ICON.exists()
+
+
+@pytest.mark.parametrize(
+    ("platform", "has_edit"), [("win32", True), ("linux", True), ("darwin", False)]
+)
+def test_edit_menu_only_where_the_webview_has_none(
+    monkeypatch, platform, has_edit
+) -> None:
+    """pywebview adds a native Edit menu on macOS only; elsewhere terminux
+    provides Copy / Paste / Select All itself (there's no context menu)."""
+    monkeypatch.setattr(app_mod.sys, "platform", platform)
+    menus = app_mod._build_menu(SimpleNamespace(active_window=lambda: None))
+    titles = [m.title for m in menus]
+    assert ("Edit" in titles) is has_edit
+    if has_edit:
+        edit = menus[titles.index("Edit")]
+        labels = [getattr(i, "title", None) for i in edit.items]
+        assert labels == ["Copy", "Paste", None, "Select All"]

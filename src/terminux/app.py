@@ -556,7 +556,7 @@ def _build_menu(webview_mod: _WebviewModuleLike) -> list[Menu]:
         MenuAction("Sort by Activity", _cmd("workspace.reorder-by-activity")),
     ])
 
-    return [
+    menus = [
         Menu(
             "File",
             [
@@ -596,6 +596,17 @@ def _build_menu(webview_mod: _WebviewModuleLike) -> list[Menu]:
         Menu("Workspace", workspace_items),
         Menu("Help", [MenuAction("Documentation", _url(DOCS_URL))]),
     ]
+    # pywebview gives macOS windows a native Edit menu (Copy, Paste, Select
+    # All); Windows and Linux windows get none, and no context menu either.
+    if sys.platform != "darwin":
+        edit_items = [
+            MenuAction("Copy", _cmd("edit.copy")),
+            MenuAction("Paste", _cmd("edit.paste")),
+            MenuSeparator(),
+            MenuAction("Select All", _cmd("edit.select-all")),
+        ]
+        menus.insert(1, Menu("Edit", edit_items))
+    return menus
 
 
 if __name__ == "__main__":
