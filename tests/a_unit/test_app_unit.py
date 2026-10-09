@@ -140,3 +140,17 @@ def test_edit_menu_only_where_the_webview_has_none(
         edit = menus[titles.index("Edit")]
         labels = [getattr(i, "title", None) for i in edit.items]
         assert labels == ["Copy", "Paste", None, "Select All"]
+
+
+def test_windows_edit_paste_hands_the_clipboard_text_to_the_page(monkeypatch) -> None:
+    """WebView2 refuses the page's clipboard API, so on Windows the menu's
+    Paste reads the clipboard in Python and passes the text (JSON-quoted)."""
+    monkeypatch.setattr(app_mod.sys, "platform", "win32")
+    monkeypatch.setattr(app_mod.clipboard, "read_text", lambda: 'echo "hi"\n')
+    calls: list[str] = []
+    window = SimpleNamespace(evaluate_js=calls.append)
+    menus = app_mod._build_menu(SimpleNamespace(active_window=lambda: window))
+    edit = next(m for m in menus if m.title == "Edit")
+    paste = next(i for i in edit.items if getattr(i, "title", None) == "Paste")
+    paste.function()
+    assert calls == ['window.terminux?.pasteText("echo \\"hi\\"\\n")']

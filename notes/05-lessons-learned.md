@@ -118,6 +118,10 @@ Tab ids are server-generated uuid4s today, but a single `^[A-Za-z0-9_-]+$` guard
 
 Symptom: first `uvx terminux` on Windows dies right after "server ready" with a .NET `System.ArgumentException: Argument 'picture' must be a picture that can be used as a Icon`. Cause: pywebview's docs say `icon=` is GTK/Qt only, but the WinForms backend also uses it, passing the path to `System.Drawing.Icon(path)`, which rejects PNG. Fix: ship `assets/icon.ico` and pick the file per platform (`app.WINDOW_ICON`).
 
+### WebView2 has no Edit menu, no context menu, and refuses `navigator.clipboard.readText()`
+
+Symptom: no way to copy or paste on Windows (and Linux); after adding an Edit menu, Edit → Paste still did nothing while `Ctrl+V` worked. Cause: pywebview builds an Edit menu only on macOS and disables the context menu outside `--debug`; a menu click gives the webview no keystroke for a native paste, and WebView2 denies the clipboard read permission that pywebview never handles. Fix: keyboard paste keeps the webview's default action (stop propagation so xterm doesn't send ^V, but don't `preventDefault`); the Windows menu Paste reads `CF_UNICODETEXT` in Python (`terminux/clipboard.py`, ctypes) and calls `window.terminux.pasteText()`.
+
 ## Frontend (WebKit / browser)
 
 ### `fetch({ keepalive: true })` for in-flight requests during page unload

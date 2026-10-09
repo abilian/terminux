@@ -25,6 +25,7 @@ from urllib.parse import urlparse
 
 import uvicorn
 
+from terminux import clipboard
 from terminux.constants import DOCS_URL
 from terminux.core import persistence
 from terminux.diagnostics import start_watchdog
@@ -513,6 +514,20 @@ def _run_connected(remote_url: str, *, debug: bool = False) -> None:
     )
 
 
+def _paste_from_python(webview_mod: _WebviewModuleLike) -> Callable[[], None]:
+    """Edit → Paste on Windows: a menu click gives the webview no keystroke
+    to paste from, and WebView2 refuses the page's clipboard API, so read
+    the clipboard here and hand the text to the page."""
+
+    def callback() -> None:
+        win = webview_mod.active_window()
+        if win is not None:
+            text = json.dumps(clipboard.read_text())
+            win.evaluate_js(f"window.terminux?.pasteText({text})")
+
+    return callback
+
+
 def _build_menu(webview_mod: _WebviewModuleLike) -> list[Menu]:
     """Build the native application menu — same set of verbs the keyboard
     chords and the command palette dispatch through, so the menu is just
@@ -601,7 +616,12 @@ def _build_menu(webview_mod: _WebviewModuleLike) -> list[Menu]:
     if sys.platform != "darwin":
         edit_items = [
             MenuAction("Copy", _cmd("edit.copy")),
-            MenuAction("Paste", _cmd("edit.paste")),
+            MenuAction(
+                "Paste",
+                _paste_from_python(webview_mod)
+                if sys.platform == "win32"
+                else _cmd("edit.paste"),
+            ),
             MenuSeparator(),
             MenuAction("Select All", _cmd("edit.select-all")),
         ]

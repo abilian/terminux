@@ -34,7 +34,8 @@ export function selectAll(): void {
   activeSession()?.term.selectAll();
 }
 
-function pasteText(text: string): void {
+/** Paste ``text`` into the active terminal, as if typed by a paste. */
+export function pasteText(text: string): void {
   const sess = activeSession();
   if (!sess || !text) {
     return;

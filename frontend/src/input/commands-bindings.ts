@@ -17,6 +17,7 @@ import {
   copySelection,
   expectNativePaste,
   pasteFromClipboard,
+  pasteText,
   selectAll,
 } from "../term/clipboard";
 import { openStatsPanel } from "../ui/statspanel";
@@ -30,7 +31,10 @@ import { closeTab, renderTabs, switchTab } from "../ui/tabs";
 
 declare global {
   interface Window {
-    terminux: { invoke(id: string): boolean };
+    terminux: {
+      invoke(id: string): boolean;
+      pasteText(text: string): void;
+    };
   }
 }
 
@@ -141,5 +145,7 @@ export function installCommands(): void {
   });
 
   // Native menu reaches in here via pywebview's ``evaluate_js``.
-  window.terminux = { invoke };
+  // pasteText: Windows' Edit → Paste reads the clipboard in Python (the
+  // webview refuses the clipboard API) and hands the text over.
+  window.terminux = { invoke, pasteText };
 }
