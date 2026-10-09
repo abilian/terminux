@@ -38,7 +38,7 @@ These are additive along existing interfaces. The backend already speaks HTTP + 
 
 By impact-per-effort, ranked:
 
-1. **Unified command palette.** Small surface, immediate UX win: mockups, then merge `palette.ts` and `cmdpalette.ts` (they already share `FuzzyOverlay`). It drops the asymmetry between Linux (`F1`) and macOS (`Cmd+Shift+P`) for the command launcher.
+1. **Unified command palette.** Small surface, immediate UX win: mockups, then merge `palette.ts` and `cmdpalette.ts` (they already share `FuzzyOverlay`). It drops the platform asymmetry for the quick switcher (`Ctrl+Shift+O` on Linux and Windows, `Cmd+P` on macOS).
 2. **Split panes.** The biggest "feels like a real terminal" feature. The plumbing is pane-aware in the spec; the work is per-tab pane-tree state, a drag-to-split UI, and routing keystrokes to the focused pane.
 3. **Windows PTY.** Self-contained behind `PtyBackend`, with no UI change; milestone 2 of `06-windows-port.md` (the reader refactor) can start on macOS.
 4. **Real auth.** Mostly server-side; it opens remote mode to setups without an SSH tunnel.

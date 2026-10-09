@@ -4,7 +4,9 @@
 //
 // Modifier conventions (see ./platform.ts):
 //   macOS  — Cmd        for app shortcuts; Ctrl flows to the shell.
-//   Linux  — Ctrl+Shift for app shortcuts; raw Ctrl flows to the shell.
+//   Linux and Windows — Ctrl+Shift for app shortcuts (the GNOME Terminal
+//            and Windows Terminal convention); raw Ctrl flows to the shell,
+//            except the zoom keys, which those terminals also take bare.
 //
 // Key matching uses ``e.code`` (layout-independent: ``KeyT``/``Digit1``/
 // ``BracketLeft``) rather than ``e.key`` for any chord that requires Shift
@@ -14,16 +16,43 @@
 import { invoke } from "./commands";
 import { IS_MAC, appMod } from "./platform";
 
-// Linux-only chords that live outside the ``appMod`` gate: F1 for the
-// command palette (provisional, see notes/03-future-considerations.md).
-// Everything else — including workspace digit jumps — uses the unified
-// Ctrl+Shift app modifier inside ``handleAppChord``.
-function handleLinuxOnlyChord(e: KeyboardEvent): boolean {
+// Zoom keys: the typed character wins (``-`` sits on the 6 key on AZERTY,
+// and the key in the US ``=`` position types ``-`` on the Mac French
+// layout); the physical key (``e.code``) is the fallback for chords where
+// Shift changed the character (``_``, ``)``) or the numpad.
+function zoomCommand(e: KeyboardEvent): string | null {
+  if (e.key === "+" || e.key === "=") {
+    return "view.zoom.in";
+  }
+  if (e.key === "-") {
+    return "view.zoom.out";
+  }
+  if (e.code === "Equal" || e.code === "NumpadAdd") {
+    return "view.zoom.in";
+  }
+  if (e.code === "Minus" || e.code === "NumpadSubtract") {
+    return "view.zoom.out";
+  }
+  if (e.code === "Digit0" || e.code === "Numpad0") {
+    return "view.zoom.reset";
+  }
+  return null;
+}
+
+// Linux/Windows chords that live outside the ``appMod`` gate: F1 as a
+// second key for the command palette, and bare Ctrl+= / Ctrl+- / Ctrl+0 for zoom, as in GNOME Terminal and
+// Windows Terminal. Everything else — including workspace digit jumps —
+// uses the unified Ctrl+Shift app modifier inside ``handleAppChord``.
+function handleNonMacChord(e: KeyboardEvent): boolean {
   if (IS_MAC) {
     return false;
   }
   if (e.key === "F1" && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
     return invoke("palette.command");
+  }
+  const zoom = zoomCommand(e);
+  if (zoom && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
+    return invoke(zoom);
   }
   return false;
 }
@@ -34,16 +63,9 @@ function handleAppChord(e: KeyboardEvent): boolean {
     return invoke("view.copy-on-select.toggle");
   }
 
-  // Font zoom uses ``e.code`` so Shift on Linux doesn't matter (``+``,
-  // ``_``, ``)`` would otherwise hide ``=``, ``-``, ``0`` on shifted layouts).
-  if (e.code === "Equal" || e.code === "NumpadAdd") {
-    return invoke("view.zoom.in");
-  }
-  if (e.code === "Minus" || e.code === "NumpadSubtract") {
-    return invoke("view.zoom.out");
-  }
-  if (e.code === "Digit0" || e.code === "Numpad0") {
-    return invoke("view.zoom.reset");
+  const zoom = zoomCommand(e);
+  if (zoom) {
+    return invoke(zoom);
   }
 
   if (e.code === "KeyB") {
@@ -53,13 +75,14 @@ function handleAppChord(e: KeyboardEvent): boolean {
     return invoke("view.find");
   }
 
-  // Cmd+Shift+P on macOS opens the command palette. On Linux the same
-  // physical chord (Ctrl+Shift+P) *is* the appMod for P — i.e. the quick
-  // switcher — so the secondary action lives on F1 instead, handled above.
-  if (IS_MAC && e.shiftKey && e.code === "KeyP") {
-    return invoke("palette.command");
-  }
+  // Command palette: Cmd+Shift+P on macOS, Ctrl+Shift+P elsewhere (the
+  // VS Code / Windows Terminal chord). The quick switcher is Cmd+P on
+  // macOS; Linux/Windows can't take bare Ctrl+P (shell history), so it
+  // lives on Ctrl+Shift+O.
   if (e.code === "KeyP") {
+    return invoke(IS_MAC && !e.shiftKey ? "palette.quick" : "palette.command");
+  }
+  if (!IS_MAC && e.code === "KeyO") {
     return invoke("palette.quick");
   }
 
@@ -109,7 +132,7 @@ export function installShortcuts(): void {
   window.addEventListener(
     "keydown",
     (e: KeyboardEvent) => {
-      let handled = handleLinuxOnlyChord(e);
+      let handled = handleNonMacChord(e);
       if (!handled && appMod(e)) {
         handled = handleAppChord(e);
       }

@@ -47,9 +47,9 @@ That's it. You're in.
 
 <div align="center">
 
-<img src="https://git.sr.ht/~sfermigier/terminux/blob/main/docs/src/images/quick-switcher.png" alt="The fuzzy quick switcher (Ctrl+Shift+P / Cmd+P) jumping between workspaces and tabs" width="800"/>
+<img src="https://git.sr.ht/~sfermigier/terminux/blob/main/docs/src/images/quick-switcher.png" alt="The fuzzy quick switcher (Ctrl+Shift+O / Cmd+P) jumping between workspaces and tabs" width="800"/>
 
-<sub>The fuzzy quick switcher (<code>Ctrl+Shift+P</code> on Linux, <code>Cmd+P</code> on macOS): jump to any workspace or tab.</sub>
+<sub>The fuzzy quick switcher (<code>Ctrl+Shift+O</code> on Linux and Windows, <code>Cmd+P</code> on macOS): jump to any workspace or tab.</sub>
 
 </div>
 

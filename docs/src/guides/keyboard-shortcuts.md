@@ -2,9 +2,11 @@
 
 terminux follows the platform convention for the app modifier:
 
-- **Linux**: `Ctrl+Shift+<key>` for everything, including digit jumps.
-  A raw `Ctrl+<letter>` chord flows to the shell unchanged, matching GNOME
-  Terminal, Konsole, Alacritty, Ghostty and kitty.
+- **Linux and Windows**: `Ctrl+Shift+<key>` for everything, including
+  digit jumps. A raw `Ctrl+<letter>` chord flows to the shell unchanged,
+  matching GNOME Terminal, Konsole, Alacritty, Ghostty, kitty and Windows
+  Terminal. The zoom keys also work without Shift, as in GNOME Terminal and
+  Windows Terminal.
 - **macOS**: `Cmd+<key>`. Raw `Ctrl` is left alone so terminal/Emacs
   chords (tmux prefix, fish/zsh history, readline editing) flow straight
   to the shell.
@@ -13,11 +15,11 @@ All shortcuts keep working while the terminal has focus.
 
 ## Navigation
 
-| Action | Linux | macOS |
+| Action | Linux & Windows | macOS |
 | --- | --- | --- |
 | Jump to workspace 1–9 | ++ctrl+shift+1++ … ++ctrl+shift+9++ | ++cmd+1++ … ++cmd+9++ |
-| Quick switcher (fuzzy, workspaces & tabs) | ++ctrl+shift+p++ | ++cmd+p++ |
-| Command palette (commands + actions) | ++f1++ *(provisional)* | ++cmd+shift+p++ |
+| Quick switcher (fuzzy, workspaces & tabs) | ++ctrl+shift+o++ | ++cmd+p++ |
+| Command palette (commands + actions) | ++ctrl+shift+p++ or ++f1++ | ++cmd+shift+p++ |
 | Previous / next tab | ++ctrl+shift+bracket-left++ / ++ctrl+shift+bracket-right++ | ++cmd+shift+bracket-left++ / ++cmd+shift+bracket-right++ |
 | Previous / next workspace | ++ctrl+shift+up++ / ++ctrl+shift+down++ | ++shift+cmd+up++ / ++shift+cmd+down++ |
 
@@ -27,7 +29,7 @@ The quick switcher fuzzy-matches across every workspace and tab:
 
 ## Workspace & tab lifecycle
 
-| Action | Linux | macOS |
+| Action | Linux & Windows | macOS |
 | --- | --- | --- |
 | New tab | ++ctrl+shift+t++ | ++cmd+t++ |
 | New workspace | ++ctrl+shift+n++ | ++cmd+n++ |
@@ -38,12 +40,12 @@ one rather than quitting the app.
 
 ## View
 
-| Action | Linux | macOS |
+| Action | Linux & Windows | macOS |
 | --- | --- | --- |
 | Toggle sidebar | ++ctrl+shift+b++ | ++cmd+b++ |
 | Find in terminal | ++ctrl+shift+f++ | ++cmd+f++ |
-| Zoom terminal font in / out | ++ctrl+shift+plus++ / ++ctrl+shift+minus++ | ++cmd+plus++ / ++cmd+minus++ |
-| Reset font size | ++ctrl+shift+0++ | ++cmd+0++ |
+| Zoom terminal font in / out | ++ctrl+plus++ / ++ctrl+minus++ (Shift optional) | ++cmd+plus++ / ++cmd+minus++ |
+| Reset font size | ++ctrl+0++ (Shift optional) | ++cmd+0++ |
 
 ## Editing
 
@@ -53,7 +55,7 @@ one rather than quitting the app.
 
 ## Selection & links
 
-| Action | Linux | macOS |
+| Action | Linux & Windows | macOS |
 | --- | --- | --- |
 | Toggle auto-copy on select (iTerm2-style) | ++ctrl+shift+alt+c++ | ++cmd+alt+c++ |
 | Open URL under cursor | ++ctrl+click++ | ++cmd+click++ |

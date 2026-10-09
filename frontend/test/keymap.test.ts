@@ -44,8 +44,42 @@ describe("keymap (Linux conventions)", () => {
     expect(e.defaultPrevented).toBe(true);
   });
 
+  it("opens the command palette on Ctrl+Shift+P, the switcher on Ctrl+Shift+O", () => {
+    press({ code: "KeyP", ctrlKey: true, shiftKey: true });
+    expect(mocks.invoke).toHaveBeenLastCalledWith("palette.command");
+    press({ code: "KeyO", ctrlKey: true, shiftKey: true });
+    expect(mocks.invoke).toHaveBeenLastCalledWith("palette.quick");
+  });
+
   it("lets unmodified keys flow to the shell", () => {
     const e = press({ code: "KeyT" });
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(e.defaultPrevented).toBe(false);
+  });
+
+  it("zooms with bare Ctrl as well as Ctrl+Shift", () => {
+    press({ key: "=", code: "Equal", ctrlKey: true });
+    expect(mocks.invoke).toHaveBeenLastCalledWith("view.zoom.in");
+    press({ key: "-", code: "Minus", ctrlKey: true });
+    expect(mocks.invoke).toHaveBeenLastCalledWith("view.zoom.out");
+    press({ key: "0", code: "Digit0", ctrlKey: true });
+    expect(mocks.invoke).toHaveBeenLastCalledWith("view.zoom.reset");
+    press({ key: "+", code: "Equal", ctrlKey: true, shiftKey: true });
+    expect(mocks.invoke).toHaveBeenLastCalledWith("view.zoom.in");
+    press({ key: "_", code: "Minus", ctrlKey: true, shiftKey: true });
+    expect(mocks.invoke).toHaveBeenLastCalledWith("view.zoom.out");
+  });
+
+  it("zooms on the typed character, whatever the layout", () => {
+    // AZERTY: "-" is on the 6 key, and Ctrl+6 must not jump anywhere.
+    const e = press({ key: "-", code: "Digit6", ctrlKey: true });
+    expect(mocks.invoke).toHaveBeenCalledWith("view.zoom.out");
+    expect(mocks.invoke).toHaveBeenCalledTimes(1);
+    expect(e.defaultPrevented).toBe(true);
+  });
+
+  it("leaves other bare Ctrl chords to the shell", () => {
+    const e = press({ key: "n", code: "KeyN", ctrlKey: true });
     expect(mocks.invoke).not.toHaveBeenCalled();
     expect(e.defaultPrevented).toBe(false);
   });

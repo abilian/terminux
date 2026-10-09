@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Fixed
 
+- **Font zoom works with plain `Ctrl` on Linux and Windows.** `Ctrl+=`, `Ctrl+-` and `Ctrl+0` now zoom and reset the terminal font, as in GNOME Terminal and Windows Terminal; before, only the `Ctrl+Shift` versions did. Zoom also follows the character you type, so it works on layouts that put `-` elsewhere (on a French AZERTY keyboard, it's on the 6 key).
 - **The palette keeps the keyboard while a shell is still starting.** Opening the palette (or a rename, or find) before a new tab's shell had finished starting let the terminal take the focus back as soon as it was ready, so what you typed next went to the shell.
 - **Progress bars and directory reports no longer ring the attention bell.** Programs that report progress with `OSC 9;4` (winget, and more and more tools on every platform), and prompts that report their directory with `OSC 9;9` (oh-my-posh, Starship), lit the sidebar's attention dot at every update, as if they were notifications. Only plain `OSC 9;<message>` notifications count now.
 - **First steps on Windows: client mode.** `terminux --connect <url>` now runs on Windows, so a Windows machine can open the terminals of a terminux server on a Mac or Linux box. Before, the window crashed at launch with `Argument 'picture' must be a picture that can be used as a Icon`, and links clicked in a terminal did nothing. On Windows, settings now live in `AppData\Local\terminux` (it was `AppData\Local\terminux\terminux`). 
@@ -21,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Changed
 
+- **`Ctrl+Shift+P` now opens the command palette on Linux and Windows**, as in VS Code and Windows Terminal. The quick switcher moves from `Ctrl+Shift+P` to `Ctrl+Shift+O`. `F1` still opens the command palette, and macOS keeps `Cmd+Shift+P` and `Cmd+P`.
 - **Log lines now include a date and time** in every mode (they used to need `--debug`), so a log from a long-running instance can be matched against what happened when. `--debug` and `--trace` add milliseconds.
 
 ## [0.9.0] - 2026-09-17

@@ -6,22 +6,22 @@ This file lists design questions we have left open on purpose. Each entry states
 
 ## Unified command palette
 
-**Question.** Should we collapse the quick switcher (`Cmd+P` / `Ctrl+Shift+P`) and the command palette (`Cmd+Shift+P` / `F1`) into a single overlay?
+**Question.** Should we collapse the quick switcher (`Cmd+P` / `Ctrl+Shift+O`) and the command palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) into a single overlay?
 
 **Background.** The two-palette split came from VS Code:
 
 - **Quick switcher** lists workspaces and tabs; selecting one jumps to it.
 - **Command palette** lists verbs (Sort by activity, Reset counters, Display usage stats, Toggle prefs…); selecting one runs the verb.
 
-On Linux the two-palette model is awkward: the natural app-modifier chord is `Ctrl+Shift+P`, which already maps to the quick switcher. The "+ Shift" trick that distinguishes the two palettes on macOS isn't free on Linux, where Ctrl+Shift is already the modifier. We currently work around that by binding the command palette to `F1` on Linux as a provisional stop-gap. It works but it's asymmetric and a little ad-hoc.
+On Linux and Windows the two-palette model is awkward. The "+ Shift" trick that distinguishes the two palettes on macOS (`Cmd+P` / `Cmd+Shift+P`) isn't free there, where Ctrl+Shift is already the modifier and bare `Ctrl+P` belongs to the shell. Since 2026-10, `Ctrl+Shift+P` opens the command palette (the VS Code and Windows Terminal chord, which Windows users expect) and the quick switcher lives on `Ctrl+Shift+O`; `F1` still opens the command palette. It works, but the switcher's chord differs between platforms.
 
 A unified palette dissolves the split: one overlay, one chord, mixed results.
 
 **Options.**
 
 1. **Unify (one palette).** `Cmd+Shift+P` / `Ctrl+Shift+P` opens it. Commands and workspaces mingle. Match fuzzy across both. Selecting either does the right thing. Same UX both platforms.
-2. **Keep split, change Linux chord.** Use `F1` permanently or pick a different binding (`Ctrl+Shift+;`?). The semantics stay symmetric, but the chords differ.
-3. **Keep split, swap the Linux assignments.** Make `Ctrl+Shift+P` open the command palette on Linux and use `Ctrl+P` (clobbering shell history) for the quick switcher. **No**: this is exactly what we just decided not to do.
+2. **Keep split (current state).** `Ctrl+Shift+P` / `Ctrl+Shift+O` on Linux and Windows. The semantics stay symmetric, but the switcher chords differ.
+3. **Keep split, give the switcher bare `Ctrl+P`.** **No**: it clobbers shell history.
 
 **Leaning toward (1), unified.** The split has never mattered much; both palettes do "fuzzy-pick from a list and run the highlighted result." The UX question is how to keep that one overlay legible.
 
@@ -48,4 +48,4 @@ The unification only works if the merged list reads cleanly *without asking the 
 2. Typing 3 chars filters cleanly without ambiguity.
 3. The "command rows always sticky at top" rule (if we adopt it) doesn't confuse arrow-key navigation.
 
-If those pass, ship it and retire `F1`.
+If those pass, ship it, and retire `F1` and `Ctrl+Shift+O`.

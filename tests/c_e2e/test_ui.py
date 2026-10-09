@@ -16,9 +16,10 @@ UI = 15_000  # ms; shells (login → fish) can be slow to first prompt
 # the frontend's appMod() picks Cmd on macOS, Ctrl+Shift on Linux — mirror
 # that here so keyboard shortcuts work in both CI (Linux) and local dev.
 APP_MOD = "Meta" if sys.platform == "darwin" else "Control+Shift"
-# The command launcher is Cmd+Shift+P on macOS; on Linux that chord is
-# the quick switcher, so the launcher lives on F1 (see keymap.ts).
-CMD_PALETTE = "Meta+Shift+p" if sys.platform == "darwin" else "F1"
+# Command palette and quick switcher (see keymap.ts): Linux can't take a
+# bare Ctrl+P (shell history), so its switcher is Ctrl+Shift+O.
+CMD_PALETTE = "Meta+Shift+p" if sys.platform == "darwin" else "Control+Shift+p"
+QUICK_SWITCHER = "Meta+p" if sys.platform == "darwin" else "Control+Shift+o"
 
 
 def test_app_loads_workspace_tab_and_terminal(page: Page, app_url: str) -> None:
@@ -153,7 +154,7 @@ def test_palette_opens_filters_and_closes(page: Page, app_url: str) -> None:
     expect(page.locator(".xterm")).to_be_visible(timeout=UI)
     pal = page.locator("#palette")
     expect(pal).to_be_hidden()
-    page.keyboard.press(f"{APP_MOD}+p")
+    page.keyboard.press(QUICK_SWITCHER)
     expect(pal).to_be_visible()
     expect(pal.locator("input")).to_be_focused()
     # Lists the (single) workspace + its tab; typing filters the list.
