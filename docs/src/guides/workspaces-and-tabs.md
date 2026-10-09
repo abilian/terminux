@@ -3,7 +3,7 @@
 terminux is organized around two concepts: **workspaces** (the left sidebar) and
 **tabs** (the terminals inside a workspace).
 
-![The workspaces sidebar with two workspaces and a tabbed terminal](../images/main-window.png){ loading=lazy }
+![The workspaces sidebar with five workspaces and a tabbed terminal](../images/main-window.png){ loading=lazy }
 
 ## Workspaces
 
@@ -151,8 +151,7 @@ are *not* still running.
 
 !!! warning "Not persisted"
     Running processes are **not** restored; only their visible output is.
-    Split panes and the Windows PTY backend are still on the roadmap (see
-    the [FAQ](../faq.md)).
+    Split panes are still on the roadmap (see the [FAQ](../faq.md)).
 
 !!! info "Full-screen TUIs (Claude Code, vim, less, tmux, fzf…)"
     Full-screen apps draw into the terminal's **alternate screen buffer**,

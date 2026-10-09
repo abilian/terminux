@@ -60,7 +60,7 @@ WKWebView backend.
 
 ## Windows
 
-Not yet: the Windows PTY backend is on the roadmap. See the [FAQ](../faq.md).
+There is no standalone Windows bundle yet. Install terminux from PyPI instead (`uvx terminux` or `uv tool install terminux`, with Python 3.12 or later); the [FAQ](../faq.md) covers the Windows specifics.
 
 ## Troubleshooting on macOS
 

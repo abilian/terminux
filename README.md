@@ -7,13 +7,14 @@
 **Workspaces sit on the left, tabbed terminals in the middle, and everything stays where you left it.**
 
 [![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey.svg)](#install--package)
-[![Status](https://img.shields.io/badge/status-0.8%20preview-orange.svg)](#status-08-preview)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](#install--package)
+[![PyPI](https://img.shields.io/pypi/v/terminux.svg)](https://pypi.org/project/terminux/)
+[![Status](https://img.shields.io/badge/status-0.10%20preview-orange.svg)](#status-010-preview)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)](LICENSE)
 
 <br/>
 
-<img src="https://git.sr.ht/~sfermigier/terminux/blob/main/docs/src/images/main-window.png" alt="terminux: workspaces sidebar and a tabbed terminal running a test suite" width="800"/>
+<img src="https://git.sr.ht/~sfermigier/terminux/blob/main/docs/src/images/main-window.png" alt="terminux: five workspaces in the sidebar, a finished test run in the active one" width="720"/>
 
 </div>
 
@@ -21,39 +22,46 @@
 
 ## Why terminux?
 
-You have *six* projects on the go. Each one is a different directory, a different mental context, a different set of running shells. terminux gives each of them a home (a **workspace**) and keeps them alive and arranged exactly how you left them, even across restarts.
+You have *six* projects on the go. Each one has its own directory, its own running server, its own test suite and its own half-finished command. By mid-afternoon they are spread across a dozen terminal windows, and finding the one where the build just finished means clicking through all of them.
 
-It's built in **Python** on a clean, auditable two-process architecture, with **reliability over features** as the guiding principle. There is no account, telemetry, or AI: just a terminal that respects your flow.
+terminux gives each project a home (a **workspace** in a sidebar) with its own tabs of real shells. A small dot tells you what's happening in each workspace. The whole layout comes back after a restart, scrollback included. You need no account, terminux sends no telemetry, and it has no AI features: it's just a terminal that respects your flow.
+
+## Try it
+
+terminux is on PyPI. It runs on macOS, Linux and Windows 10/11, with Python 3.12 or later:
 
 ```sh
-uv sync && make frontend
-uv run terminux
+uvx terminux                  # try it without installing
+uv tool install terminux      # or install it
 ```
-
-That's it. You're in.
 
 ## ✨ What you get
 
-- **Workspaces sidebar:** a persistent list of named workspaces. Names track the first tab's working directory automatically (until you pin one).
-- **Tabbed terminals:** every workspace has its own tabs, each a real PTY shell. Switch freely; background tabs keep streaming, no jank.
-- **Everything comes back:** workspaces, tabs, window geometry, font size, each shell's working directory, and *the visible scrollback of every tab* are restored after a restart. Fresh shells, same layout, same view you left.
-- **Remote access:** run the backend on a server, connect from your laptop with `--connect`. Shells and long-running builds keep going through lid-closes, network hops, and device switches; terminals reconnect automatically and repaint from the server's buffer. See [**Remote access**](docs/src/guides/remote.md).
-- **Keyboard-first:** sidebar shows a keycap on each of the first nine workspaces; jump straight there with `Ctrl+Shift+1..9` on Linux (`Cmd+1..9` on macOS). Plus a fuzzy quick-switcher, find-in-terminal, font zoom, and more.
-- **Platform-respecting shortcuts:** Linux uses `Ctrl+Shift+<key>` for app shortcuts (matching GNOME Terminal, Konsole, Alacritty, Ghostty, kitty), so raw `Ctrl+P` / `Ctrl+B` / `Ctrl+F` flow straight to your shell. macOS uses `Cmd` for the same job; raw `Ctrl` is left alone.
-- **Clickable URLs & iTerm2-style copy:** modifier-click opens links; optional auto-copy on selection, persisted, off by default.
-- **Working vs ready:** a two-color sidebar dot reads like a CI traffic light: **amber** while a foreground task is actively working (idle TUIs and parked prompts don't count), **green** once it finishes. Works out of the box; opt-in [shell integration](docs/src/guides/shell-integration.md) makes it more precise. Plain output by itself never falsely promotes to green.
-- **Drag & drop:** reorder workspaces and tabs with live drop feedback. Drop a file to paste its shell-quoted path.
-- **Local-first & hardened:** loopback-only by default, per-session auth token, CSP and security headers, atomic versioned persistence.
+- **One workspace per project.** A sidebar of named workspaces, each with its own tabs. A workspace names itself after its first tab's directory (rename it to pin your own name). `Cmd+1..9` on macOS, `Ctrl+Shift+1..9` on Linux and Windows jumps straight to one.
+- **Know when something is done.** Each workspace's dot works like a traffic light: **amber** while a task is running there, **green** once it finishes while you were elsewhere. It works out of the box; the optional [shell integration](docs/src/guides/shell-integration.md) makes it exact.
+- **Everything comes back.** Quit and reopen: workspaces, tabs, window size, font size, each tab's directory and *the visible scrollback of every tab* are restored. The shells are fresh; the view is the one you left.
+- **Nothing pauses in the background.** A server keeps logging and a build keeps building while you work in another workspace.
+- **Keyboard-first.** A fuzzy quick switcher for workspaces and tabs, a command palette, find-in-terminal, font zoom. Shortcuts follow each platform's habits (`Cmd` on macOS, `Ctrl+Shift` on Linux and Windows, as in GNOME Terminal and Windows Terminal), so your shell keeps its own `Ctrl` keys.
+- **Know where you are.** Hide the sidebar for more room and the current workspace's name stays visible in the tab bar; the window title shows it too.
+- **Your shells on another machine.** Run terminux as a server and connect from your laptop. Close the lid, change networks, come back later: terminals reconnect on their own and repaint what happened. See [Remote access](docs/src/guides/remote.md).
+- **The small things.** Copy and paste with `Ctrl+Shift+C` / `Ctrl+Shift+V` (`Cmd+C` / `Cmd+V` on macOS, plain `Ctrl+C` / `Ctrl+V` on Windows), `Cmd`/`Ctrl`+click opens links (including the hyperlinks modern tools print), `Shift+Enter` inserts a newline in Claude Code and similar tools, drag and drop reorders workspaces and tabs, dropping a file pastes its path, and copy-on-select is one toggle away.
+- **Local and sturdy.** Everything stays on your machine, in readable local files. It listens only on your machine unless you ask otherwise, a stuck program can't freeze the app, and saves are atomic.
 
 <div align="center">
 
-<img src="https://git.sr.ht/~sfermigier/terminux/blob/main/docs/src/images/quick-switcher.png" alt="The fuzzy quick switcher (Ctrl+Shift+O / Cmd+P) jumping between workspaces and tabs" width="800"/>
+<img src="https://git.sr.ht/~sfermigier/terminux/blob/main/docs/src/images/restored.png" alt="After a restart: the previous test run, a 'session resumed' line, and a fresh prompt" width="720"/>
 
-<sub>The fuzzy quick switcher (<code>Ctrl+Shift+O</code> on Linux and Windows, <code>Cmd+P</code> on macOS): jump to any workspace or tab.</sub>
+<sub>After a restart, the previous session's output sits above a <code>session resumed</code> line, with a fresh shell below.</sub>
+
+<br/><br/>
+
+<img src="https://git.sr.ht/~sfermigier/terminux/blob/main/docs/src/images/quick-switcher.png" alt="The fuzzy quick switcher, filtered on 'api'" width="720"/>
+
+<sub>The quick switcher (<code>Cmd+P</code> on macOS, <code>Ctrl+Shift+O</code> on Linux and Windows): jump to any workspace or tab.</sub>
 
 </div>
 
-## Run
+## Run from source
 
 ```sh
 uv sync
@@ -123,11 +131,11 @@ make format
 
 The e2e tier drives the served UI with a real browser (no pywebview); install it once with `uv run playwright install chromium`.
 
-## Status: 0.9 preview
+## Status: 0.10 preview
 
-**Works today:** workspaces sidebar (create / rename / reorder / close, working/ready dot), tabs with multiple live terminals, real PTY shells streaming in the background, layout *and scrollback* restored across restarts (always with fresh shells), remote mode (`--server` / `--connect`) with automatic reconnection, program-printed hyperlinks, self-diagnosing freeze watchdog, macOS & Linux bundles. Recent releases hardened the remote-auth path, restored support for older Macs (Safari-14-era WebKit), and moved the UI chrome to Preact.
+**Works today (0.10):** the workspaces sidebar (create / rename / reorder / close, working/ready dot) and tabs of real PTY shells that keep streaming in the background. Layout *and scrollback* come back after a restart, always with fresh shells. Remote mode (`--server` / `--connect`) reconnects automatically. Program-printed hyperlinks open, a watchdog diagnoses freezes, and standalone macOS and Linux bundles build with one command. On Windows 10 and 11, terminux runs PowerShell or `cmd` in its tabs and can also connect to a server on another machine.
 
-**Not yet:** split panes, multi-user.
+**Not yet:** split panes, a standalone Windows bundle, multi-user accounts.
 
 ## Architecture in one breath
 

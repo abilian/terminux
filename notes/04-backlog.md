@@ -1,6 +1,6 @@
 # Backlog
 
-This is a snapshot of what's deferred, what's open, and what to pick up next, as of 0.9. It draws on `02-technical-spec.md` (§10–§14), `01-functional-spec.md` (§8–§9), `03-future-considerations.md`, `06-windows-port.md`, and the "on the roadmap" callouts in the public docs.
+This is a snapshot of what's deferred, what's open, and what to pick up next, as of 0.10. It draws on `02-technical-spec.md` (§10–§14), `01-functional-spec.md` (§8–§9), `03-future-considerations.md`, `06-windows-port.md`, and the "on the roadmap" callouts in the public docs.
 
 This is a working document: refresh it when items land or new ones surface.
 
@@ -8,7 +8,7 @@ This is a working document: refresh it when items land or new ones surface.
 
 These are additive along existing interfaces. The backend already speaks HTTP + WebSocket, owns the PTYs, and persists structure separately from live processes; every item below sits on top of that without changing the shape.
 
-- **Windows PTY**: client mode (`--connect`) already runs on Windows. Running terminals there needs `pywinpty` (ConPTY) behind the `PtyBackend` Protocol, plus Windows answers for busy detection, cwd tracking, and process-tree kill. The milestones are in [`06-windows-port.md`](06-windows-port.md).
+- **Windows follow-ups**: terminals on Windows shipped in 0.10 (see [`06-windows-port.md`](06-windows-port.md)). Still open: a standalone Windows bundle (PyInstaller, `icon.ico`), a setting to pick the shell (Git Bash, MSYS2), and a Windows runner in CI.
 - **Split panes**: each tab gets a pane tree; each leaf is just another `WS /pty/{tid}`. The persistence schema reserved the shape. The backend per-terminal model stays as is: a tab holds N terminals where it held 1 (technical-spec §12). The Preact islands (since 0.9.0) give the pane UI a component model to build on.
 - **Real auth for the open web**: remote mode (`--server` / `--connect`, auto-reconnect) shipped, and web mode works with `--host`. Both rely on a single shared access code with per-IP lockout, which is fine on loopback or through an SSH tunnel. Exposing terminux directly on a network wants real, multi-user auth (technical-spec §6 note).
 
@@ -40,7 +40,7 @@ By impact-per-effort, ranked:
 
 1. **Unified command palette.** Small surface, immediate UX win: mockups, then merge `palette.ts` and `cmdpalette.ts` (they already share `FuzzyOverlay`). It drops the platform asymmetry for the quick switcher (`Ctrl+Shift+O` on Linux and Windows, `Cmd+P` on macOS).
 2. **Split panes.** The biggest "feels like a real terminal" feature. The plumbing is pane-aware in the spec; the work is per-tab pane-tree state, a drag-to-split UI, and routing keystrokes to the focused pane.
-3. **Windows PTY.** Self-contained behind `PtyBackend`, with no UI change; milestone 2 of `06-windows-port.md` (the reader refactor) can start on macOS.
+3. **A Windows bundle and a shell setting.** Windows users currently need Python and uv; a standalone app and a choice of shell would remove the last rough edges.
 4. **Real auth.** Mostly server-side; it opens remote mode to setups without an SSH tunnel.
 
 The rest is small and opportunistic.

@@ -26,7 +26,7 @@ An IDE's integrated terminal is scoped to the project the IDE has open. terminux
 
 ## When to choose something else
 
-- You need split panes today, or Windows: both are still on the terminux roadmap.
+- You need split panes today: they are still on the terminux roadmap.
 - Raw rendering throughput is your top criterion: choose kitty, Alacritty, or Ghostty.
 - You need sessions to keep running on your *local* machine across a backend crash or reboot: a multiplexer holds that ground (terminux restores layout and scrollback, while live processes end with the backend that owns them).
 - Your team standardized on tmux scripting: terminux has no equivalent automation surface yet.

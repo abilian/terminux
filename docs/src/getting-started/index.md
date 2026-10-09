@@ -1,6 +1,16 @@
 # Installation
 
-## Requirements
+## Install from PyPI
+
+terminux runs on macOS, Linux and Windows 10/11 with Python 3.12 or later. With [`uv`](https://docs.astral.sh/uv/):
+
+```sh
+uvx terminux                  # try it without installing
+uv tool install terminux      # install it
+uv tool upgrade terminux      # upgrade later
+```
+
+## Requirements for running from source
 
 - **Python ≥ 3.12** and [`uv`](https://docs.astral.sh/uv/) for the Python side.
 - **Node.js**: only to *build* the frontend. The build output is committed to
