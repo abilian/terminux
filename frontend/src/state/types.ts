@@ -24,6 +24,11 @@ export interface WorkspaceView {
   // on quit). Drives the Shift+Cmd+P command palette and the sidebar
   // tooltip.
   active_seconds: number;
+  // Epoch seconds the user last typed in this workspace (persisted), and
+  // when it turned ready (green; null otherwise). Drive "Sort by Recent
+  // Activity".
+  last_used_at: number | null;
+  ready_since: number | null;
 }
 
 export interface StateView {

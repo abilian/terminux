@@ -122,10 +122,20 @@ class AppController:
         if self._persist:
             delete_scrollback(tab_id)
 
-    def note_input(self) -> None:
+    def note_input(self, terminal_id: str) -> None:
         """Called when keystrokes arrive over a PTY WebSocket — the only
-        signal we treat as "user is actually working here right now"."""
+        signal we treat as "user is actually working here right now".
+        Stamps the workspace that owns the terminal as last used."""
         self._last_input_at = time.monotonic()
+        with self.lock:
+            for ws in self.state.workspaces:
+                if any(
+                    (tab := self.state.tabs.get(tid)) is not None
+                    and tab.terminal_id == terminal_id
+                    for tid in ws.tab_ids
+                ):
+                    ws.last_used_at = time.time()
+                    return
 
     def tick(self, dt: float, *, now: float | None = None) -> None:
         """Credit the active workspace with ``dt`` seconds iff the user has

@@ -12,7 +12,7 @@ interface CommandEntry {
   label: string;
   commandId: string;
   // If set, the entry is hidden unless the predicate returns true.
-  // Used so e.g. "Sort by activity" only shows when there's more
+  // Used so e.g. the sidebar sorts only show when there's more
   // than one workspace.
   visible?: () => boolean;
 }
@@ -30,8 +30,13 @@ function buildEntries(): FuzzyEntry[] {
       commandId: "view.connect-info",
     },
     {
-      label: "Sort sidebar by activity (most used first)",
-      commandId: "workspace.reorder-by-activity",
+      label: "Sort by recent activity (ready, working, then last used)",
+      commandId: "workspace.sort.recent",
+      visible: () => (getState()?.workspaces.length ?? 0) > 1,
+    },
+    {
+      label: "Sort by time spent (most used first)",
+      commandId: "workspace.sort.time-spent",
       visible: () => (getState()?.workspaces.length ?? 0) > 1,
     },
     {

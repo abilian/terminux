@@ -473,7 +473,7 @@ async def _pump_in(
                 continue
             # Real keystrokes from the user — credit the active workspace
             # with active-session time until idle silences it.
-            ctl.note_input()
+            ctl.note_input(term.id)
             # ``term.write`` may wait for PTY input-queue space (the fd is
             # non-blocking, but a paste large enough to fill the kernel's
             # input buffer — ~4 KB on macOS — makes it select() until the

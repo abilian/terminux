@@ -308,3 +308,36 @@ def test_view_json_exposes_status_and_live() -> None:
     assert view["workspaces"][0]["status"] == "active"
     assert view["tabs"][ws.active_tab_id]["live"] is True
     assert view["active_workspace_id"] == ws.id
+
+
+def test_a_workspace_keeps_the_time_it_first_turned_ready() -> None:
+    """Sort by Recent Activity serves ready workspaces first-come first-
+    served, so a second ready signal must not move a workspace back."""
+    ws = Workspace()
+    assert ws.ready_since is None
+    ws.has_unseen_output = True
+    first = ws.ready_since
+    assert first is not None
+    ws.has_unseen_output = True
+    assert ws.ready_since == first
+    ws.has_unseen_output = False
+    assert ws.ready_since is None
+    assert not ws.has_unseen_output
+
+
+def test_last_used_at_is_persisted_and_tolerates_bad_values() -> None:
+    ws = Workspace(last_used_at=1_700_000_000)
+    assert Workspace.from_json(ws.to_json()).last_used_at == 1_700_000_000
+    for bad in ("yesterday", True, None):
+        data = {**ws.to_json(), "last_used_at": bad}
+        assert Workspace.from_json(data).last_used_at is None
+
+
+def test_the_view_exposes_ready_since_and_last_used_at() -> None:
+    s = AppState.default()
+    ws = s.workspaces[0]
+    ws.has_unseen_output = True
+    ws.last_used_at = 42
+    view = s.view_json()["workspaces"][0]
+    assert view["ready_since"] == ws.ready_since
+    assert view["last_used_at"] == 42

@@ -568,7 +568,8 @@ def _build_menu(webview_mod: _WebviewModuleLike) -> list[Menu]:
     )
     workspace_items.extend([
         MenuSeparator(),
-        MenuAction("Sort by Activity", _cmd("workspace.reorder-by-activity")),
+        MenuAction("Sort by Recent Activity", _cmd("workspace.sort.recent")),
+        MenuAction("Sort by Time Spent", _cmd("workspace.sort.time-spent")),
     ])
 
     menus = [

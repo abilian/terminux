@@ -449,6 +449,7 @@ def test_pump_in_offloads_term_write_off_event_loop() -> None:
 
     term = types.SimpleNamespace(
         write=slow_write,
+        id="t1",
         is_owner=lambda _sub: True,  # the only client owns the terminal
     )
 
@@ -466,7 +467,7 @@ def test_pump_in_offloads_term_write_off_event_loop() -> None:
         def __init__(self) -> None:
             self.input_count = 0
 
-        def note_input(self) -> None:
+        def note_input(self, _terminal_id: str) -> None:
             self.input_count += 1
 
     async def go() -> int | None:
@@ -496,6 +497,7 @@ def test_pump_in_drops_input_from_a_client_that_does_not_own_the_terminal() -> N
     written: list[bytes] = []
     term = types.SimpleNamespace(
         write=written.append,
+        id="t1",
         is_owner=lambda _sub: False,
     )
 
@@ -512,7 +514,7 @@ def test_pump_in_drops_input_from_a_client_that_does_not_own_the_terminal() -> N
     class FakeCtl:
         input_count = 0
 
-        def note_input(self) -> None:
+        def note_input(self, _terminal_id: str) -> None:
             self.input_count += 1
 
     ctl = FakeCtl()
@@ -626,7 +628,7 @@ def test_note_input_sets_last_input() -> None:
     ctl.tick(1.0, now=200.0)  # 100 s idle → no credit
     assert ctl.active_seconds(ws_id) == 0
 
-    ctl.note_input()
+    ctl.note_input("no-such-terminal")
     # note_input uses time.monotonic() so re-check the post-condition via
     # a tick at the same instant.
     ctl.tick(1.0, now=ctl._last_input_at)
@@ -642,3 +644,15 @@ def test_csp_names_ws_origin_and_rejects_hostile_host() -> None:
     assert _csp_for_host("evil; script-src *") == _CSP
     assert _csp_for_host("") == _CSP
     assert _csp_for_host(None) == _CSP
+
+
+def test_note_input_stamps_the_workspace_that_owns_the_terminal() -> None:
+    """Typing marks that terminal's workspace as last used, even when it
+    isn't the active one (a remote window may type elsewhere)."""
+    ctl = AppController(persist=False)
+    first = ctl.state.workspaces[0]
+    second = ctl.state.add_workspace()
+    ctl.state.add_tab(second.id).terminal_id = "term-2"
+    ctl.note_input("term-2")
+    assert second.last_used_at is not None
+    assert first.last_used_at is None

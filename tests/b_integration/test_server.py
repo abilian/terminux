@@ -953,3 +953,36 @@ def test_the_client_in_use_owns_the_terminal_size_and_input(
             await size_becomes((100, 30))
 
     asyncio.run(scenario())
+
+
+def test_typing_in_a_terminal_marks_its_workspace_as_last_used(
+    server: LiveServer, monkeypatch, test_shell
+) -> None:
+    """End to end for "Sort by Recent Activity": a keystroke over the PTY
+    websocket shows up as the workspace's ``last_used_at`` in the state."""
+    monkeypatch.setattr(
+        "terminux.server.controller.default_shell", lambda: test_shell.argv
+    )
+    base = server.url
+    ws0 = _req(f"{base}/api/state?t={T}")["workspaces"][0]
+    assert ws0["last_used_at"] is None
+    tid = _req(f"{base}/api/tabs/{ws0['tab_ids'][0]}/spawn?t={T}", "POST", b"{}")[
+        "terminal_id"
+    ]
+    url = base.replace("http", "ws") + f"/pty/{tid}?t={T}"
+    before = time.time()
+
+    async def scenario() -> None:
+        async with websockets.connect(url) as client:
+            await _until(client, _owner_frame(True))
+            await client.send(b" ")
+            for _ in range(250):
+                used = _req(f"{base}/api/state?t={T}")["workspaces"][0]["last_used_at"]
+                if used is not None:
+                    assert used >= before
+                    return
+                await asyncio.sleep(0.02)
+            msg = "last_used_at was never set"
+            raise AssertionError(msg)
+
+    asyncio.run(scenario())

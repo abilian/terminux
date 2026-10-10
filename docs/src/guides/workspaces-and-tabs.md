@@ -55,15 +55,23 @@ Each workspace's accumulated time shows inline in the sidebar (small, dim,
 right-aligned next to the name). Hover for the same value as a tooltip.
 
 The **command palette** (`Ctrl+Shift+P` or `F1` on Linux and Windows;
-`Cmd+Shift+P` on macOS) is a launcher: verbs only, fuzzy-filtered. Three of its commands
-act on activity stats:
+`Cmd+Shift+P` on macOS) is a launcher: verbs only, fuzzy-filtered. Four of its commands
+act on activity:
 
 - **Display usage stats**: opens a focused overlay listing every
   workspace ranked by active time, with a bar showing each one's share of
   the busiest. Escape or click outside to dismiss.
-- **Sort sidebar by activity (most used first)**: one-shot
-  rearrangement of the sidebar; nothing keeps reordering automatically
-  after that.
+- **Sort by recent activity**: shows what needs you and what you were
+  just doing. Ready (green) workspaces come first, oldest first, like a
+  queue; then working (amber) ones; then the rest, the one you last typed
+  in first. The "last typed in" time is saved, so this sort also works
+  right after a restart.
+- **Sort by time spent**: shows where your time went. The workspaces
+  you've spent the most active time in this session come first.
+
+Both sorts rearrange the sidebar once, and the **Workspace** menu has them
+too; nothing keeps reordering automatically afterwards, so your
+`Cmd/Ctrl+1..9` numbers only change when you ask.
 - **Reset session activity counters**: wipes all per-workspace
   accruals and restarts the session clock.
 

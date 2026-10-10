@@ -28,6 +28,20 @@ import {
   setActiveWorkspaceOptimistic,
 } from "../state/store";
 import { closeTab, renderTabs, switchTab } from "../ui/tabs";
+import { byRecentActivity, byTimeSpent } from "../state/sorting";
+import type { WorkspaceView } from "../state/types";
+
+function applySort(sort: (ws: WorkspaceView[]) => WorkspaceView[]): void {
+  const state = getState();
+  if (!state || state.workspaces.length < 2) {
+    return;
+  }
+  const order = sort(state.workspaces).map((w) => w.id);
+  void api(`/workspaces/${order[0]}`, {
+    method: "PATCH",
+    body: JSON.stringify({ order }),
+  }).then(refresh);
+}
 
 declare global {
   interface Window {
@@ -126,23 +140,8 @@ export function installCommands(): void {
   register("view.activity.reset", () => {
     void api("/activity/reset", { method: "POST" }).then(refresh);
   });
-  register("workspace.reorder-by-activity", () => {
-    const state = getState();
-    if (!state || state.workspaces.length < 2) {
-      return;
-    }
-    const order = [...state.workspaces]
-      .sort((a, b) => b.active_seconds - a.active_seconds)
-      .map((w) => w.id);
-    const target = order[0];
-    if (!target) {
-      return;
-    }
-    void api(`/workspaces/${target}`, {
-      method: "PATCH",
-      body: JSON.stringify({ order }),
-    }).then(refresh);
-  });
+  register("workspace.sort.time-spent", () => applySort(byTimeSpent));
+  register("workspace.sort.recent", () => applySort(byRecentActivity));
 
   // Native menu reaches in here via pywebview's ``evaluate_js``.
   // pasteText: Windows' Edit → Paste reads the clipboard in Python (the

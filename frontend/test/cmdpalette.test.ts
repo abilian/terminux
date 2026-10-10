@@ -51,12 +51,17 @@ beforeEach(async () => {
 });
 
 describe("command launcher", () => {
-  it("hides the activity sort until a second workspace exists", () => {
+  it("hides both sidebar sorts until a second workspace exists", () => {
+    const sorts = (): string[] =>
+      labels().filter((l) => l.startsWith("Sort by"));
     cmdpalette.openCmdPalette();
-    expect(labels().some((l) => l.startsWith("Sort sidebar"))).toBe(false);
+    expect(sorts()).toEqual([]);
     mocks.workspaceCount = 2;
     cmdpalette.openCmdPalette();
-    expect(labels().some((l) => l.startsWith("Sort sidebar"))).toBe(true);
+    expect(sorts()).toEqual([
+      "Sort by recent activity (ready, working, then last used)",
+      "Sort by time spent (most used first)",
+    ]);
   });
 
   it("lists the remote-connection command", () => {

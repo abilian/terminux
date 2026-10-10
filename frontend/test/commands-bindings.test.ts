@@ -157,13 +157,13 @@ describe("command dispatch table", () => {
     );
   });
 
-  it("sort-by-activity PATCHes the most-used-first order once", () => {
+  it("sort by time spent PATCHes the most-used-first order once", () => {
     mocks.state = state([
       ws("w1", ["t1"], 5),
       ws("w2", ["t2"], 50),
       ws("w3", ["t3"], 20),
     ]);
-    invoke("workspace.reorder-by-activity");
+    invoke("workspace.sort.time-spent");
     expect(mocks.api).toHaveBeenCalledWith(
       "/workspaces/w2",
       expect.objectContaining({
@@ -173,8 +173,33 @@ describe("command dispatch table", () => {
     // A single workspace has nothing to sort.
     mocks.api.mockClear();
     mocks.state = state([ws("w1", ["t1"], 5)]);
-    invoke("workspace.reorder-by-activity");
+    invoke("workspace.sort.time-spent");
     expect(mocks.api).not.toHaveBeenCalled();
+  });
+
+  it("sort by recent activity PATCHes ready, working, then last used", () => {
+    mocks.state = state([
+      { ...ws("idle", ["t1"], 0), last_used_at: 900, ready_since: null },
+      {
+        ...ws("working", ["t2"], 0),
+        status: "busy",
+        last_used_at: 5,
+        ready_since: null,
+      },
+      {
+        ...ws("ready", ["t3"], 0),
+        status: "unseen",
+        last_used_at: null,
+        ready_since: 1,
+      },
+    ]);
+    invoke("workspace.sort.recent");
+    expect(mocks.api).toHaveBeenCalledWith(
+      "/workspaces/ready",
+      expect.objectContaining({
+        body: JSON.stringify({ order: ["ready", "working", "idle"] }),
+      }),
+    );
   });
 
   it("exposes the bus to the native menu", () => {

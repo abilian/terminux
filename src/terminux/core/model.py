@@ -17,6 +17,14 @@ def _new_id() -> str:
     return uuid.uuid4().hex
 
 
+def _optional_float(value: object) -> float | None:
+    """A persisted timestamp, or None when absent or malformed (a bad state
+    file degrades to "never used", it doesn't fail the load)."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return None
+
+
 class WorkspaceStatus(str, Enum):
     """Auto-derived sidebar status (functional spec §4.4).
 
@@ -82,8 +90,13 @@ class Workspace:
     user_set_name: bool = False
     tab_ids: list[str] = field(default_factory=list)
     active_tab_id: str | None = None
-    # Transient: set when a tab produces output while this workspace is not active.
-    has_unseen_output: bool = False
+    # Transient: wall-clock time this workspace turned "ready" (green), or
+    # None. The timestamp orders the ready ones first-come first-served in
+    # "Sort by Recent Activity"; ``has_unseen_output`` is the flag view.
+    ready_since: float | None = None
+    # Persisted: wall-clock time the user last typed in one of this
+    # workspace's terminals ("Sort by Recent Activity").
+    last_used_at: float | None = None
     # Transient: monotonic-clock timestamp when this workspace was last
     # deactivated. ``AppController._mark_activity`` uses it to suppress
     # the unseen flag for a brief window after a visit — visit-redraw
@@ -96,6 +109,17 @@ class Workspace:
     # — fly-by visits preserve the unseen/attention flags.
     active_since_at: float | None = None
 
+    @property
+    def has_unseen_output(self) -> bool:
+        return self.ready_since is not None
+
+    @has_unseen_output.setter
+    def has_unseen_output(self, ready: bool) -> None:
+        if not ready:
+            self.ready_since = None
+        elif self.ready_since is None:  # keep the first time it turned ready
+            self.ready_since = time.time()
+
     def to_json(self) -> dict[str, Any]:
         return {
             "id": self.id,
@@ -103,6 +127,7 @@ class Workspace:
             "user_set_name": self.user_set_name,
             "tab_ids": list(self.tab_ids),
             "active_tab_id": self.active_tab_id,
+            "last_used_at": self.last_used_at,
         }
 
     @classmethod
@@ -117,6 +142,7 @@ class Workspace:
                 if data.get("active_tab_id") is not None
                 else None
             ),
+            last_used_at=_optional_float(data.get("last_used_at")),
         )
 
 
@@ -388,6 +414,7 @@ class AppState:
                 {
                     **w.to_json(),
                     "status": self.workspace_status(w.id).value,
+                    "ready_since": w.ready_since,
                 }
                 for w in self.workspaces
             ],

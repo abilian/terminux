@@ -11,7 +11,7 @@ This file lists design questions we have left open on purpose. Each entry states
 **Background.** The two-palette split came from VS Code:
 
 - **Quick switcher** lists workspaces and tabs; selecting one jumps to it.
-- **Command palette** lists verbs (Sort by activity, Reset counters, Display usage stats, Toggle prefs…); selecting one runs the verb.
+- **Command palette** lists verbs (Sort by recent activity, Sort by time spent, Reset counters, Display usage stats, Toggle prefs…); selecting one runs the verb.
 
 On Linux and Windows the two-palette model is awkward. The "+ Shift" trick that distinguishes the two palettes on macOS (`Cmd+P` / `Cmd+Shift+P`) isn't free there, where Ctrl+Shift is already the modifier and bare `Ctrl+P` belongs to the shell. Since 2026-10, `Ctrl+Shift+P` opens the command palette (the VS Code and Windows Terminal chord, which Windows users expect) and the quick switcher lives on `Ctrl+Shift+O`; `F1` still opens the command palette. It works, but the switcher's chord differs between platforms.
 

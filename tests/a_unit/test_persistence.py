@@ -159,3 +159,13 @@ def test_data_dir_has_no_doubled_author_folder(monkeypatch) -> None:
     monkeypatch.setattr(persistence.platformdirs, "user_data_dir", fake)
     persistence.data_dir()
     assert seen == {"name": "terminux", "appauthor": False}
+
+
+def test_last_used_at_survives_a_restart(tmp_path: Path) -> None:
+    """Sort by Recent Activity works right after a restart because the
+    time of the last keystroke in each workspace is saved with the state."""
+    s = AppState.default()
+    s.workspaces[0].last_used_at = 1_700_000_000
+    p = tmp_path / "state.json"
+    save_state(s, p)
+    assert load_state(p).workspaces[0].last_used_at == 1_700_000_000
