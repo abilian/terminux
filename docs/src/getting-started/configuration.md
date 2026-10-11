@@ -35,8 +35,11 @@ Scrollback files can contain secrets a command echoed; they stay local, are capp
 | --- | --- |
 | `--no-window` | Server only; open the printed URL in any browser (dev/test path, web-mode preview) |
 | `--server` | Headless server with a persistent access token; pair with `--connect` |
+| `-d`, `--daemon` | Like `--server`, but goes to the background once the server answers, after printing the URL; logs to a file and writes a PID file (macOS, Linux) |
+| `--stop` | Stops the server started by `--daemon` and waits until it's gone |
+| `--public-host NAME` | Hostname or address printed in the URL by `--server` and `--daemon`, so it works from other machines |
 | `--connect URL` | Desktop window attached to a remote server ([Remote access](../guides/remote.md)) |
-| `--host`, `--port` | Bind address and port (defaults: loopback, ephemeral port) |
+| `--host`, `--port` | Bind address and port (defaults: loopback; port 8443 with `--daemon`, else ephemeral) |
 | `--debug`, `--trace` | Diagnostics; see [Debugging knobs](../developers/developing.md#debugging-knobs) |
 
 ## Environment seen by your shells

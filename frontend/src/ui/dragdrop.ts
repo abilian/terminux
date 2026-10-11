@@ -5,8 +5,7 @@
 // plain text (e.g. a selection from another app), which the native path skips.
 
 import { activeSession } from "../state/store";
-
-const enc = new TextEncoder();
+import { pasteText } from "../term/clipboard";
 
 export function installDragAndDrop(): void {
   window.addEventListener("dragover", (e: DragEvent) => {
@@ -22,14 +21,9 @@ export function installDragAndDrop(): void {
     if (!dt || dt.files.length) {
       return;
     } // files → native handler
-    const text = dt.getData("text/plain");
-    if (!text) {
-      return;
-    }
-    const s = activeSession();
-    if (s?.ws && s.ws.readyState === 1) {
-      s.ws.send(enc.encode(text));
-      s.term.focus();
-    }
+    // As a paste: claims the terminal (another window may own it) and
+    // brackets the text when the program asked for bracketed paste.
+    pasteText(dt.getData("text/plain"));
+    activeSession()?.term.focus();
   });
 }

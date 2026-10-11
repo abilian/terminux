@@ -54,4 +54,4 @@ On connect the server replays its retained output backlog (up to 512 KB), which 
 
 **Ownership.** A PTY has one size, so one subscriber at a time owns the terminal. The first to attach owns it. A `resize` from the owner resizes the PTY; a `resize` from anyone else is only recorded. A `claim` makes the sender the owner and resizes the PTY to its recorded size. Binary input from a non-owner is dropped: in practice it is the emulator's automatic answers to the program's queries (cursor position, device attributes), which describe the wrong screen. A client must therefore send `claim` before any real input; the bundled frontend does so on keystrokes, clicks, pastes, window focus, and tab switches. When the owner disconnects, the most recently attached remaining subscriber takes over.
 
-The close codes are `4403` (bad token) and `4404` (unknown terminal id).
+A bad token or an unknown terminal id is refused during the handshake, so the client sees an HTTP 403 rather than a WebSocket close code. A terminal whose shell has exited is gone too: ask `/spawn` for a fresh one.

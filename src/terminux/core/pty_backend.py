@@ -60,8 +60,6 @@ class PtyBackend(Protocol):
 
     def resize(self, cols: int, rows: int) -> None: ...
 
-    def is_alive(self) -> bool: ...
-
     def terminate(self) -> None: ...
 
     def exit_code(self) -> int | None: ...
@@ -169,16 +167,23 @@ class UnixPty:
         return bool(self._proc.isalive())
 
     def terminate(self) -> None:
-        """SIGHUP → SIGTERM → SIGKILL escalation (functional spec §10)."""
+        """Hang up, then escalate (functional spec §10).
+
+        ptyprocess's ``close(force=True)`` closes the master (the kernel
+        sends the shell SIGHUP, so it can save its history), then sends
+        SIGHUP, SIGCONT, SIGINT and finally SIGKILL, waiting a moment and
+        stopping as soon as the child is gone. Those waits add up to about
+        half a second, so they run on a thread: callers include the event
+        loop, which must never sleep.
+        """
         if not self._proc.isalive():
             return
-        for sig in (signal.SIGHUP, signal.SIGTERM, signal.SIGKILL):
-            try:
-                self._proc.kill(sig)
-            except OSError:
-                return
-            if not self._proc.isalive():
-                return
+        threading.Thread(
+            target=self._proc.close,
+            kwargs={"force": True},
+            name=f"pty-hangup-{self.pid}",
+            daemon=True,
+        ).start()
 
     def exit_code(self) -> int | None:
         if self._proc.isalive():
@@ -195,13 +200,10 @@ class UnixPty:
         Lets a new tab open where the previously active shell was, without
         requiring shell-side OSC 7 configuration.
         """
-        pid = self._proc.pid
-        if pid is None:
-            return None
         if sys.platform == "linux":
-            return _linux_cwd(pid)
+            return _linux_cwd(self.pid)
         if sys.platform == "darwin":
-            return _darwin_cwd(pid)
+            return _darwin_cwd(self.pid)
         return None
 
 
@@ -220,12 +222,13 @@ def _darwin_cwd(pid: int) -> str | None:
     indefinitely in D-state when one of those fds points at a sick volume
     (a deadlock that wedges the whole server, since ``cwd()`` is called
     under ``AppController.lock``). Falls back to ``lsof`` only if libproc
-    is unavailable for some unusual reason.
+    is unavailable for some unusual reason — not when the call fails (a
+    zombie shell, EPERM after ``exec sudo -s``), which would bring lsof
+    back under the lock exactly when the process is in a strange state.
     """
-    cwd = _libproc_cwd(pid)
-    if cwd is not None:
-        return cwd
-    return _lsof_cwd(pid)
+    if _proc_pidinfo is None:
+        return _lsof_cwd(pid)
+    return _libproc_cwd(pid)
 
 
 # --- libproc (preferred path) ----------------------------------------

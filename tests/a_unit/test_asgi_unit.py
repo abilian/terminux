@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from terminux.core.model import AppState
-from terminux.server import asgi
-from terminux.server.asgi import AppController
-from terminux.server.controller import _shell_quote
+from terminux.server import controller as ctl_mod
+from terminux.server.controller import AppController, _shell_quote
 
 
 def test_shell_quote_plain() -> None:
@@ -128,7 +127,7 @@ def test_unseen_grace_period_after_deactivation() -> None:
     assert ctl.state.tabs[b_tab.id].has_unseen_output is False
 
     # Outside the grace window: the same output flags the tab normally.
-    b.last_active_at = time.monotonic() - asgi.UNSEEN_GRACE_SECONDS - 0.1
+    b.last_active_at = time.monotonic() - ctl_mod.UNSEEN_GRACE_SECONDS - 0.1
     ctl._mark_activity(b_tab.id)
     assert ctl.state.tabs[b_tab.id].has_unseen_output is True
 
@@ -199,7 +198,7 @@ def test_busy_to_idle_transition_flags_ready() -> None:
     ctl.poll_busy_transitions()
     assert ctl._busy_since["fake-term"] is not None
     # Backdate busy_since past the threshold so the next transition counts.
-    ctl._busy_since["fake-term"] -= asgi.READY_TRANSITION_SECONDS + 0.1
+    ctl._busy_since["fake-term"] -= ctl_mod.READY_TRANSITION_SECONDS + 0.1
 
     # Term goes idle → next poll fires _mark_ready on the tab's workspace.
     busy_state["value"] = False
@@ -370,7 +369,7 @@ def test_busy_promotion_suppressed_inside_grace() -> None:
     assert target_view["status"] == "idle"
 
     # Outside the grace window: the same FakeTerm promotes to busy.
-    target.last_active_at = time.monotonic() - asgi.UNSEEN_GRACE_SECONDS - 0.1
+    target.last_active_at = time.monotonic() - ctl_mod.UNSEEN_GRACE_SECONDS - 0.1
     view = ctl.state_view()
     target_view = next(w for w in view["workspaces"] if w["id"] == target.id)
     assert target_view["status"] == "busy"
@@ -415,13 +414,6 @@ def test_user_set_name_persists_through_save_load(tmp_path, monkeypatch) -> None
     rtab = reloaded.state.tabs[rws.tab_ids[0]]
     rtab.spawn_cwd = "/var/log"
     assert reloaded._workspace_label(rws) == "Project Alpha"
-
-
-def test_spawn_lock_is_an_asyncio_lock() -> None:
-    import asyncio
-
-    ctl = AppController(persist=False)
-    assert isinstance(ctl.spawn_lock, asyncio.Lock)
 
 
 def test_pump_in_offloads_term_write_off_event_loop() -> None:

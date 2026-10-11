@@ -256,15 +256,12 @@ def test_connect_info_command_shows_the_recipe(page: Page, app_url: str) -> None
 
 
 def test_each_window_gets_its_own_size_when_used(
-    page: Page, app_url: str, monkeypatch, test_shell
+    page: Page, app_url: str, test_shell
 ) -> None:
     """Two windows of different sizes on one terminal (desktop + --connect,
     the garbled-screen bug): typing in a window claims the terminal, so the
     shell sees that window's size. Each round prints a unique marker so an
     earlier round's output can't satisfy a later check."""
-    monkeypatch.setattr(
-        "terminux.server.controller.default_shell", lambda: test_shell.argv
-    )
     page.set_viewport_size({"width": 1200, "height": 800})
     page.goto(app_url)
     expect(page.locator(".xterm")).to_be_visible(timeout=UI)

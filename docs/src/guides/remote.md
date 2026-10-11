@@ -135,8 +135,34 @@ ship TLS support and intentionally keeps the token short.
 
 ## Lifecycle / running it as a service
 
-terminux doesn't ship with a daemonizer. On a personal server, the
-simplest options are:
+### `--daemon`: start it and get your prompt back
+
+```sh
+terminux --daemon --host 0.0.0.0 --public-host devbox.example.com
+```
+
+`-d` / `--daemon` starts the same server as `--server` (port 8443 unless you
+pass `--port`), waits until it answers, prints the URL to connect to, and
+goes to the background. `--public-host` sets the name in that URL; without
+it, a `--host 0.0.0.0` server prints this machine's network name, and a
+loopback server prints `127.0.0.1` for use through an SSH tunnel. If the
+server can't start (the port is taken, say), the command says why and
+exits with an error instead of leaving a dead process behind.
+
+The background server logs to `~/Library/Logs/terminux/terminux.log` on
+macOS and `~/.local/state/terminux/log/terminux.log` on Linux; its output
+streams (fault dumps, crash tracebacks) go to the same file. Its PID is
+in `terminux.pid`, in `~/Library/Application Support/terminux/` on macOS
+and `~/.local/state/terminux/` on Linux. Stop it with `terminux --stop`,
+which waits until it's gone (`kill <pid>` works too). While a daemon
+runs, starting another one fails with its PID, since both would share
+the same saved state. `--daemon` isn't available on Windows; run
+`terminux --server` there.
+
+### With a service manager
+
+To start it at boot or restart it after a crash, let the system's service
+manager run `terminux --server` in the foreground (not `--daemon`):
 
 - **systemd user service**: a single `WantedBy=default.target` unit
   that runs `uv run terminux --server`. The token file persists across
@@ -148,8 +174,9 @@ simplest options are:
 
 Pick whichever matches the host's idiom. The watchdog and `--debug` /
 `--trace` flags described in [Debugging knobs](../developers/developing.md#debugging-knobs)
-work the same in server mode and write to stderr; point that at a file
-in your service definition.
+work the same in server mode. In the foreground they write to stderr,
+which systemd and launchd capture; with `--daemon` they go to the log
+file.
 
 ## Known limitations (v1)
 

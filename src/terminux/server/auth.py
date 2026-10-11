@@ -20,6 +20,7 @@ brute-force regardless of the bind host.
 from __future__ import annotations
 
 import logging
+import os
 import re
 import secrets
 import string
@@ -50,12 +51,19 @@ TOKEN_RE = re.compile(
 MAX_FAILURES = 10
 LOCKOUT_SECONDS = 60.0
 
-# Loopback clients are exempt from the lockout: they all share one IP, so a
+# Loopback clients get a much looser limit: they all share one IP, so a
 # single stale client (e.g. a browser tab from a previous session polling
-# with the old token) would lock out the legitimate desktop window — a
-# self-DoS. The lockout defends *network* exposure; a local attacker can
-# read the token from the process listing anyway.
+# with the old token, ~1 failure every 2 s) must not lock out the desktop
+# window. But a reverse proxy on the same host (Caddy, nginx, a tunnel
+# client) makes every internet client look like loopback, so there is
+# still a cap: 10 guesses a second can't search the token space.
+LOOPBACK_MAX_FAILURES = 100
+LOOPBACK_WINDOW_SECONDS = 10.0
 _LOOPBACK_IPS = frozenset({"127.0.0.1", "::1"})
+# Bind addresses that make the server unreachable from the network, so a
+# remote client needs a tunnel. Anything else (0.0.0.0, ::, a specific
+# interface) is listening where other machines can knock.
+LOOPBACK_BINDS = _LOOPBACK_IPS | {"localhost"}
 
 
 def _new_token() -> str:
@@ -90,8 +98,8 @@ _attempts_lock = threading.Lock()
 _MAX_TRACKED_IPS = 1024
 
 
-def _purge_old(attempts: list[float], now: float) -> list[float]:
-    cutoff = now - LOCKOUT_SECONDS
+def _purge_old(attempts: list[float], now: float, window: float) -> list[float]:
+    cutoff = now - window
     return [ts for ts in attempts if ts > cutoff]
 
 
@@ -100,15 +108,17 @@ def check_auth(supplied: str | None, client_ip: str) -> bool:
 
     Returns ``False`` if the token is wrong OR the IP is currently locked
     out for too many recent failures. Successful auth clears the IP's
-    failure history. Loopback IPs skip the lockout entirely (see
-    ``_LOOPBACK_IPS``).
+    failure history. Loopback IPs get a looser limit (see
+    ``LOOPBACK_MAX_FAILURES``).
     """
     if client_ip in _LOOPBACK_IPS:
-        return token_ok(supplied)
+        max_failures, window = LOOPBACK_MAX_FAILURES, LOOPBACK_WINDOW_SECONDS
+    else:
+        max_failures, window = MAX_FAILURES, LOCKOUT_SECONDS
     now = time.monotonic()
     with _attempts_lock:
-        attempts = _purge_old(_failed_attempts.get(client_ip, []), now)
-        if len(attempts) >= MAX_FAILURES:
+        attempts = _purge_old(_failed_attempts.get(client_ip, []), now, window)
+        if len(attempts) >= max_failures:
             _failed_attempts[client_ip] = attempts
             return False
         ok = token_ok(supplied)
@@ -121,12 +131,12 @@ def check_auth(supplied: str | None, client_ip: str) -> bool:
             cutoff = now - LOCKOUT_SECONDS
             for ip in [ip for ip, ts in _failed_attempts.items() if ts[-1] <= cutoff]:
                 del _failed_attempts[ip]
-        if len(attempts) == MAX_FAILURES:
+        if len(attempts) == max_failures:
             log.warning(
                 "auth rate-limit triggered for %s (%d failures in %ds)",
                 client_ip,
-                MAX_FAILURES,
-                int(LOCKOUT_SECONDS),
+                max_failures,
+                int(window),
             )
         return False
 
@@ -158,10 +168,10 @@ def load_or_create_persistent_token(path: Path) -> str:
         log.warning("ignoring malformed persistent token at %s; regenerating", path)
     path.parent.mkdir(parents=True, exist_ok=True)
     new = _new_token()
-    path.write_text(new + "\n", encoding="utf-8")
-    try:
-        path.chmod(0o600)
-    except OSError:
-        log.warning("could not chmod 0600 the persistent token at %s", path)
+    # Created 0600, never readable by others even for an instant.
+    path.unlink(missing_ok=True)  # a malformed file may have looser modes
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(new + "\n")
     SESSION_TOKEN = new
     return new

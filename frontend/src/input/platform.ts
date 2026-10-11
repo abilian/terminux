@@ -17,6 +17,11 @@ export const IS_MAC = /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 export const IS_WINDOWS = /^Win/.test(navigator.platform);
 
 /** True for the key event's "app modifier": Cmd on macOS, Ctrl+Shift on Linux. */
-export function appMod(e: KeyboardEvent | MouseEvent): boolean {
+export function appMod(e: KeyboardEvent): boolean {
   return IS_MAC ? e.metaKey : e.ctrlKey && e.shiftKey;
+}
+
+/** The link-opening modifier: Cmd+click on macOS, plain Ctrl+click elsewhere. */
+export function linkMod(e: MouseEvent): boolean {
+  return IS_MAC ? e.metaKey : e.ctrlKey;
 }

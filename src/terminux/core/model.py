@@ -29,14 +29,16 @@ class WorkspaceStatus(str, Enum):
     """Auto-derived sidebar status (functional spec §4.4).
 
     ``UNSEEN`` is "this workspace produced output since you last viewed
-    it" — *not* "a process is currently running" (we don't track live
-    activity). It clears the moment you switch to the workspace.
+    it" — *not* "a process is currently running". It clears the moment you
+    switch to the workspace. ``BUSY`` (a foreground task is running) is
+    never stored: the controller derives it at view time.
     """
 
     ACTIVE = "active"
     UNSEEN = "unseen"
     IDLE = "idle"
     EXITED = "exited"
+    BUSY = "busy"
 
 
 @dataclass
@@ -163,7 +165,6 @@ class UiPrefs:
     win_h: int = 720
     win_x: int | None = None
     win_y: int | None = None
-    win_maximized: bool = False
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -176,7 +177,6 @@ class UiPrefs:
             "win_h": self.win_h,
             "win_x": self.win_x,
             "win_y": self.win_y,
-            "win_maximized": self.win_maximized,
         }
 
     @classmethod
@@ -185,17 +185,19 @@ class UiPrefs:
             v = data.get(key)
             return int(v) if v is not None else None
 
+        d = cls()  # the defaults, defined once on the fields above
         return cls(
-            sidebar_width=int(data.get("sidebar_width", 220)),
-            sidebar_collapsed=bool(data.get("sidebar_collapsed")),
-            font_size=int(data.get("font_size", 13)),
-            copy_on_select=bool(data.get("copy_on_select")),
-            scrollback_persist=bool(data.get("scrollback_persist", True)),
-            win_w=int(data.get("win_w", 1100)),
-            win_h=int(data.get("win_h", 720)),
+            sidebar_width=int(data.get("sidebar_width", d.sidebar_width)),
+            sidebar_collapsed=bool(data.get("sidebar_collapsed", d.sidebar_collapsed)),
+            font_size=int(data.get("font_size", d.font_size)),
+            copy_on_select=bool(data.get("copy_on_select", d.copy_on_select)),
+            scrollback_persist=bool(
+                data.get("scrollback_persist", d.scrollback_persist)
+            ),
+            win_w=int(data.get("win_w", d.win_w)),
+            win_h=int(data.get("win_h", d.win_h)),
             win_x=_opt_int("win_x"),
             win_y=_opt_int("win_y"),
-            win_maximized=bool(data.get("win_maximized")),
         )
 
 
@@ -278,7 +280,8 @@ class AppState:
         self.set_active_workspace(ws.id)
 
     def set_active_workspace(self, ws_id: str) -> None:
-        if self.get_workspace(ws_id) is None:
+        ws = self.get_workspace(ws_id)
+        if ws is None:
             return
         if self.active_workspace_id == ws_id:
             # Already active — preserve the dwell timer rather than
@@ -288,15 +291,13 @@ class AppState:
         previous_id = self.active_workspace_id
         now = time.monotonic()
         self.active_workspace_id = ws_id
-        ws = self.get_workspace(ws_id)
-        if ws is not None:
-            ws.last_active_at = None  # currently active; grace doesn't apply
-            ws.active_since_at = now
-            # NOTE: ``has_unseen_output`` and the active tab's
-            # ``has_unseen_output`` / ``needs_attention`` are NOT cleared
-            # here. The clearing is deferred to the deactivating side and
-            # gated by ``VISIT_DWELL_SECONDS`` so a fly-by visit doesn't
-            # silently dismiss the "I want a real look here" signal.
+        ws.last_active_at = None  # currently active; grace doesn't apply
+        ws.active_since_at = now
+        # NOTE: ``has_unseen_output`` and the active tab's
+        # ``has_unseen_output`` / ``needs_attention`` are NOT cleared
+        # here. The clearing is deferred to the deactivating side and
+        # gated by ``VISIT_DWELL_SECONDS`` so a fly-by visit doesn't
+        # silently dismiss the "I want a real look here" signal.
         # Stamp the outgoing workspace; if the user dwelled long enough,
         # finally clear its unseen/attention flags. ``last_active_at`` is
         # always set so the post-visit grace window (used by
@@ -388,7 +389,7 @@ class AppState:
         state._repair()
         return state
 
-    def _repair(self) -> AppState:
+    def _repair(self) -> None:
         """Drop dangling references; guarantee >= 1 workspace with >= 1 tab."""
         for ws in self.workspaces:
             ws.tab_ids = [tid for tid in ws.tab_ids if tid in self.tabs]
@@ -405,7 +406,6 @@ class AppState:
         self.ensure_baseline()
         if self.get_workspace(self.active_workspace_id or "") is None:
             self.active_workspace_id = self.workspaces[0].id
-        return self
 
     def view_json(self) -> dict[str, Any]:
         """Snapshot for the frontend, including derived status."""

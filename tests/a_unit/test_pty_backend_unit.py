@@ -7,7 +7,6 @@ exercised without depending on signals or the host OS.
 from __future__ import annotations
 
 import os
-import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -58,25 +57,6 @@ def test_terminate_returns_when_already_dead() -> None:
 unix_only = pytest.mark.skipif(sys.platform == "win32", reason="POSIX PTY")
 
 
-@unix_only  # SIGHUP and SIGKILL don't exist on Windows
-def test_terminate_escalates_through_signals() -> None:
-    # alive for the isalive() guard, then alive after HUP and TERM, dead after KILL
-    p = _FakeProc(alive_seq=[True, True, True, False])
-    _unixpty(p).terminate()
-    assert p.kills == [signal.SIGHUP, signal.SIGTERM, signal.SIGKILL]
-
-
-@unix_only
-def test_terminate_stops_when_signal_oserrors() -> None:
-    p = _FakeProc(alive_seq=[True, True])
-
-    def boom(_sig: int) -> None:
-        raise OSError
-
-    p.kill = boom  # type: ignore[method-assign]
-    _unixpty(p).terminate()  # OSError is swallowed, returns
-
-
 def test_exit_code_none_while_alive() -> None:
     assert _unixpty(_FakeProc(alive_seq=[True])).exit_code() is None
 
@@ -88,23 +68,19 @@ def test_exit_code_value_and_wait_exception() -> None:
     assert _unixpty(p).exit_code() is None
 
 
-def test_cwd_none_when_pid_missing() -> None:
-    assert _unixpty(_FakeProc(pid=None)).cwd() is None
-
-
 def test_linux_cwd_handles_missing_proc() -> None:
     assert _linux_cwd(2_147_483_000) is None
 
 
 def test_darwin_cwd_no_lsof(monkeypatch) -> None:
-    monkeypatch.setattr(pty_backend, "_libproc_cwd", lambda _pid: None)
+    monkeypatch.setattr(pty_backend, "_proc_pidinfo", None)
     monkeypatch.setattr(pty_backend.shutil, "which", lambda _n: None)
     assert _darwin_cwd(123) is None
 
 
 def test_darwin_cwd_parses_lsof_output(monkeypatch) -> None:
-    # libproc is tried first; force the fallback to exercise the lsof parser.
-    monkeypatch.setattr(pty_backend, "_libproc_cwd", lambda _pid: None)
+    # No libproc at all: the only case that falls back to the lsof parser.
+    monkeypatch.setattr(pty_backend, "_proc_pidinfo", None)
     monkeypatch.setattr(pty_backend.shutil, "which", lambda _n: "/usr/bin/lsof")
 
     def fake_run(*_a, **_k):
@@ -117,7 +93,7 @@ def test_darwin_cwd_parses_lsof_output(monkeypatch) -> None:
 
 
 def test_darwin_cwd_no_match_and_error(monkeypatch) -> None:
-    monkeypatch.setattr(pty_backend, "_libproc_cwd", lambda _pid: None)
+    monkeypatch.setattr(pty_backend, "_proc_pidinfo", None)
     monkeypatch.setattr(pty_backend.shutil, "which", lambda _n: "/usr/bin/lsof")
     monkeypatch.setattr(
         pty_backend.subprocess,
@@ -135,15 +111,21 @@ def test_darwin_cwd_no_match_and_error(monkeypatch) -> None:
     assert _darwin_cwd(1) is None
 
 
-def test_darwin_cwd_prefers_libproc(monkeypatch) -> None:
-    """If libproc returns a value, lsof is never consulted."""
-    monkeypatch.setattr(pty_backend, "_libproc_cwd", lambda _pid: "/from/libproc")
+@pytest.mark.parametrize("libproc_result", ["/from/libproc", None])
+def test_darwin_cwd_never_runs_lsof_when_libproc_exists(
+    monkeypatch, libproc_result
+) -> None:
+    """lsof can hang on a sick volume and ``cwd()`` runs under the
+    controller lock: with libproc present, even a failed call (zombie,
+    EPERM) answers without it."""
+    monkeypatch.setattr(pty_backend, "_proc_pidinfo", lambda *_a: 0)
+    monkeypatch.setattr(pty_backend, "_libproc_cwd", lambda _pid: libproc_result)
 
     def boom(*_a, **_k):
         raise AssertionError("lsof fallback should not run")
 
     monkeypatch.setattr(pty_backend.shutil, "which", boom)
-    assert _darwin_cwd(1) == "/from/libproc"
+    assert _darwin_cwd(1) == libproc_result
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="libproc is macOS-only")

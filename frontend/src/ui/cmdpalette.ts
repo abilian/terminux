@@ -68,7 +68,3 @@ export function installCmdPalette(): void {
 export function openCmdPalette(): void {
   overlay.open(buildEntries());
 }
-
-export function closeCmdPalette(): void {
-  overlay.close();
-}

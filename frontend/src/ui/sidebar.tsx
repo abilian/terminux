@@ -135,9 +135,7 @@ function WorkspaceRow({ w, idx, active, editing, setEditing }: RowProps) {
             title="Close"
             onClick={(e) => {
               e.stopPropagation();
-              void api(`/workspaces/${w.id}`, { method: "DELETE" }).then(
-                refresh,
-              );
+              closeWorkspace(w.id);
             }}
           >
             ✕

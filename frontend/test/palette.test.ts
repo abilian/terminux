@@ -5,9 +5,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  api: vi.fn(() => Promise.resolve({})),
+  activate: vi.fn(() => Promise.resolve()),
 }));
-vi.mock("../src/state/api", () => ({ api: mocks.api, TOKEN: "t" }));
 vi.mock("../src/state/store", () => ({
   getState: () => ({
     workspaces: [
@@ -47,7 +46,7 @@ vi.mock("../src/state/store", () => ({
     active_workspace_id: "w1",
   }),
   activeSession: () => null,
-  refresh: vi.fn(() => Promise.resolve()),
+  activateOptimistic: mocks.activate,
 }));
 
 type Palette = typeof import("../src/ui/palette");
@@ -65,7 +64,7 @@ beforeEach(async () => {
   vi.resetModules();
   document.body.innerHTML = "";
   palette = await import("../src/ui/palette");
-  mocks.api.mockClear();
+  mocks.activate.mockClear();
 });
 
 describe("quick switcher", () => {
@@ -101,10 +100,8 @@ describe("quick switcher", () => {
       document.querySelectorAll(".pal-row")[1].classList.contains("sel"),
     ).toBe(true);
     key("Enter");
-    expect(mocks.api).toHaveBeenCalledWith(
-      "/workspaces/w1",
-      expect.objectContaining({ method: "PATCH" }),
-    );
+    // Row 1 is alpha's tab: one optimistic switch to the workspace and tab.
+    expect(mocks.activate).toHaveBeenCalledWith("w1", "t1");
     expect(document.getElementById("palette")!.hidden).toBe(true);
   });
 
@@ -112,6 +109,6 @@ describe("quick switcher", () => {
     palette.openPalette();
     key("Escape");
     expect(document.getElementById("palette")!.hidden).toBe(true);
-    expect(mocks.api).not.toHaveBeenCalled();
+    expect(mocks.activate).not.toHaveBeenCalled();
   });
 });

@@ -13,7 +13,7 @@ import time
 from pathlib import Path, PureWindowsPath
 from typing import Any
 
-from terminux.core.model import AppState, Workspace
+from terminux.core.model import AppState, Workspace, WorkspaceStatus
 from terminux.core.persistence import (
     delete_scrollback,
     load_scrollback,
@@ -59,6 +59,14 @@ def _shell_quote(path: str, shell: str = "sh") -> str:
     if name in {"pwsh", "powershell"}:
         return "'" + path.replace("'", "''") + "'"
     return "'" + path.replace("'", "'\\''") + "'"
+
+
+def _in_grace(ws: Workspace, now: float) -> bool:
+    """Just deactivated: output now is visit cleanup (the redraw tail,
+    xterm settling), not news, so it flags nothing."""
+    return ws.last_active_at is not None and now - ws.last_active_at < (
+        UNSEEN_GRACE_SECONDS
+    )
 
 
 class AppController:
@@ -117,8 +125,8 @@ class AppController:
         return load_scrollback(tab_id)
 
     def delete_scrollback(self, tab_id: str) -> None:
-        # Always best-effort delete (even with persist=False, in case the
-        # pref was toggled mid-run and a stale file lingers).
+        # Ignores the ``scrollback_persist`` pref: it may have been turned
+        # off mid-run, leaving a stale file behind.
         if self._persist:
             delete_scrollback(tab_id)
 
@@ -224,8 +232,20 @@ class AppController:
             tab.terminal_id = term.id
             term.on_activity = lambda: self._mark_activity(tab_id)
             term.on_attention = lambda: self._mark_ready(tab_id)
-            term.on_exit = lambda _code: setattr(tab, "terminal_id", None)
+            term.on_exit = lambda _code: self._forget_terminal(tab_id, term.id)
             return term
+
+    def _forget_terminal(self, tab_id: str, term_id: str) -> None:
+        """The shell exited (on the loop): free its PTY and backlog. Clients
+        already got the exit message; the next spawn for the tab starts a
+        fresh shell."""
+        with self.lock:
+            tab = self.state.tabs.get(tab_id)
+            if tab is not None and tab.terminal_id == term_id:
+                tab.terminal_id = None
+            self.terminals.close(term_id)
+            self._was_busy.pop(term_id, None)
+            self._busy_since.pop(term_id, None)
 
     def inherit_cwd(self, ws_id: str) -> str | None:
         """Working directory of a workspace's currently active live shell."""
@@ -316,12 +336,9 @@ class AppController:
                 # deactivated: the visit-redraw tail / xterm settling would
                 # otherwise paint the dot orange for the few seconds after
                 # the user looked away.
-                in_grace = ws.last_active_at is not None and (
-                    now - ws.last_active_at < UNSEEN_GRACE_SECONDS
-                )
                 if (
-                    wv["status"] in {"idle", "unseen"}
-                    and not in_grace
+                    wv["status"] in {WorkspaceStatus.IDLE, WorkspaceStatus.UNSEEN}
+                    and not _in_grace(ws, now)
                     and any(
                         (tab := self.state.tabs.get(tid)) is not None
                         and tab.terminal_id is not None
@@ -330,7 +347,7 @@ class AppController:
                         for tid in ws.tab_ids
                     )
                 ):
-                    wv["status"] = "busy"
+                    wv["status"] = WorkspaceStatus.BUSY.value
             return view
 
     def paste_paths(self, paths: list[str]) -> None:
@@ -365,12 +382,7 @@ class AppController:
                 )
                 if is_active:
                     continue
-                # Grace period: output within UNSEEN_GRACE_SECONDS of the
-                # workspace being deactivated is treated as visit-cleanup
-                # (redraw tail, xterm settling) and does not flag unseen.
-                if ws.last_active_at is not None and (
-                    now - ws.last_active_at < UNSEEN_GRACE_SECONDS
-                ):
+                if _in_grace(ws, now):
                     continue
                 tab.has_unseen_output = True
 
@@ -393,9 +405,7 @@ class AppController:
                     continue
                 if ws.id == self.state.active_workspace_id:
                     continue
-                if ws.last_active_at is not None and (
-                    now - ws.last_active_at < UNSEEN_GRACE_SECONDS
-                ):
+                if _in_grace(ws, now):
                     continue
                 ws.has_unseen_output = True
 

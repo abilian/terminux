@@ -3,7 +3,7 @@
 
 import "./style.css";
 
-import { api } from "./state/api";
+import { invoke } from "./input/commands";
 import { installCommands } from "./input/commands-bindings";
 import { installCmdPalette } from "./ui/cmdpalette";
 import { installDragAndDrop } from "./ui/dragdrop";
@@ -29,6 +29,7 @@ import {
   installScrollbackAutosave,
 } from "./term/terminal";
 import { renderTabs } from "./ui/tabs";
+import { byId } from "./util/dom";
 
 configure({
   onRender: () => {
@@ -51,12 +52,9 @@ configure({
   onActivate: () => ensureActiveTerminal(),
 });
 
-const newWs = document.getElementById("new-ws");
-if (newWs) {
-  newWs.onclick = (): void => {
-    api("/workspaces", { method: "POST" }).then(refresh);
-  };
-}
+byId("new-ws").onclick = (): void => {
+  invoke("workspace.new");
+};
 
 window.addEventListener("resize", () => {
   const ws = activeWorkspace();

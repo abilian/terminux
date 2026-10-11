@@ -4,18 +4,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **`terminux --daemon` (`-d`).** Starts the server, waits until it answers, prints the URL to connect to, and goes to the background, so you get your prompt back without `nohup` or tmux. It logs to the platform's log folder (`~/Library/Logs/terminux/` on macOS, `~/.local/state/terminux/log/` on Linux), writes its PID to a `terminux.pid` file next to the saved state, and reports an error instead of hanging when the port is taken or a daemon already runs. `terminux --stop` stops it. A new `--public-host` option sets the hostname in the printed URL, for `--daemon` and `--server`, so it's routable from other machines. macOS and Linux only.
+- **Sort by recent activity.** A new sidebar sort for coming back to a dozen workspaces: ready (green) ones first, in the order they finished, then working (amber) ones, then the rest, the one you last typed in first. terminux now remembers when you last typed in each workspace, across restarts. It's in the command palette and the Workspace menu.
+
+### Changed
+
+- **"Sort by activity" is now "Sort by time spent"**, so it can't be confused with the new "Sort by recent activity". It still puts the workspaces you've used most this session first.
+
+### Fixed
+
+- **Remote windows load with `terminux --server`.** The page a `--server` instance served had a stale access code in it, so a `--connect` window or a browser opened on its URL loaded an empty interface whose every request was refused.
+- **Large scrollbacks are no longer lost or left unsaved.** A tab with more than 2 MB of scrollback lost all of it at the next restart, and in Chrome, Windows (WebView2) and browser mode, autosaves of a tab past 64 KB failed without a word. Saves that fail are now retried.
+- **Closing a tab gives its shell time to save its history.** The shell was killed outright a fraction of a second after the hang-up signal; it now gets the hang-up first. The app no longer waits while a tab closes.
+- **`terminux --stop`, Ctrl-C and SIGTERM save before quitting.** Stopping a headless server now saves the layout (with each shell's current directory) and closes the shells, as closing the window does.
+- **A corrupt `state.json` is set aside instead of overwritten**, as `state.json.corrupt`, so your workspaces can still be recovered from it.
+- **Ctrl+click opens links on Linux and Windows**, as documented; it took `Ctrl+Shift`+click.
+- **Dropped text reaches the terminal from a second window too**, and is pasted as a paste (bracketed), like `Ctrl+V`.
+- **Malformed API requests get a clear 400** naming the bad field, instead of a server error or a half-applied change; out-of-range terminal sizes are clamped, where they could stall every later new tab.
+- **Guessing the access code is throttled behind a reverse proxy too.** Clients on the same machine were exempt from the lockout, and behind a proxy every client looks local.
+- Memory used by exited shells, and by terminals closed in another window, is now freed.
+
 ## [0.10.0] - 2026-10-09
 
 ### Added
 
 - **Terminals on Windows.** terminux now runs its own shells on Windows 10 and 11, through the system's pseudo console (ConPTY): PowerShell 7 if it's installed, else Windows PowerShell, else `cmd`. Tabs, resizing, scrollback, restarting an exited shell, the busy and ready dots, and the remote `--connect` windows work as on macOS and Linux. Closing a tab ends its shell and whatever runs in its console; programs that opened a window of their own (`Start-Process notepad`) keep running, as in Windows Terminal. Windows offers no way to read another program's current directory, so the workspace name and "new tab in the same directory" need the shell to report it: the [shell integration guide](https://terminux.lab.abilian.com/guides/shell-integration/) has a PowerShell snippet for that, which also brings the precise busy/ready signals. A Windows machine can also be a client (`terminux --connect <url>`) of a terminux server on a Mac or a Linux box. Settings live in `%LOCALAPPDATA%\terminux`.
-- **Sort by recent activity.** A new sidebar sort for coming back to a dozen workspaces: ready (green) ones first, in the order they finished, then working (amber) ones, then the rest, the one you last typed in first. terminux now remembers when you last typed in each workspace, across restarts. It's in the command palette and the Workspace menu.
 - **Copy and paste on Windows and Linux.** `Ctrl+Shift+C` copies the selection, `Ctrl+Shift+V` pastes, and `Ctrl+Shift+A` selects everything; on Windows, plain `Ctrl+C` (while text is selected) and `Ctrl+V` work too, as in Windows Terminal. A new **Edit** menu has the same commands. Until now, only macOS had copy and paste shortcuts, through its system Edit menu.
 - **A command that tells you how to connect from another machine.** The command palette (and View menu) now has **Show remote connection URL**: it names this machine, works out whether the server is reachable from the network or needs an SSH tunnel, and hands you the `ssh -L` and `terminux --connect` lines to copy, with the live port and access code already filled in. It also warns when the address will stop working at the next restart, and points at `terminux --server` for one that lasts.
 
 ### Changed
 
-- **"Sort by activity" is now "Sort by time spent"**, so it can't be confused with the new "Sort by recent activity". It still puts the workspaces you've used most this session first.
 - **`Ctrl+Shift+P` now opens the command palette on Linux and Windows**, as in VS Code and Windows Terminal. The quick switcher moves from `Ctrl+Shift+P` to `Ctrl+Shift+O`. `F1` still opens the command palette, and macOS keeps `Cmd+Shift+P` and `Cmd+P`.
 - **Log lines now include a date and time** in every mode (they used to need `--debug`), so a log from a long-running instance can be matched against what happened when. `--debug` and `--trace` add milliseconds.
 

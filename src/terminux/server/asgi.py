@@ -5,10 +5,6 @@ Builds the ASGI application by wiring together:
 - ``AppController`` — domain state + live terminals (``./controller.py``)
 - ``Api``           — HTTP/WebSocket route handlers (``./api.py``)
 - ``SecurityHeadersMiddleware`` — CSP + hardening (``./middleware.py``)
-
-``AppController`` and the activity constants are re-exported here so
-existing callers (``from terminux.server.asgi import AppController``,
-test code that reads ``asgi.UNSEEN_GRACE_SECONDS``) keep working.
 """
 
 from __future__ import annotations
@@ -19,30 +15,23 @@ from typing import TYPE_CHECKING
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
+from starlette.responses import JSONResponse
 from starlette.routing import Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 
 from terminux.diagnostics import beat as _heartbeat
-from terminux.server.api import STATIC_DIR, Api
-from terminux.server.controller import (
-    ACTIVITY_IDLE_THRESHOLD,
-    READY_TRANSITION_SECONDS,
-    UNSEEN_GRACE_SECONDS,
-    AppController,
-)
+from terminux.server.api import STATIC_DIR, Api, BadRequestError
+from terminux.server.controller import AppController
 from terminux.server.middleware import SecurityHeadersMiddleware
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
+    from starlette.requests import HTTPConnection
 
-__all__ = [
-    "ACTIVITY_IDLE_THRESHOLD",
-    "READY_TRANSITION_SECONDS",
-    "UNSEEN_GRACE_SECONDS",
-    "AppController",
-    "build_app",
-]
+
+def _bad_request(_conn: HTTPConnection, exc: Exception) -> JSONResponse:
+    return JSONResponse({"error": str(exc)}, status_code=400)
 
 
 def build_app(*, persist: bool = True) -> Starlette:
@@ -110,11 +99,17 @@ def build_app(*, persist: bool = True) -> Starlette:
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
+            # Every graceful stop (window closed, SIGTERM, Ctrl-C) ends
+            # here: one last save (it captures each shell's cwd), then the
+            # shells, on the loop that owns their readers.
+            await asyncio.to_thread(ctl.save)
+            ctl.terminals.close_all()
 
     app = Starlette(
         routes=routes,
         middleware=[Middleware(SecurityHeadersMiddleware)],
         lifespan=lifespan,
+        exception_handlers={BadRequestError: _bad_request},
     )
     app.mount(
         "/assets",

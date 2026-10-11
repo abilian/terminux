@@ -7,10 +7,12 @@ for development and e2e tests, and a preview of the future "web mode".
 from __future__ import annotations
 
 import argparse
+import atexit
 import contextlib
 import faulthandler
 import json
 import logging
+import os
 import re
 import signal
 import socket
@@ -23,6 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 from urllib.parse import urlparse
 
+import platformdirs
 import uvicorn
 
 from terminux import clipboard
@@ -31,8 +34,8 @@ from terminux.core import persistence
 from terminux.diagnostics import start_watchdog
 from terminux.openurl import open_url_in_default_app
 from terminux.server import auth as auth_mod
-from terminux.server.asgi import AppController, build_app
-from terminux.server.auth import SESSION_TOKEN
+from terminux.server.asgi import build_app
+from terminux.server.auth import LOOPBACK_BINDS, SESSION_TOKEN
 
 _ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 ICON_PNG = _ASSETS_DIR / "icon.png"
@@ -51,7 +54,10 @@ def server_token_path() -> Path:
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from webview import Window
     from webview.menu import Menu, MenuAction, MenuSeparator
+
+    from terminux.server.controller import AppController
 
     MenuEntry = Menu | MenuAction | MenuSeparator
 
@@ -66,16 +72,135 @@ class _WebviewModuleLike(Protocol):
 
 log = logging.getLogger(__name__)
 HOST = "127.0.0.1"
+# --daemon's default port: the URL must survive restarts (the token does
+# too), and the remote guide's examples already use it.
+DAEMON_PORT = 8443
+_WILDCARD_BINDS = frozenset({"0.0.0.0", "::"})  # noqa: S104  (names, not binds)
+
+
+def _daemon_log_path() -> Path:
+    return platformdirs.user_log_path("terminux", appauthor=False) / "terminux.log"
+
+
+def _daemon_pid_path() -> Path:
+    return platformdirs.user_state_path("terminux", appauthor=False) / "terminux.pid"
+
+
+def _running_daemon_pid(pid_path: Path) -> int | None:
+    """The PID recorded in ``pid_path`` if that process is still alive. A
+    file left behind by a crash or ``kill -9`` names a dead process."""
+    try:
+        pid = int(pid_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        return None
+    return pid if _alive(pid) else None
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:  # another user's process: the PID was reused
+        return False
+    return True
+
+
+def _connect_url(public_host: str | None, bind: str, port: int, token: str) -> str:
+    """The URL to print. ``--public-host`` wins; otherwise a wildcard bind
+    names this machine (routable on the network), a loopback bind keeps the
+    loopback address (reach it through an SSH tunnel)."""
+    if public_host:
+        host = public_host
+    elif bind in _WILDCARD_BINDS:
+        host = socket.getfqdn()
+    else:
+        host = bind
+    if ":" in host:  # a bare IPv6 address needs brackets in a URL
+        host = f"[{host}]"
+    return f"http://{host}:{port}/?t={token}"
+
+
+def _banner(url: str, bind: str) -> str:
+    text = f"\nterminux server listening — connect with:\n  {url}\n"
+    if bind in LOOPBACK_BINDS:
+        text += (
+            f"It listens on {bind} only: from another machine, go through an SSH "
+            "tunnel, or start it with --host 0.0.0.0.\n"
+        )
+    return text + "\n"
+
+
+def _daemonize(banner: str) -> Callable[[str | None], None]:
+    """Go to the background, Unix style, and return the child's readiness
+    callback.
+
+    Double fork plus ``setsid``: the server is never a session leader, so a
+    PTY it opens can't become its controlling terminal. The original process
+    waits on a pipe until the server is accepting connections (or failed to
+    bind), prints the banner or the error, and exits; the shell gets its
+    prompt back only once the URL works. The background process logs to
+    ``_daemon_log_path()``, stdout and stderr included (fault dumps,
+    uncaught tracebacks). Its PID goes to ``_daemon_pid_path()``, removed
+    when it stops; a second daemon refuses to start while the first is alive,
+    since both would write the same saved state.
+    """
+    log_path = _daemon_log_path()
+    pid_path = _daemon_pid_path()
+    running = _running_daemon_pid(pid_path)
+    if running is not None:
+        msg = (
+            f"terminux daemon already running (pid {running}); "
+            "stop it with terminux --stop"
+        )
+        raise SystemExit(msg)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    pid_path.parent.mkdir(parents=True, exist_ok=True)
+    read_end, write_end = os.pipe()
+    if os.fork():  # the original process: report, then leave
+        os.close(write_end)
+        with os.fdopen(read_end, "rb") as pipe:
+            report = pipe.read().decode()
+        if not report.startswith("ok "):
+            raise SystemExit(
+                report or f"terminux daemon died while starting; see {log_path}"
+            )
+        pid = report.split()[1]
+        sys.stderr.write(
+            f"{banner}Running in the background (pid {pid}).\n"
+            f"  log: {log_path}\n  pid file: {pid_path}\n"
+        )
+        raise SystemExit(0)
+    os.close(read_end)
+    os.setsid()
+    if os.fork():
+        os._exit(0)  # the session leader's only job was to fork
+    os.chdir("/")
+    devnull = os.open(os.devnull, os.O_RDONLY)
+    logfile = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    os.dup2(devnull, 0)
+    os.dup2(logfile, 1)
+    os.dup2(logfile, 2)
+    os.close(devnull)
+    os.close(logfile)
+
+    def notify_ready(error: str | None) -> None:
+        if error is None:
+            pid_path.write_text(f"{os.getpid()}\n", encoding="utf-8")
+            # SIGTERM stops the server gracefully (``_serve_until_stopped``),
+            # so the interpreter exits normally and runs this.
+            atexit.register(pid_path.unlink, missing_ok=True)
+        message = error if error is not None else f"ok {os.getpid()}"
+        os.write(write_end, message.encode())
+        os.close(write_end)
+
+    return notify_ready
 
 
 def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((HOST, 0))
         return int(s.getsockname()[1])
-
-
-def _serve(server: uvicorn.Server) -> None:
-    server.run()
 
 
 def _wait_until_started(
@@ -154,7 +279,7 @@ class _RedactTokenFilter(logging.Filter):
         return True
 
 
-def main() -> None:
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="terminux")
     parser.add_argument(
         "--no-window",
@@ -180,7 +305,36 @@ def main() -> None:
             "local backend. Use an SSH tunnel for security."
         ),
     )
-    parser.add_argument("--port", type=int, default=0, help="bind port (0 = ephemeral)")
+    parser.add_argument(
+        "-d",
+        "--daemon",
+        action="store_true",
+        help=(
+            "like --server, but go to the background once the server is up, "
+            "after printing the connect URL; logs go to "
+            f"{_daemon_log_path()}. Not available on Windows."
+        ),
+    )
+    parser.add_argument(
+        "--stop",
+        action="store_true",
+        help="stop the server started by --daemon, and wait until it is gone",
+    )
+    parser.add_argument(
+        "--public-host",
+        metavar="NAME",
+        default=None,
+        help=(
+            "hostname or address to print in the connect URL (with --server or "
+            "--daemon), so it is routable from other machines"
+        ),
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help=f"bind port (default: {DAEMON_PORT} with --daemon, else ephemeral)",
+    )
     parser.add_argument(
         "--host",
         default=HOST,
@@ -204,28 +358,64 @@ def main() -> None:
         ),
     )
     args = parser.parse_args()
+    if args.daemon:
+        if sys.platform == "win32":
+            parser.error("--daemon needs fork(); on Windows run `terminux --server`")
+        args.server = True
+    return args
 
-    _configure_logging(debug=args.debug or args.trace, trace=args.trace)
-    _install_freeze_diagnostics()
+
+def _stop_daemon() -> None:
+    """SIGTERM the daemon named in the PID file and wait until it's gone:
+    it saves its state and closes its shells first (``timeout_graceful_
+    shutdown`` bounds that), then removes the file."""
+    pid_path = _daemon_pid_path()
+    pid = _running_daemon_pid(pid_path)
+    if pid is None:
+        msg = "no terminux daemon is running"
+        raise SystemExit(msg)
+    os.kill(pid, signal.SIGTERM)
+    deadline = time.monotonic() + 10
+    while _alive(pid):
+        if time.monotonic() > deadline:
+            msg = f"terminux daemon (pid {pid}) did not stop"
+            raise SystemExit(msg)
+        time.sleep(0.05)
+    sys.stderr.write(f"terminux daemon stopped (pid {pid})\n")
+
+
+def main() -> None:
+    args = _parse_args()
+    if args.stop:
+        _stop_daemon()
+        return
 
     # ----- client mode: no local backend, just a window onto a remote ---
     if args.connect:
+        _configure_logging(debug=args.debug or args.trace, trace=args.trace)
+        _install_freeze_diagnostics()
         # No watchdog here: it monitors the local server's asyncio
         # heartbeat, and client mode runs no local server — arming it
         # would warn every 10 s about a loop that doesn't exist.
         _run_connected(args.connect, debug=args.debug or args.trace)
         return
 
-    start_watchdog()
-
-    # ----- server side: persist the token if we're in --server / --no-window
-    headless = args.server or args.no_window
+    # The daemon picks its port and token before forking, so the parent can
+    # print the URL; everything else (logging, threads) starts in the child.
     if args.server:
         token = auth_mod.load_or_create_persistent_token(server_token_path())
     else:
         token = SESSION_TOKEN
+    port = args.port or (DAEMON_PORT if args.daemon else _free_port())
+    url = _connect_url(args.public_host, args.host, port, token)
+    notify_ready = _daemonize(_banner(url, args.host)) if args.daemon else None
 
-    port = args.port or _free_port()
+    _configure_logging(debug=args.debug or args.trace, trace=args.trace)
+    _install_freeze_diagnostics()
+
+    start_watchdog()
+
+    headless = args.server or args.no_window
     app = build_app(persist=True)
     # Tell the app how it was bound, so "Show remote connection URL" can
     # say whether a tunnel is needed and whether the URL outlives the run.
@@ -239,28 +429,59 @@ def main() -> None:
         log_level="info" if (args.debug or args.trace) else "warning",
         access_log=args.debug or args.trace,
         ws="websockets-sansio",  # avoid the deprecated legacy websockets impl
+        # A stop waits for open connections (websockets) to close; don't
+        # let a stuck one keep the process, and ``--stop``, waiting.
+        timeout_graceful_shutdown=3,
     )
     server = uvicorn.Server(config)
 
-    thread = threading.Thread(target=_serve, args=(server,), daemon=True)
+    thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
-    _wait_until_started(server, thread, f"{args.host}:{port}")
+    try:
+        _wait_until_started(server, thread, f"{args.host}:{port}")
+    except SystemExit as exc:
+        if notify_ready is not None:
+            notify_ready(str(exc))
+        raise
 
-    shown_host = "127.0.0.1" if args.host in {"0.0.0.0", "::"} else args.host  # noqa: S104
-    url = f"http://{shown_host}:{port}/?t={token}"
     log.info("terminux server ready at %s", url)
-    if args.server:
-        # Print a prominent banner with the connect URL so SSH-tunnel users
-        # can copy it without grepping the log.
-        sys.stderr.write(f"\nterminux server listening — connect with:\n  {url}\n\n")
+    if notify_ready is not None:
+        notify_ready(None)  # the parent prints the banner and exits
+    elif args.server:
+        # A prominent banner, so the URL can be copied without grepping the log.
+        sys.stderr.write(_banner(url, args.host))
         sys.stderr.flush()
 
     if headless:
-        with contextlib.suppress(KeyboardInterrupt):
-            thread.join()
+        _serve_until_stopped(server, thread)
         return
 
-    _run_windowed(url, app.state.controller, server, debug=args.debug or args.trace)
+    # The local window always goes through loopback, whatever is printed.
+    local = "127.0.0.1" if args.host in _WILDCARD_BINDS else args.host
+    local_url = _connect_url(local, args.host, port, token)
+    _run_windowed(
+        local_url, app.state.controller, server, debug=args.debug or args.trace
+    )
+    thread.join(timeout=5)  # let the lifespan shutdown save and close
+
+
+def _serve_until_stopped(server: uvicorn.Server, thread: threading.Thread) -> None:
+    """Block until the server stops. SIGTERM (``terminux --stop``, systemd)
+    and Ctrl-C ask uvicorn to exit gracefully, so the app's lifespan
+    shutdown gets to save the state and close the shells."""
+
+    def stop(_signum: int, _frame: object) -> None:
+        server.should_exit = True
+
+    previous = signal.signal(signal.SIGTERM, stop)
+    try:
+        try:
+            thread.join()
+        except KeyboardInterrupt:
+            server.should_exit = True
+            thread.join()
+    finally:
+        signal.signal(signal.SIGTERM, previous)
 
 
 def _drop_paths(event: dict[str, object]) -> list[str]:
@@ -366,22 +587,29 @@ def _set_macos_dock_icon() -> None:
         NSApplication.sharedApplication().setApplicationIconImage_(image)
 
 
-def _run_windowed(
-    url: str, ctl: AppController, server: uvicorn.Server, *, debug: bool = False
+def _open_window(
+    url: str,
+    *,
+    geometry: tuple[int, int, int | None, int | None],
+    on_paths: Callable[[list[str]], None],
+    on_window: Callable[[Window], None] | None = None,
+    debug: bool = False,
 ) -> None:
+    """Open the terminux window on ``url`` at ``geometry`` (width, height,
+    x, y) and run the GUI loop until it closes. Dropped files go to
+    ``on_paths``; ``on_window`` hooks more events before the loop starts."""
     _disable_macos_press_and_hold()
     _app_nap = _disable_macos_app_nap()  # held: releasing it re-enables App Nap
     import webview  # noqa: PLC0415  (heavy GUI import; only when windowing)
     from webview.dom import DOMEventHandler  # noqa: PLC0415
 
-    ui = ctl.state.ui
     window = webview.create_window(
         "terminux",
         url,
-        width=ui.win_w,
-        height=ui.win_h,
-        x=ui.win_x,
-        y=ui.win_y,
+        width=geometry[0],
+        height=geometry[1],
+        x=geometry[2],
+        y=geometry[3],
         # Catch Cmd/Ctrl+Q and the close button so a stray chord doesn't
         # nuke a workspace full of live shells without a prompt.
         confirm_close=True,
@@ -392,34 +620,19 @@ def _run_windowed(
         raise RuntimeError(msg)
     win = window  # non-None binding so closures don't see Optional
 
-    def _on_resized(width: int, height: int) -> None:
-        ui.win_w, ui.win_h = int(width), int(height)
-
-    def _on_moved(x: int, y: int) -> None:
-        ui.win_x, ui.win_y = int(x), int(y)
-
-    # Geometry is tracked in memory and persisted by the shutdown save
-    # (no per-event disk writes during a drag).
-    win.events.resized += _on_resized
-    win.events.moved += _on_moved
-
     def _on_drop(event: dict[str, object]) -> None:
         paths = _drop_paths(event)
         if paths:
-            ctl.paste_paths(paths)
+            on_paths(paths)
 
     def _register_drop() -> None:
         # Must run after the DOM is loaded; prevent_default stops the webview
         # from navigating to the dropped file.
         win.dom.document.on("drop", DOMEventHandler(_on_drop, prevent_default=True))
 
-    def _shutdown() -> None:
-        ctl.save()  # final persist on graceful close (technical spec §7)
-        ctl.terminals.close_all()
-        server.should_exit = True
-
     win.events.loaded += _register_drop
-    win.events.closed += _shutdown
+    if on_window is not None:
+        on_window(win)
     # icon= is the GTK/QT taskbar/window icon (pywebview docs: "Supported
     # only on GTK/QT"); macOS uses _set_macos_dock_icon() above instead.
     # ``webview`` is a real module; the cast is purely to tell the static
@@ -430,6 +643,38 @@ def _run_windowed(
         icon=str(WINDOW_ICON),
         # --debug: enables pywebview's web inspector (right-click ->
         # Inspect Element) so frontend errors are debuggable in-window.
+        debug=debug,
+    )
+
+
+def _run_windowed(
+    url: str, ctl: AppController, server: uvicorn.Server, *, debug: bool = False
+) -> None:
+    ui = ctl.state.ui
+
+    def _track(win: Window) -> None:
+        def _on_resized(width: int, height: int) -> None:
+            ui.win_w, ui.win_h = int(width), int(height)
+
+        def _on_moved(x: int, y: int) -> None:
+            ui.win_x, ui.win_y = int(x), int(y)
+
+        def _shutdown() -> None:
+            # The final save and closing the shells happen in the app's
+            # lifespan shutdown, on the loop (technical spec §7).
+            server.should_exit = True
+
+        # Geometry is tracked in memory and persisted by the shutdown save
+        # (no per-event disk writes during a drag).
+        win.events.resized += _on_resized
+        win.events.moved += _on_moved
+        win.events.closed += _shutdown
+
+    _open_window(
+        url,
+        geometry=(ui.win_w, ui.win_h, ui.win_x, ui.win_y),
+        on_paths=ctl.paste_paths,
+        on_window=_track,
         debug=debug,
     )
 
@@ -475,41 +720,12 @@ def _run_connected(remote_url: str, *, debug: bool = False) -> None:
     file-drop handler (which POSTs to ``/api/paste-paths`` on the remote
     rather than calling a local controller).
     """
-    _disable_macos_press_and_hold()
-    _app_nap = _disable_macos_app_nap()  # held: releasing it re-enables App Nap
-    import webview  # noqa: PLC0415  (heavy GUI import; only when windowing)
-    from webview.dom import DOMEventHandler  # noqa: PLC0415
-
-    window = webview.create_window(
-        "terminux",
+    # No close handler: the remote server keeps running, and there's no
+    # local controller to flush.
+    _open_window(
         remote_url,
-        width=_CONNECT_DEFAULT_W,
-        height=_CONNECT_DEFAULT_H,
-        confirm_close=True,
-    )
-    _set_macos_dock_icon()
-    if window is None:
-        msg = "failed to create application window"
-        raise RuntimeError(msg)
-    win = window
-
-    def _on_drop(event: dict[str, object]) -> None:
-        paths = _drop_paths(event)
-        if paths:
-            _post_paste_paths(remote_url, paths)
-
-    def _register_drop() -> None:
-        win.dom.document.on("drop", DOMEventHandler(_on_drop, prevent_default=True))
-
-    win.events.loaded += _register_drop
-    # No close handler beyond pywebview's default — the remote server keeps
-    # running, and there's no local controller to flush.
-
-    webview.start(
-        menu=_build_menu(cast("_WebviewModuleLike", webview)),
-        icon=str(WINDOW_ICON),
-        # --debug: enables pywebview's web inspector (right-click ->
-        # Inspect Element) so frontend errors are debuggable in-window.
+        geometry=(_CONNECT_DEFAULT_W, _CONNECT_DEFAULT_H, None, None),
+        on_paths=lambda paths: _post_paste_paths(remote_url, paths),
         debug=debug,
     )
 

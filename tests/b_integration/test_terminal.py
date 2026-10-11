@@ -12,6 +12,7 @@ import pytest
 from terminux.core import pty_backend
 from terminux.core.pty_backend import spawn_pty
 from terminux.core.terminal import Terminal, TerminalRegistry
+from tests.conftest import wait_until
 
 unix_only = pytest.mark.skipif(sys.platform == "win32", reason="POSIX PTY")
 windows_only = pytest.mark.skipif(sys.platform != "win32", reason="ConPTY")
@@ -99,21 +100,34 @@ def test_unixpty_cwd_reports_spawn_directory(tmp_path: Path) -> None:
     target = str(Path(tmp_path).resolve())
     pty = pty_backend.UnixPty(["/bin/sh"], target, 80, 24)
     try:
-        deadline = time.time() + 6
-        while time.time() < deadline and _resolved(pty.cwd()) != target:
-            time.sleep(0.1)
-        assert _resolved(pty.cwd()) == target
+        assert wait_until(lambda: _resolved(pty.cwd()) == target)
     finally:
         pty.terminate()
 
 
 @unix_only
+def test_unixpty_terminate_hangs_up_with_time_to_clean_up(tmp_path) -> None:
+    """Closing a tab hangs the shell up and lets its SIGHUP handler run
+    (that's where shells save their history) instead of SIGKILLing it on
+    the spot, and the caller (often the event loop) doesn't wait."""
+    marker, ready = tmp_path / "saved", tmp_path / "ready"
+    script = (
+        f"trap 'echo saved > {marker}; exit 0' HUP; touch {ready}; "
+        "while :; do sleep 0.05; done"
+    )
+    pty = pty_backend.UnixPty(["/bin/sh", "-c", script], str(tmp_path), 80, 24)
+    assert wait_until(ready.exists)
+    started = time.monotonic()
+    pty.terminate()
+    assert time.monotonic() - started < 0.05
+    assert wait_until(lambda: not pty.is_alive())
+    assert marker.read_text(encoding="utf-8") == "saved\n"
+
+
+@unix_only
 def test_unixpty_lifecycle_after_exit() -> None:
     pty = pty_backend.UnixPty(["/bin/sh", "-c", "exit 0"], str(Path.cwd()), 80, 24)
-    deadline = time.time() + 6
-    while time.time() < deadline and pty.is_alive():
-        time.sleep(0.05)
-    assert pty.is_alive() is False
+    assert wait_until(lambda: not pty.is_alive())
     pty.terminate()  # already dead -> early return
     assert pty.exit_code() == 0
 
@@ -200,7 +214,4 @@ def test_windows_terminate_before_attach_ends_the_shell(test_shell) -> None:
     """The tab closed while its shell was spawning: never attached."""
     pty = spawn_pty(test_shell.argv, str(Path.cwd()), 80, 24)
     pty.terminate()
-    deadline = time.time() + 6
-    while time.time() < deadline and pty.is_alive():
-        time.sleep(0.05)
-    assert pty.is_alive() is False
+    assert wait_until(lambda: not pty.is_alive())

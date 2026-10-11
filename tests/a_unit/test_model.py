@@ -246,7 +246,6 @@ def test_from_json_defaults_for_missing_fields() -> None:
     assert ui.sidebar_width == 220
     assert ui.win_w == 1100
     assert ui.win_x is None
-    assert ui.win_maximized is False
     assert ui.copy_on_select is False
 
 

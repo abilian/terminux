@@ -18,7 +18,6 @@ export interface FuzzyEntry {
 interface OverlayApi {
   install: () => void;
   open: (entries: FuzzyEntry[]) => void;
-  close: () => void;
 }
 
 export function createFuzzyOverlay(
@@ -70,7 +69,6 @@ export function createFuzzyOverlay(
       epoch++; // remount: fresh query, selection, and input focus
       ensure();
     },
-    close,
   };
 }
 

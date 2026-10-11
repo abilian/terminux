@@ -22,12 +22,7 @@ export function invoke(id: string): boolean {
     console.warn(`command not found: "${id}"`);
     return false;
   }
-  const result = run();
-  if (result === false) {
-    return false;
-  }
-  void result; // an async command runs on its own
-  return true;
+  return run() !== false; // an async command runs on its own
 }
 
 export function has(id: string): boolean {

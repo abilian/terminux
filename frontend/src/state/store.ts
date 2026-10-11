@@ -98,6 +98,9 @@ function enqueueActivation(call: () => Promise<unknown>): void {
 
 async function fetchState(): Promise<void> {
   const r = await api("/state");
+  if (!r.ok) {
+    throw new Error(`GET /api/state: HTTP ${r.status}`);
+  }
   const fetched = (await r.json()) as StateView;
   const next = reconcile(fetched, {
     ws: expectedActiveWs,
@@ -111,9 +114,16 @@ async function fetchState(): Promise<void> {
   state = fetched;
 }
 
-// Full refresh: re-render and (re)activate the focused terminal.
+// Full refresh: re-render and (re)activate the focused terminal. Called
+// after every user action (``.then(refresh)``); a failed fetch (backend
+// stall, sleeping laptop) leaves the last state on screen, and the 2 s
+// poll catches up once the backend answers again.
 export async function refresh(): Promise<void> {
-  await fetchState();
+  try {
+    await fetchState();
+  } catch {
+    return;
+  }
   await onRender();
   await onActivate();
 }
@@ -132,72 +142,61 @@ async function localApply(): Promise<void> {
   await onActivate();
 }
 
-// Optimistic workspace switch. Mutates `state` to flip the active id and
-// re-renders right away, then queues the PATCH so the backend sees
-// switches in the order they were issued. The PATCH is followed by an
-// immediate ``poll()`` so the local state catches up with whatever the
-// backend changed on the way through (notably the dwell-gated
-// has_unseen_output clearing) without waiting for the 2 s poll tick —
-// kills the "bell briefly reappears" flicker without mirroring backend
-// logic on the client. ``expectedActiveWs`` keeps the local truth
-// intact across any stale polls already in flight.
-//
-// NOTE: ``has_unseen_output`` is *not* cleared optimistically — the
-// backend defers that until you dwell long enough, and matching the
-// backend's exact rule on the client would just duplicate logic that
-// can drift. The follow-up ``poll()`` is the sync point instead.
-export async function setActiveWorkspaceOptimistic(
+// Optimistic switch to a workspace and, optionally, one of its tabs.
+// Mutates `state` to flip the active ids and re-renders right away, then
+// queues one PATCH so the backend sees switches in the order they were
+// issued. The PATCH is followed by an immediate ``poll()`` so the local
+// state catches up with whatever the backend changed on the way through
+// (statuses, unseen flags) without waiting for the 2 s poll tick. The
+// expectations keep the local truth intact across any stale polls
+// already in flight.
+export async function activateOptimistic(
   wsId: string,
+  tid?: string,
 ): Promise<void> {
-  if (!state || state.active_workspace_id === wsId) {
+  const w = state?.workspaces.find((x) => x.id === wsId);
+  if (!state || !w) {
     return;
   }
-  const w = state.workspaces.find((x) => x.id === wsId);
-  if (!w) {
-    return;
-  }
-  state.active_workspace_id = wsId;
-  w.status = "active";
-  for (const other of state.workspaces) {
-    if (other.id !== wsId && other.status === "active") {
-      // Best-guess fallback; the follow-up poll will promote it back
-      // to unseen / busy / exited / idle as the backend computes it.
-      other.status = "idle";
+  const body: { active?: true; active_tab_id?: string } = {};
+  if (state.active_workspace_id !== wsId) {
+    state.active_workspace_id = wsId;
+    w.status = "active";
+    for (const other of state.workspaces) {
+      if (other.id !== wsId && other.status === "active") {
+        // Best-guess fallback; the follow-up poll will promote it back
+        // to unseen / busy / exited / idle as the backend computes it.
+        other.status = "idle";
+      }
     }
+    expectedActiveWs = wsId;
+    body.active = true;
   }
-  expectedActiveWs = wsId;
+  if (tid !== undefined && w.active_tab_id !== tid) {
+    w.active_tab_id = tid;
+    expectedActiveTabByWs.set(wsId, tid);
+    body.active_tab_id = tid;
+  }
+  if (body.active === undefined && body.active_tab_id === undefined) {
+    return;
+  }
   await localApply();
   enqueueActivation(async () => {
     await api(`/workspaces/${wsId}`, {
       method: "PATCH",
-      body: JSON.stringify({ active: true }),
+      body: JSON.stringify(body),
     });
     await poll();
   });
 }
 
-// Optimistic tab switch within a workspace. Same shape as the workspace
-// helper above — local active-id flip, render, queued PATCH, expectation,
-// follow-up poll.
-export async function setActiveTabOptimistic(
+export function setActiveWorkspaceOptimistic(wsId: string): Promise<void> {
+  return activateOptimistic(wsId);
+}
+
+export function setActiveTabOptimistic(
   wsId: string,
   tid: string,
 ): Promise<void> {
-  if (!state) {
-    return;
-  }
-  const w = state.workspaces.find((x) => x.id === wsId);
-  if (!w || w.active_tab_id === tid) {
-    return;
-  }
-  w.active_tab_id = tid;
-  expectedActiveTabByWs.set(wsId, tid);
-  await localApply();
-  enqueueActivation(async () => {
-    await api(`/workspaces/${wsId}`, {
-      method: "PATCH",
-      body: JSON.stringify({ active_tab_id: tid }),
-    });
-    await poll();
-  });
+  return activateOptimistic(wsId, tid);
 }

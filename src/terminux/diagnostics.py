@@ -148,7 +148,7 @@ def time_op(name: str) -> Generator[None]:
     """Log slow operations at WARNING (or all of them when --trace is on).
 
     Use around any synchronous I/O whose stall would freeze the server:
-    ``with time_op("save_state"): save_state(...)``.
+    ``with time_op("save_state"): save_state_json(...)``.
     """
     start = time.monotonic()
     try:

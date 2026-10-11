@@ -79,8 +79,8 @@ uv run terminux --trace      # extreme: log every save/load/cwd lookup
 Run terminux on a headless server and connect from your laptop:
 
 ```sh
-# on the server
-uv run terminux --server --port 8443
+# on the server: start it in the background (port 8443 by default)
+terminux --daemon
 # prints: terminux server listening — connect with:
 #           http://127.0.0.1:8443/?t=abc-def-ghi
 
@@ -89,9 +89,12 @@ ssh -L 8443:localhost:8443 server.example.com
 
 # on the laptop (another shell)
 uv run terminux --connect http://localhost:8443/?t=abc-def-ghi
+
+# on the server, when you're done
+terminux --stop
 ```
 
-Shells, workspaces, and scrollback live on the server: disconnect, sleep the laptop, reconnect later, everything's where you left it. See [**Remote access**](docs/src/guides/remote.md) for the full recipe (multi-client, firewall guidance, systemd service).
+Shells, workspaces, and scrollback live on the server: disconnect, sleep the laptop, reconnect later, everything's where you left it. `terminux --server` runs the same server in the foreground (for systemd or launchd), and `--host 0.0.0.0 --public-host <name>` skips the tunnel on a trusted network. See [**Remote access**](docs/src/guides/remote.md) for the full recipe (multi-client, firewall guidance, systemd service).
 
 ## Install / package
 

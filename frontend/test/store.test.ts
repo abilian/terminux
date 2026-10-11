@@ -57,9 +57,9 @@ beforeEach(async () => {
   mocks.api.mockReset();
   mocks.api.mockImplementation((path: string) => {
     if (path === "/state") {
-      return Promise.resolve({ json: () => Promise.resolve(served) });
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(served) });
     }
-    return Promise.resolve({ json: () => Promise.resolve({}) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
   });
   store.configure({
     onRender: () => {
@@ -116,6 +116,35 @@ describe("store", () => {
     // A stale poll (still reporting t1) does not roll it back.
     await store.poll();
     expect(store.activeWorkspace()?.active_tab_id).toBe("t3");
+  });
+
+  it("one optimistic switch moves to another workspace's tab", async () => {
+    served.workspaces[1].tab_ids = ["t2", "t4"];
+    await store.refresh();
+    await store.activateOptimistic("w2", "t4");
+    expect(store.activeWorkspace()?.id).toBe("w2");
+    expect(store.activeWorkspace()?.active_tab_id).toBe("t4");
+    expect(activated).toBe(2); // one local repaint, not one per id
+    await new Promise((r) => setTimeout(r, 0));
+    const patches = mocks.api.mock.calls.filter(
+      (c: unknown[]) => c[0] === "/workspaces/w2",
+    );
+    expect(patches).toHaveLength(1);
+    expect(JSON.parse((patches[0][1] as { body: string }).body)).toEqual({
+      active: true,
+      active_tab_id: "t4",
+    });
+  });
+
+  it("a failed refresh keeps the last state and doesn't reject", async () => {
+    await store.refresh();
+    mocks.api.mockImplementation(() =>
+      Promise.resolve({ ok: false, status: 403 }),
+    );
+    await expect(store.refresh()).resolves.toBeUndefined();
+    expect(store.getState()?.active_workspace_id).toBe("w1");
+    expect([rendered, activated]).toEqual([1, 1]);
+    await expect(store.poll()).rejects.toThrow("HTTP 403");
   });
 
   it("activeSession returns the live session of the active tab", async () => {

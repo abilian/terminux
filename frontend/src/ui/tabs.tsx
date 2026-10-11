@@ -5,6 +5,7 @@
 import { render } from "preact";
 import { useState } from "preact/hooks";
 
+import { invoke } from "../input/commands";
 import { api } from "../state/api";
 import { toggleSidebar } from "./layout";
 import { RenameInput } from "./rename";
@@ -75,15 +76,7 @@ function TabBar() {
           );
         })}
       </div>
-      <div
-        id="new-tab"
-        title="New tab"
-        onClick={() => {
-          void api(`/workspaces/${ws.id}/tabs`, { method: "POST" }).then(
-            refresh,
-          );
-        }}
-      >
+      <div id="new-tab" title="New tab" onClick={() => invoke("tab.new")}>
         +
       </div>
     </>

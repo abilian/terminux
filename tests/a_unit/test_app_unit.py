@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
+import subprocess
 import sys
 import threading
 from types import SimpleNamespace
@@ -154,3 +156,43 @@ def test_windows_edit_paste_hands_the_clipboard_text_to_the_page(monkeypatch) ->
     paste = next(i for i in edit.items if getattr(i, "title", None) == "Paste")
     paste.function()
     assert calls == ['window.terminux?.pasteText("echo \\"hi\\"\\n")']
+
+
+@pytest.mark.parametrize(
+    ("public_host", "bind", "expected_host"),
+    [
+        ("devbox.example.com", "0.0.0.0", "devbox.example.com"),  # noqa: S104
+        (None, "127.0.0.1", "127.0.0.1"),
+        ("fe80::1", "::", "[fe80::1]"),
+    ],
+)
+def test_connect_url_names_a_routable_host(public_host, bind, expected_host) -> None:
+    url = app_mod._connect_url(public_host, bind, 8443, "abc-def-ghi")
+    assert url == f"http://{expected_host}:8443/?t=abc-def-ghi"
+
+
+def test_connect_url_names_this_machine_for_a_wildcard_bind(monkeypatch) -> None:
+    monkeypatch.setattr(app_mod.socket, "getfqdn", lambda: "box.lan")
+    assert app_mod._connect_url(None, "0.0.0.0", 1, "t").startswith("http://box.lan:1/")  # noqa: S104
+
+
+def test_banner_warns_when_the_server_is_loopback_only() -> None:
+    assert "SSH tunnel" in app_mod._banner("http://h:1/?t=x", "127.0.0.1")
+    assert "SSH tunnel" not in app_mod._banner("http://h:1/?t=x", "0.0.0.0")  # noqa: S104
+
+
+def test_pid_file_counts_only_a_live_process(tmp_path) -> None:
+    pid_path = tmp_path / "terminux.pid"
+    assert app_mod._running_daemon_pid(pid_path) is None  # no file
+    pid_path.write_text("garbage\n", encoding="utf-8")
+    assert app_mod._running_daemon_pid(pid_path) is None
+    dead = subprocess.run(
+        [sys.executable, "-c", "import os; print(os.getpid())"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    pid_path.write_text(dead, encoding="utf-8")  # left behind by a crash
+    assert app_mod._running_daemon_pid(pid_path) is None
+    pid_path.write_text(f"{os.getpid()}\n", encoding="utf-8")
+    assert app_mod._running_daemon_pid(pid_path) == os.getpid()

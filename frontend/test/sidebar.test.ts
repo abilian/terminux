@@ -133,6 +133,16 @@ describe("sidebar island", () => {
     expect(apiMock).not.toHaveBeenCalled();
   });
 
+  it("the close button disposes the workspace's sessions", () => {
+    renderSidebar();
+    vi.mocked(termMod.disposeSession).mockClear();
+    (document.querySelectorAll(".ws-row .x")[1] as HTMLElement).click();
+    expect(termMod.disposeSession).toHaveBeenCalledWith("t2");
+    expect(apiMock).toHaveBeenCalledWith("/workspaces/w2", {
+      method: "DELETE",
+    });
+  });
+
   it("closeWorkspace disposes its sessions before deleting it", () => {
     closeWorkspace("w1");
     expect(termMod.disposeSession).toHaveBeenCalledWith("t1");

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import sys
 import tempfile
 import time
 import urllib.error
@@ -14,11 +15,14 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 import websockets
+from starlette.routing import Route
 
+from terminux.server.asgi import build_app
 from terminux.server.auth import SESSION_TOKEN
+from tests.conftest import wait_until
 
 if TYPE_CHECKING:
-    from tests.b_integration.conftest import LiveServer
+    from tests.conftest import LiveServer
 
 T = SESSION_TOKEN
 
@@ -38,19 +42,18 @@ def _get(url: str) -> Any:
 # ----- token guard -----------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    ("path", "method"),
-    [
-        ("/api/state", "GET"),
-        ("/api/workspaces", "POST"),
-        ("/api/workspaces/x", "PATCH"),
-        ("/api/workspaces/x", "DELETE"),
-        ("/api/workspaces/x/tabs", "POST"),
-        ("/api/tabs/x", "PATCH"),
-        ("/api/tabs/x", "DELETE"),
-        ("/api/tabs/x/spawn", "POST"),
-    ],
-)
+def _guarded_routes() -> list[tuple[str, str]]:
+    """Every HTTP route and method the app serves (so a new route is
+    covered automatically), with path parameters filled in."""
+    cases = []
+    for route in build_app(persist=False).routes:
+        if isinstance(route, Route):
+            path = re.sub(r"\{[^}]+\}", "x", route.path)
+            cases += [(path, m) for m in sorted(route.methods or ()) if m != "HEAD"]
+    return cases
+
+
+@pytest.mark.parametrize(("path", "method"), _guarded_routes())
 def test_endpoints_require_token(server: LiveServer, path: str, method: str) -> None:
     with pytest.raises(urllib.error.HTTPError) as exc:
         _req(f"{server.url}{path}", method=method, body=b"{}")
@@ -97,54 +100,53 @@ def test_security_headers_present(server: LiveServer) -> None:
 # ----- workspace / tab control plane -----------------------------------
 
 
-def test_workspace_and_tab_lifecycle(server: LiveServer) -> None:
-    base = server.url
-    st = _req(f"{base}/api/state?t={T}")
-    assert len(st["workspaces"]) == 1
-    ws0 = st["workspaces"][0]["id"]
+def _patch(url: str, body: dict[str, Any]) -> None:
+    _req(url, "PATCH", json.dumps(body).encode())
 
-    new = _req(f"{base}/api/workspaces?t={T}", "POST", b"{}")
-    ws1 = new["id"]
+
+def test_new_workspace_becomes_active(server: LiveServer) -> None:
+    base = server.url
+    assert len(_req(f"{base}/api/state?t={T}")["workspaces"]) == 1
+    ws1 = _req(f"{base}/api/workspaces?t={T}", "POST", b"{}")["id"]
     st = _req(f"{base}/api/state?t={T}")
+    assert len(st["workspaces"]) == 2
     assert st["active_workspace_id"] == ws1
 
-    # rename + reorder + activate + active_tab_id
-    _req(
-        f"{base}/api/workspaces/{ws1}?t={T}",
-        "PATCH",
-        json.dumps({"name": "renamed", "active": True}).encode(),
-    )
-    _req(
-        f"{base}/api/workspaces/{ws0}?t={T}",
-        "PATCH",
-        json.dumps({"order": [ws1, ws0]}).encode(),
-    )
+
+def test_workspace_rename_and_reorder(server: LiveServer) -> None:
+    base = server.url
+    ws0 = _req(f"{base}/api/state?t={T}")["workspaces"][0]["id"]
+    ws1 = _req(f"{base}/api/workspaces?t={T}", "POST", b"{}")["id"]
+    _patch(f"{base}/api/workspaces/{ws1}?t={T}", {"name": "renamed", "active": True})
+    _patch(f"{base}/api/workspaces/{ws0}?t={T}", {"order": [ws1, ws0]})
     st = _req(f"{base}/api/state?t={T}")
-    names = {w["id"]: w["name"] for w in st["workspaces"]}
-    assert names[ws1] == "renamed"
+    assert {w["id"]: w["name"] for w in st["workspaces"]}[ws1] == "renamed"
     assert [w["id"] for w in st["workspaces"]] == [ws1, ws0]
 
-    # tab create + rename + set active_tab_id (valid + None) + delete
-    tab = _req(f"{base}/api/workspaces/{ws1}/tabs?t={T}", "POST", b"{}")["id"]
-    _req(
-        f"{base}/api/tabs/{tab}?t={T}",
-        "PATCH",
-        json.dumps({"title": "logs"}).encode(),
-    )
-    _req(
-        f"{base}/api/workspaces/{ws1}?t={T}",
-        "PATCH",
-        json.dumps({"active_tab_id": tab}).encode(),
-    )
-    _req(
-        f"{base}/api/workspaces/{ws1}?t={T}",
-        "PATCH",
-        json.dumps({"active_tab_id": None}).encode(),
-    )
-    st = _req(f"{base}/api/state?t={T}")
-    assert st["tabs"][tab]["title"] == "logs"
+
+def test_tab_rename_and_delete(server: LiveServer) -> None:
+    base = server.url
+    ws = _req(f"{base}/api/state?t={T}")["workspaces"][0]["id"]
+    tab = _req(f"{base}/api/workspaces/{ws}/tabs?t={T}", "POST", b"{}")["id"]
+    _patch(f"{base}/api/tabs/{tab}?t={T}", {"title": "logs"})
+    assert _req(f"{base}/api/state?t={T}")["tabs"][tab]["title"] == "logs"
     _req(f"{base}/api/tabs/{tab}?t={T}", "DELETE", b"{}")
     assert tab not in _req(f"{base}/api/state?t={T}")["tabs"]
+
+
+def test_active_tab_id_can_be_set_and_cleared(server: LiveServer) -> None:
+    base = server.url
+    ws = _req(f"{base}/api/state?t={T}")["workspaces"][0]["id"]
+    tab = _req(f"{base}/api/workspaces/{ws}/tabs?t={T}", "POST", b"{}")["id"]
+
+    def active_tab() -> str | None:
+        st = _req(f"{base}/api/state?t={T}")
+        return next(w for w in st["workspaces"] if w["id"] == ws)["active_tab_id"]
+
+    _patch(f"{base}/api/workspaces/{ws}?t={T}", {"active_tab_id": tab})
+    assert active_tab() == tab
+    _patch(f"{base}/api/workspaces/{ws}?t={T}", {"active_tab_id": None})
+    assert active_tab() is None
 
 
 def test_workspace_label_tracks_cwd_then_pins(server: LiveServer) -> None:
@@ -157,9 +159,7 @@ def test_workspace_label_tracks_cwd_then_pins(server: LiveServer) -> None:
     _req(f"{base}/api/tabs/{ws0.active_tab_id}/spawn?t={T}", "POST", b"{}")
     term = ctl.active_terminal()
     assert term is not None
-    deadline = time.time() + 6
-    while time.time() < deadline and term.cwd() != str(target):
-        time.sleep(0.1)
+    wait_until(lambda: term.cwd() == str(target))
 
     name = _req(f"{base}/api/state?t={T}")["workspaces"][0]["name"]
     assert name == target.name
@@ -455,12 +455,14 @@ def test_stress_blocking_pty_write_does_not_freeze_server(  # noqa: PLR0914
 
     caplog.clear()
     with caplog.at_level(logging.WARNING, logger="terminux.diagnostics"):
-        latencies, free_writes, n_writes = asyncio.run(
-            asyncio.wait_for(scenario(), timeout=block_seconds + 10)
-        )
-        # The stuck write is still parked; restore the real write before
-        # cleanup so deletion/teardown doesn't itself block.
-        stuck._pty.write = original_write  # type: ignore[method-assign]
+        try:
+            latencies, free_writes, n_writes = asyncio.run(
+                asyncio.wait_for(scenario(), timeout=block_seconds + 10)
+            )
+        finally:
+            # The stuck write is still parked; restore the real write
+            # before cleanup (even on failure) so teardown doesn't block.
+            stuck._pty.write = original_write  # type: ignore[method-assign]
 
     # Invariant 1: loop stayed responsive. The fix gives single-digit ms
     # per state call; without the fix latency would balloon past
@@ -600,6 +602,20 @@ def test_concurrent_tab_creation_does_not_race(server: LiveServer) -> None:
     assert len(ws_view["tab_ids"]) == before + n
 
 
+def test_concurrent_spawns_of_one_tab_share_a_terminal(server: LiveServer) -> None:
+    """``spawn_lock`` serializes spawns: two windows asking for the same
+    tab's shell at once get one terminal, not two racing shells."""
+    import concurrent.futures
+
+    tab = _req(f"{server.url}/api/state?t={T}")["workspaces"][0]["tab_ids"][0]
+    url = f"{server.url}/api/tabs/{tab}/spawn?t={T}"
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        ids = set(
+            pool.map(lambda _i: _req(url, "POST", b"{}")["terminal_id"], range(8))
+        )
+    assert len(ids) == 1
+
+
 def test_unknown_ids_return_404(server: LiveServer) -> None:
     base = server.url
     for url, method in [
@@ -706,15 +722,11 @@ def test_spawn_is_idempotent(server: LiveServer) -> None:
 # ----- controller helpers backed by a real terminal --------------------
 
 
-def test_paste_inherit_and_active_terminal(
-    server: LiveServer, tmp_path: Any, monkeypatch, test_shell
-) -> None:
+def test_paste_inherit_and_active_terminal(server: LiveServer, tmp_path: Any) -> None:
     from pathlib import Path
 
-    # On Windows the cwd comes from the shell (the test shell reports it).
-    monkeypatch.setattr(
-        "terminux.server.controller.default_shell", lambda: test_shell.argv
-    )
+    # On Windows the cwd comes from the shell (the test shell reports it;
+    # the ``server`` fixture spawns it).
     base = server.url
     ctl = server.controller
     ws = ctl.state.workspaces[0]
@@ -732,9 +744,7 @@ def test_paste_inherit_and_active_terminal(
         value = term.cwd()
         return str(Path(value).resolve()) if value else None
 
-    deadline = time.time() + 6
-    while time.time() < deadline and resolved_cwd() != target:
-        time.sleep(0.1)
+    wait_until(lambda: resolved_cwd() == target)
     inherited = ctl.inherit_cwd(ws.id)
     assert inherited is not None
     assert str(Path(inherited).resolve()) == target
@@ -803,6 +813,59 @@ def test_malformed_numeric_bodies_return_400(server: LiveServer) -> None:
         )
     assert exc.value.code == 400
     assert _req(f"{base}/api/state?t={T}")["ui"]["sidebar_width"] == before
+
+
+def _status_of(url: str, method: str, body: bytes) -> tuple[int, Any]:
+    try:
+        return 200, _req(url, method=method, body=body)
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read())
+
+
+@pytest.mark.parametrize(
+    "body",
+    [b"{not json", b"[]", b'"text"', b'{"cols": Infinity}', b'{"cols": null}'],
+)
+def test_malformed_bodies_are_json_400s(server: LiveServer, body: bytes) -> None:
+    tid = _req(f"{server.url}/api/state?t={T}")["workspaces"][0]["active_tab_id"]
+    code, payload = _status_of(f"{server.url}/api/tabs/{tid}/spawn?t={T}", "POST", body)
+    assert code == 400
+    assert payload["error"]
+
+
+def test_patch_workspace_rejects_bad_types_before_changing_anything(
+    server: LiveServer,
+) -> None:
+    ws = _req(f"{server.url}/api/state?t={T}")["workspaces"][0]
+    url = f"{server.url}/api/workspaces/{ws['id']}?t={T}"
+    for bad in ({"name": "renamed", "order": 5}, {"name": None}):
+        code, payload = _status_of(url, "PATCH", json.dumps(bad).encode())
+        assert code == 400, bad
+        assert payload["error"].split()[0] in {"order", "name"}
+    after = _req(f"{server.url}/api/state?t={T}")["workspaces"][0]
+    assert after["name"] == ws["name"]
+
+
+def test_out_of_range_terminal_size_is_clamped(server: LiveServer) -> None:
+    """A size past ``struct winsize`` would kill the fork child before exec
+    and wedge every later spawn; it's clamped at the boundary instead."""
+    st = _req(f"{server.url}/api/state?t={T}")
+    tid = st["workspaces"][0]["active_tab_id"]
+    spawned = _req(
+        f"{server.url}/api/tabs/{tid}/spawn?t={T}",
+        method="POST",
+        body=json.dumps({"cols": 70000, "rows": -5}).encode(),
+    )
+    assert server.controller.terminals.get(spawned["terminal_id"]) is not None
+    # ...and the next spawn still works.
+    ws = _req(f"{server.url}/api/workspaces?t={T}", method="POST", body=b"")
+    st = _req(f"{server.url}/api/state?t={T}")
+    tid2 = next(w for w in st["workspaces"] if w["id"] == ws["id"])["active_tab_id"]
+    assert _req(
+        f"{server.url}/api/tabs/{tid2}/spawn?t={T}",
+        method="POST",
+        body=b'{"cols": 80, "rows": 24}',
+    )["terminal_id"]
 
 
 def test_connect_info_reports_bind_and_stability(server: LiveServer) -> None:
@@ -882,15 +945,12 @@ async def _output_until(ws: Any, marker: bytes, timeout: float = 8.0) -> bytes:
 
 
 def test_the_client_in_use_owns_the_terminal_size_and_input(
-    server: LiveServer, monkeypatch, test_shell
+    server: LiveServer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A desktop window and a --connect window on the same terminal (the
     garbled-screen bug): the watcher's size never reaches the PTY, its
     emulator's stray answers never reach the shell, a claim moves both, and
     the owner leaving hands everything back."""
-    monkeypatch.setattr(
-        "terminux.server.controller.default_shell", lambda: test_shell.argv
-    )
     base = server.url
     tab = _req(f"{base}/api/state?t={T}")["workspaces"][0]["tab_ids"][0]
     tid = _req(f"{base}/api/tabs/{tab}/spawn?t={T}", "POST", b"{}")["terminal_id"]
@@ -906,7 +966,7 @@ def test_the_client_in_use_owns_the_terminal_size_and_input(
         sizes.append((cols, rows))
         real_resize(cols, rows)
 
-    term._pty.resize = recording_resize  # type: ignore[method-assign]
+    monkeypatch.setattr(term._pty, "resize", recording_resize)
 
     def pty_size() -> tuple[int, int]:  # (cols, rows) as last set on the PTY
         return sizes[-1]
@@ -956,13 +1016,10 @@ def test_the_client_in_use_owns_the_terminal_size_and_input(
 
 
 def test_typing_in_a_terminal_marks_its_workspace_as_last_used(
-    server: LiveServer, monkeypatch, test_shell
+    server: LiveServer,
 ) -> None:
     """End to end for "Sort by Recent Activity": a keystroke over the PTY
     websocket shows up as the workspace's ``last_used_at`` in the state."""
-    monkeypatch.setattr(
-        "terminux.server.controller.default_shell", lambda: test_shell.argv
-    )
     base = server.url
     ws0 = _req(f"{base}/api/state?t={T}")["workspaces"][0]
     assert ws0["last_used_at"] is None
@@ -986,3 +1043,19 @@ def test_typing_in_a_terminal_marks_its_workspace_as_last_used(
             raise AssertionError(msg)
 
     asyncio.run(scenario())
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX /bin/sh")
+def test_exited_shell_is_freed(server: LiveServer, monkeypatch) -> None:
+    """When the shell exits, its terminal (PTY, backlog, busy tracking)
+    leaves the registry; the tab can start a fresh one."""
+    monkeypatch.setattr(
+        "terminux.server.controller.default_shell", lambda: ["/bin/sh", "-c", "exit 0"]
+    )
+    ctl = server.controller
+    tab = _req(f"{server.url}/api/state?t={T}")["workspaces"][0]["tab_ids"][0]
+    url = f"{server.url}/api/tabs/{tab}/spawn?t={T}"
+    tid = _req(url, "POST", b"{}")["terminal_id"]
+    assert wait_until(lambda: ctl.terminals.get(tid) is None)
+    assert ctl.state.tabs[tab].terminal_id is None
+    assert _req(url, "POST", b"{}")["terminal_id"] != tid

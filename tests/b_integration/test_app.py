@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
+import os
+import re
+import signal
+import socket
+import subprocess
 import sys
 import time
 import types
+import urllib.request
+from pathlib import Path
+
+import pytest
 
 import terminux.__main__  # noqa: F401  (import executes module body for coverage)
 from terminux import app
@@ -191,3 +200,88 @@ def test_main_windowed_create_window_none(monkeypatch) -> None:
         assert "failed to create application window" in str(e)
     else:
         raise AssertionError("expected RuntimeError")
+
+
+def _free_tcp_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
+
+
+def _assert_page_token_works(url: str, port: int) -> None:
+    """The page loads, and the token it hands the browser is the one the
+    API accepts."""
+    with urllib.request.urlopen(url, timeout=5) as resp:  # noqa: S310
+        page = resp.read().decode()
+    page_token = re.search(r'TERMINUX_TOKEN = "([^"]+)"', page)
+    assert page_token, page
+    api_url = f"http://127.0.0.1:{port}/api/state?t={page_token.group(1)}"
+    with urllib.request.urlopen(api_url, timeout=5) as resp:
+        assert resp.status == 200
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="--daemon needs fork()")
+def test_daemon_prints_the_url_goes_to_the_background_and_logs(tmp_path) -> None:
+    """``terminux --daemon`` returns once the server answers, printing the
+    URL with the public host; the server keeps running detached, logs to a
+    file and records its PID. A second daemon is refused while the first
+    runs; ``--stop`` ends it and removes the PID file."""
+
+    env = {
+        **os.environ,
+        "HOME": str(tmp_path),
+        "XDG_STATE_HOME": str(tmp_path / "state"),
+    }
+    port = _free_tcp_port()
+    argv = [sys.executable, "-m", "terminux", "--daemon", "--port", str(port)]
+    started = subprocess.run(
+        [*argv, "--public-host", "devbox.example.com"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert started.returncode == 0, started.stderr
+    url = re.search(r"http://devbox\.example\.com:\d+/\?t=\S+", started.stderr)
+    pid = re.search(r"pid (\d+)", started.stderr)
+    log_file = re.search(r"log: (.+)", started.stderr)
+    pid_file = re.search(r"pid file: (.+)", started.stderr)
+    assert url and pid and log_file and pid_file, started.stderr
+    pid_path = Path(pid_file.group(1))
+    try:
+        assert pid_path.read_text(encoding="utf-8").strip() == pid.group(1)
+        _assert_page_token_works(
+            url.group(0).replace("devbox.example.com", "127.0.0.1"), port
+        )
+        assert "server ready" in Path(log_file.group(1)).read_text(encoding="utf-8")
+
+        again = subprocess.run(
+            argv, env=env, capture_output=True, text=True, timeout=30, check=False
+        )
+        assert again.returncode == 1
+        assert f"already running (pid {pid.group(1)})" in again.stderr
+    finally:
+        stopped = subprocess.run(
+            [sys.executable, "-m", "terminux", "--stop"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if stopped.returncode:  # don't leak the daemon if --stop is broken
+            os.kill(int(pid.group(1)), signal.SIGTERM)
+    assert stopped.returncode == 0, stopped.stderr
+    assert f"stopped (pid {pid.group(1)})" in stopped.stderr
+    assert not pid_path.exists()
+    nothing = subprocess.run(
+        [sys.executable, "-m", "terminux", "--stop"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert nothing.returncode == 1
+    assert "no terminux daemon is running" in nothing.stderr

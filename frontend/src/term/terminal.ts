@@ -11,7 +11,8 @@ import { api, TOKEN } from "../state/api";
 import { macEditingSeq } from "./editing";
 import { getFontSize } from "./font";
 import { createKitty } from "./kitty";
-import { appMod } from "../input/platform";
+import { linkMod } from "../input/platform";
+import { byId } from "../util/dom";
 import { typingElsewhere } from "../util/focus";
 import {
   activeSession,
@@ -28,6 +29,8 @@ const enc = new TextEncoder();
 // xterm scrollback to capture (lines, not bytes). The server caps the
 // on-disk size separately.
 const SCROLLBACK_LINES = 5000;
+
+const TITLE_DEBOUNCE_MS = 500;
 
 function binStr(u8: Uint8Array): string {
   let s = "";
@@ -103,14 +106,24 @@ async function fetchScrollback(tid: string): Promise<SavedScrollback | null> {
   }
 }
 
-function persistScrollback(tid: string, content: string): void {
-  // keepalive lets the request outlive a page hide / unload.
-  void api(`/tabs/${tid}/scrollback`, {
+// Resolves false when the save failed, so the caller can retry it.
+function persistScrollback(
+  tid: string,
+  content: string,
+  final: boolean,
+): Promise<boolean> {
+  return api(`/tabs/${tid}/scrollback`, {
     method: "PUT",
     headers: { "Content-Type": "text/plain" },
     body: content,
-    keepalive: true,
-  }).catch(() => {});
+    // keepalive lets the final save outlive the page. Only that one:
+    // browsers cap keepalive bodies at 64 KiB in total, so a large
+    // buffer sent with it fails outright.
+    keepalive: final,
+  }).then(
+    (r) => r.ok,
+    () => false,
+  );
 }
 
 function discardScrollback(tid: string): void {
@@ -119,14 +132,15 @@ function discardScrollback(tid: string): void {
 
 // Shared by OSC 8 hyperlinks and regex-detected plain-text URLs: require a
 // modifier to open, matching iTerm2 / Terminal.app conventions so a stray
-// click can't navigate (Cmd+click on macOS, Ctrl+click on Linux — Ctrl+click
-// on macOS is the platform context-menu chord, left alone). Routed through
+// click can't navigate (Cmd+click on macOS, Ctrl+click on Linux and
+// Windows — Ctrl+click on macOS is the platform context-menu chord, left
+// alone). Routed through
 // the backend because pywebview's WKWebView ignores JS window.open(); the
 // same handler then also works in --no-window mode. The backend rejects
 // every scheme but http/https/mailto, which is what makes program-printed
 // OSC 8 URIs safe to open without a confirm popup.
 function openLink(event: MouseEvent, uri: string): void {
-  if (!appMod(event)) {
+  if (!linkMod(event)) {
     return;
   }
   void api("/open-url", {
@@ -349,7 +363,7 @@ async function openTerminal(tid: string, restore = true): Promise<void> {
 async function doOpenTerminal(tid: string, restore: boolean): Promise<void> {
   const host = document.createElement("div");
   host.className = "term-host";
-  document.getElementById("terminals")?.appendChild(host);
+  byId("terminals").appendChild(host);
 
   // Fetch first so we can size the buffer to match the captured session.
   // Per SerializeAddon: write into a terminal of the same size and resize
@@ -433,17 +447,23 @@ async function doOpenTerminal(tid: string, restore: boolean): Promise<void> {
   });
 
   // OSC 0/2 title from the shell tracks the tab name (unless pinned).
+  // Debounced: each update is a state save on the server, and some
+  // programs animate their title several times a second.
   let lastTitle = "";
+  let titleTimer: ReturnType<typeof setTimeout> | undefined;
   term.onTitleChange((t: string) => {
     const title = t.trim();
     if (!title || title === lastTitle) {
       return;
     }
     lastTitle = title;
-    api(`/tabs/${tid}`, {
-      method: "PATCH",
-      body: JSON.stringify({ osc_title: title }),
-    }).then(() => poll()); // render-only refresh, no focus steal
+    clearTimeout(titleTimer);
+    titleTimer = setTimeout(() => {
+      void api(`/tabs/${tid}`, {
+        method: "PATCH",
+        body: JSON.stringify({ osc_title: title }),
+      }).then(() => poll()); // render-only refresh, no focus steal
+    }, TITLE_DEBOUNCE_MS);
   });
 
   term.onData((d: string) => sendInput(sess, d));
@@ -518,13 +538,15 @@ async function restartTerminal(tid: string): Promise<void> {
   }
 }
 
-function flushScrollback(force = false): void {
-  if (!force && !getState()?.ui.scrollback_persist) {
+// `final` is the page-hide flush: it runs whatever the preference says
+// and asks the browser to finish the request after the page is gone.
+export function flushScrollback(final = false): void {
+  if (!final && !getState()?.ui.scrollback_persist) {
     return;
   }
   for (const [tid, s] of sessions) {
-    if (!force && !s.dirty) {
-      continue;
+    if (!s.dirty) {
+      continue; // the last save already has it
     }
     // excludeAltBuffer: full-screen TUIs (Claude Code, vim, less, fzf, tmux)
     // own the alt buffer; the moment they exit the contents are gone, so
@@ -546,8 +568,14 @@ function flushScrollback(force = false): void {
       cols: s.term.cols,
       rows: s.term.rows,
     });
-    persistScrollback(tid, `${header}\n${content}`);
+    // Cleared before the save, so output arriving meanwhile re-marks it;
+    // a failed save marks it again for the next tick.
     s.dirty = false;
+    void persistScrollback(tid, `${header}\n${content}`, final).then((ok) => {
+      if (!ok) {
+        s.dirty = true;
+      }
+    });
   }
 }
 
@@ -561,21 +589,32 @@ export function installScrollbackAutosave(): void {
   window.addEventListener("beforeunload", finalFlush);
 }
 
-export async function ensureActiveTerminal(): Promise<void> {
-  const ws = activeWorkspace();
-  const empty = document.getElementById("empty");
-  if (!ws || !ws.active_tab_id) {
-    if (empty) {
-      empty.style.display = "flex";
+// Tabs closed elsewhere (another window, a remote client) still have a
+// local xterm, host div and socket; drop them once the state says so.
+function disposeClosedSessions(): void {
+  const tabs = getState()?.tabs;
+  if (!tabs) {
+    return;
+  }
+  for (const tid of sessions.keys()) {
+    if (!(tid in tabs)) {
+      disposeSession(tid);
     }
+  }
+}
+
+export async function ensureActiveTerminal(): Promise<void> {
+  disposeClosedSessions();
+  const ws = activeWorkspace();
+  const empty = byId("empty");
+  if (!ws || !ws.active_tab_id) {
+    empty.style.display = "flex";
     for (const s of sessions.values()) {
       s.host.hidden = true;
     }
     return;
   }
-  if (empty) {
-    empty.style.display = "none";
-  }
+  empty.style.display = "none";
   const tid = ws.active_tab_id;
   for (const [id, s] of sessions) {
     s.host.hidden = id !== tid;

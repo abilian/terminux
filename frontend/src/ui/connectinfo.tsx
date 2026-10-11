@@ -4,11 +4,10 @@
 // bound, what this machine is called, and whether the URL outlives the
 // run (see GET /api/connect-info).
 
-import { render } from "preact";
 import { useState } from "preact/hooks";
 
 import { api, TOKEN } from "../state/api";
-import { activeSession } from "../state/store";
+import { createOverlay } from "./overlay";
 
 interface ConnectInfo {
   hostname: string;
@@ -25,67 +24,32 @@ interface ConnectInfo {
 // Local port suggested for the SSH tunnel; matches the docs' recipe.
 const TUNNEL_PORT = 8443;
 
-let host: HTMLDivElement | null = null;
-let visible = false;
 let info: ConnectInfo | null = null;
-let epoch = 0;
 
-function rerender(): void {
-  if (host) {
-    render(<ConnectOverlay key={epoch} visible={visible} info={info} />, host);
-  }
-}
+const overlay = createOverlay(
+  (visible, key) => <ConnectOverlay key={key} visible={visible} info={info} />,
+  () => {
+    info = null;
+  },
+);
 
-function ensure(): void {
-  if (!host) {
-    host = document.createElement("div");
-    // Capture phase: xterm's textarea consumes Escape in its own keydown
-    // (same pattern as the keymap and the stats overlay).
-    window.addEventListener(
-      "keydown",
-      (e: KeyboardEvent) => {
-        if (visible && e.key === "Escape") {
-          e.preventDefault();
-          e.stopPropagation();
-          closeConnectInfo();
-        }
-      },
-      true,
-    );
-  }
-  if (!host.isConnected) {
-    document.body.appendChild(host);
-  }
-  rerender();
-}
-
-export function installConnectInfo(): void {
-  ensure();
-}
+export const installConnectInfo = overlay.install;
+export const closeConnectInfo = overlay.close;
 
 export function openConnectInfo(): void {
-  visible = true;
-  epoch++; // remount so the card re-grabs focus
-  ensure();
+  overlay.open();
   // Re-fetched per open: the answer changes with the network the
   // machine is on.
   void api("/connect-info")
     .then((r) => (r.ok ? r.json() : null))
     .then((data: ConnectInfo | null) => {
       info = data;
-      rerender();
+      overlay.rerender();
     })
     .catch(() => {
       info = null;
-      rerender();
+      overlay.rerender();
     });
-}
-
-export function closeConnectInfo(): void {
-  visible = false;
-  info = null;
-  rerender();
-  activeSession()?.term.focus();
 }
 
 function CopyLine({ command }: { command: string }) {

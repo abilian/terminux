@@ -35,7 +35,8 @@ from starlette.websockets import WebSocketDisconnect
 
 from terminux.core.persistence import SCROLLBACK_MAX_BYTES
 from terminux.openurl import open_url_in_default_app
-from terminux.server.auth import SESSION_TOKEN, check_auth, client_ip
+from terminux.server import auth
+from terminux.server.auth import LOOPBACK_BINDS, check_auth, client_ip
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -52,17 +53,51 @@ STATIC_DIR = WEB_DIR / "static"  # Vite build output (see frontend/)
 SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX = 120, 600
 FONT_SIZE_MIN, FONT_SIZE_MAX = 6, 32
 WIN_DIM_MIN = 200  # px; smaller would make the window unrecoverable
-
-# Bind addresses that make the server unreachable from the network, so a
-# remote client needs a tunnel. Anything else (0.0.0.0, ::, a specific
-# interface) is listening where other machines can knock.
-_LOOPBACK_BINDS = frozenset({"127.0.0.1", "localhost", "::1"})
+WIN_COORD_LIMIT = 100_000  # px; generous for any multi-monitor layout
+# A PTY's size goes into a ``struct winsize`` (unsigned shorts); past that
+# the fork child dies before exec. No screen fits 1000 columns anyway.
+PTY_DIM_MIN, PTY_DIM_MAX = 1, 1000
 
 # Reject scrollback uploads well past the on-disk cap up front; anything
 # under this still gets tail-trimmed to SCROLLBACK_MAX_BYTES by the
 # persistence helper. The 2x headroom tolerates a client whose local
 # buffer briefly overshoots the cap between captures.
 SCROLLBACK_REJECT_BYTES = SCROLLBACK_MAX_BYTES * 2
+
+
+class BadRequestError(Exception):
+    """A malformed request body; ``asgi`` renders it as a JSON 400."""
+
+
+async def _json_object(request: Request) -> dict[str, Any]:
+    try:
+        body = await request.json()
+    except ValueError as exc:  # JSONDecodeError, UnicodeDecodeError
+        msg = f"body is not valid JSON: {exc}"
+        raise BadRequestError(msg) from exc
+    if not isinstance(body, dict):
+        msg = "body must be a JSON object"
+        raise BadRequestError(msg)
+    return body
+
+
+def _check_types(body: dict[str, Any], **kinds: type) -> None:
+    """400 before any state is touched, so nothing is half-applied."""
+    for key, kind in kinds.items():
+        if key in body and not isinstance(body[key], kind):
+            msg = f"{key} must be a {kind.__name__}"
+            raise BadRequestError(msg)
+
+
+def _clamped_int(value: object, lo: int, hi: int, field: str) -> int:
+    msg = f"{field} must be an integer"
+    if not isinstance(value, int | float | str):
+        raise BadRequestError(msg)
+    try:
+        n = int(value)
+    except (ValueError, OverflowError) as exc:  # Infinity → OverflowError
+        raise BadRequestError(msg) from exc
+    return max(lo, min(hi, n))
 
 
 class Api:
@@ -76,7 +111,9 @@ class Api:
     @staticmethod
     def index(_request: Request) -> HTMLResponse:
         html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-        return HTMLResponse(html.replace("__TOKEN__", SESSION_TOKEN))
+        # Looked up per request: ``--server`` swaps in the persistent token
+        # after this module is imported.
+        return HTMLResponse(html.replace("__TOKEN__", auth.SESSION_TOKEN))
 
     # ----- control plane ------------------------------------------------
 
@@ -103,7 +140,7 @@ class Api:
             # the client's own location says the tunnel's local port,
             # which is the wrong end to put in an ssh -L recipe.
             "port": state.bind_port,
-            "loopback_only": state.bind_host in _LOOPBACK_BINDS,
+            "loopback_only": state.bind_host in LOOPBACK_BINDS,
             # False in desktop mode: the port is ephemeral and the code
             # is regenerated per run, so the URL dies with the process.
             "stable_url": state.token_persistent,
@@ -122,7 +159,8 @@ class Api:
     async def patch_workspace(  # noqa: C901 — nested ``_apply`` inflates the count
         self, request: Request
     ) -> Response:
-        body: dict[str, Any] = await request.json()
+        body = await _json_object(request)
+        _check_types(body, name=str, order=list, tab_order=list)
         ws_id = request.path_params["ws_id"]
 
         # All state access + the disk-touching ``save()`` runs in a worker
@@ -134,7 +172,7 @@ class Api:
                 if ws is None:
                     return False
                 if "name" in body:
-                    ws.name = str(body["name"]).strip() or ws.name
+                    ws.name = body["name"].strip() or ws.name
                     ws.user_set_name = True  # pin it; stop tracking cwd
                 if body.get("active"):
                     self.ctl.state.set_active_workspace(ws.id)
@@ -206,7 +244,8 @@ class Api:
         return JSONResponse({"id": tab.id})
 
     async def patch_tab(self, request: Request) -> Response:
-        body: dict[str, Any] = await request.json()
+        body = await _json_object(request)
+        _check_types(body, title=str, osc_title=str)
         tab_id = request.path_params["tab_id"]
 
         def _apply() -> bool:
@@ -216,11 +255,11 @@ class Api:
                     return False
                 if "title" in body:
                     # Explicit rename pins the title.
-                    tab.title = str(body["title"]).strip() or tab.title
+                    tab.title = body["title"].strip() or tab.title
                     tab.user_set_title = True
                 elif "osc_title" in body and not tab.user_set_title:
                     # OSC 0/2 from the shell — tracks unless the user pinned a name.
-                    tab.title = str(body["osc_title"]).strip() or tab.title
+                    tab.title = body["osc_title"].strip() or tab.title
             self.ctl.save()
             return True
 
@@ -229,13 +268,9 @@ class Api:
         return JSONResponse({"ok": True})
 
     async def patch_ui(self, request: Request) -> Response:
-        body: dict[str, Any] = await request.json()
         # Validate/clamp up front (pure, outside the lock): a malformed field
         # is a 400 with nothing half-applied, not a 500 mid-mutation.
-        try:
-            updates = _ui_updates(body)
-        except (TypeError, ValueError):
-            return JSONResponse({"error": "invalid body"}, status_code=400)
+        updates = _ui_updates(await _json_object(request))
 
         def _apply() -> None:
             with self.ctl.lock:
@@ -321,14 +356,16 @@ class Api:
         self,
         request: Request,
     ) -> Response:
-        body: dict[str, Any] = await request.json()
-        url = str(body.get("url", "")).strip()
+        body = await _json_object(request)
+        _check_types(body, url=str)
+        url = body.get("url", "").strip()
         if not url:
             return JSONResponse({"error": "missing url"}, status_code=400)
         # open_url_in_default_app does ``shutil.which`` + Popen — both
         # potentially slow under load, so keep them off the event loop.
         if not await asyncio.to_thread(open_url_in_default_app, url):
-            return JSONResponse({"error": "rejected"}, status_code=400)
+            msg = "rejected: not an http, https or mailto URL, or no opener here"
+            return JSONResponse({"error": msg}, status_code=400)
         return JSONResponse({"ok": True})
 
     async def paste_paths(self, request: Request) -> Response:
@@ -339,23 +376,18 @@ class Api:
         the client POSTs here so the same affordance works against a
         remote backend.
         """
-        body: dict[str, Any] = await request.json()
-        raw = body.get("paths")
-        if not isinstance(raw, list):
-            return JSONResponse({"error": "paths must be a list"}, status_code=400)
-        paths = [str(p) for p in raw]
+        body = await _json_object(request)
+        _check_types(body, paths=list)
+        paths = [str(p) for p in body.get("paths", [])]
         # ``paste_paths`` writes via ``os.write`` to a PTY master, which
         # can block briefly under input-buffer backpressure — offload it.
         await asyncio.to_thread(self.ctl.paste_paths, paths)
         return JSONResponse({"ok": True})
 
     async def spawn(self, request: Request) -> Response:
-        body: dict[str, Any] = await request.json()
-        try:
-            cols = int(body.get("cols", 80))
-            rows = int(body.get("rows", 24))
-        except (TypeError, ValueError):
-            return JSONResponse({"error": "invalid body"}, status_code=400)
+        body = await _json_object(request)
+        cols = _clamped_int(body.get("cols", 80), PTY_DIM_MIN, PTY_DIM_MAX, "cols")
+        rows = _clamped_int(body.get("rows", 24), PTY_DIM_MIN, PTY_DIM_MAX, "rows")
         # Serialize PTY creation: concurrent openpty+spawn can stall output
         # pipes under rapid tab creation (technical spec §8). The fork/exec
         # itself runs in a worker thread inside ensure_terminal; only
@@ -371,12 +403,14 @@ class Api:
     # ----- data plane ---------------------------------------------------
 
     async def pty_ws(self, ws: WebSocket) -> None:
+        # Closing before ``accept`` refuses the handshake: the client sees
+        # an HTTP 403 either way (a close code would never reach it).
         if not check_auth(ws.query_params.get("t"), client_ip(ws)):
-            await ws.close(code=4403)
+            await ws.close()
             return
         term = self.ctl.terminals.get(ws.path_params["terminal_id"])
         if term is None:
-            await ws.close(code=4404)
+            await ws.close()
             return
         await ws.accept()
         sub = term.subscribe()
@@ -412,32 +446,35 @@ def _network_identity() -> tuple[str, str | None]:
 def _ui_updates(body: dict[str, Any]) -> dict[str, Any]:
     """Clamp a ``PATCH /api/ui`` body into UiPrefs attribute assignments.
 
-    Pure: raises ``TypeError``/``ValueError`` on a malformed field without
-    touching any state, so the caller can 400 cleanly.
+    Pure: raises ``BadRequestError`` on a malformed field without touching any
+    state, so nothing is half-applied.
     """
     updates: dict[str, Any] = {}
     if "sidebar_width" in body:
-        updates["sidebar_width"] = max(
-            SIDEBAR_WIDTH_MIN, min(SIDEBAR_WIDTH_MAX, int(body["sidebar_width"]))
+        updates["sidebar_width"] = _clamped_int(
+            body["sidebar_width"], SIDEBAR_WIDTH_MIN, SIDEBAR_WIDTH_MAX, "sidebar_width"
         )
     if "font_size" in body:
-        updates["font_size"] = max(
-            FONT_SIZE_MIN, min(FONT_SIZE_MAX, int(body["font_size"]))
+        updates["font_size"] = _clamped_int(
+            body["font_size"], FONT_SIZE_MIN, FONT_SIZE_MAX, "font_size"
         )
     for k in (
         "sidebar_collapsed",
         "copy_on_select",
         "scrollback_persist",
-        "win_maximized",
     ):
         if k in body:
             updates[k] = bool(body[k])
     for k in ("win_w", "win_h"):
         if k in body:
-            updates[k] = max(WIN_DIM_MIN, int(body[k]))
+            updates[k] = _clamped_int(body[k], WIN_DIM_MIN, WIN_COORD_LIMIT, k)
     for k in ("win_x", "win_y"):
         if k in body:
-            updates[k] = None if body[k] is None else int(body[k])
+            updates[k] = (
+                None
+                if body[k] is None
+                else _clamped_int(body[k], -WIN_COORD_LIMIT, WIN_COORD_LIMIT, k)
+            )
     return updates
 
 
@@ -489,6 +526,8 @@ async def _pump_in(
             # no offload needed.
             kind = msg.get("type")
             if kind == "resize":
-                term.report_size(sub, int(msg["cols"]), int(msg["rows"]))
+                cols = _clamped_int(msg.get("cols"), PTY_DIM_MIN, PTY_DIM_MAX, "cols")
+                rows = _clamped_int(msg.get("rows"), PTY_DIM_MIN, PTY_DIM_MAX, "rows")
+                term.report_size(sub, cols, rows)
             elif kind == "claim":
                 term.claim(sub)

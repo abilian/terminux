@@ -4,14 +4,9 @@
 // island; while open it re-renders from the 2 s poll, so the numbers
 // tick live instead of freezing at open time.
 
-import { render } from "preact";
-
-import { activeSession, getState } from "../state/store";
+import { getState } from "../state/store";
 import { formatDuration } from "../util/duration";
-
-let host: HTMLDivElement | null = null;
-let visible = false;
-let epoch = 0;
+import { createOverlay } from "./overlay";
 
 function elapsedSince(epochSecs: number): string {
   // Wall-clock delta between *now* and the session start — matches the
@@ -20,55 +15,18 @@ function elapsedSince(epochSecs: number): string {
   return formatDuration(secs);
 }
 
-function rerender(): void {
-  if (host) {
-    render(<StatsOverlay key={epoch} visible={visible} />, host);
-  }
-}
+const overlay = createOverlay((visible, key) => (
+  <StatsOverlay key={key} visible={visible} />
+));
 
-function ensure(): void {
-  if (!host) {
-    host = document.createElement("div");
-    // Capture phase: xterm's textarea consumes Escape in its own keydown,
-    // so we must run before it bubbles (same pattern as the keymap).
-    window.addEventListener(
-      "keydown",
-      (e: KeyboardEvent) => {
-        if (visible && e.key === "Escape") {
-          e.preventDefault();
-          e.stopPropagation();
-          closeStatsPanel();
-        }
-      },
-      true,
-    );
-  }
-  if (!host.isConnected) {
-    document.body.appendChild(host);
-  }
-  rerender();
-}
-
-export function installStatsPanel(): void {
-  ensure();
-}
-
-export function openStatsPanel(): void {
-  visible = true;
-  epoch++; // remount so the card re-grabs focus
-  ensure();
-}
-
-export function closeStatsPanel(): void {
-  visible = false;
-  rerender();
-  activeSession()?.term.focus();
-}
+export const installStatsPanel = overlay.install;
+export const openStatsPanel = overlay.open;
+export const closeStatsPanel = overlay.close;
 
 // Called from the render hook: keeps the numbers live while open.
 export function renderStatsPanel(): void {
-  if (visible) {
-    rerender();
+  if (overlay.isVisible()) {
+    overlay.rerender();
   }
 }
 
