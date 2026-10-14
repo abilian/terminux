@@ -15,21 +15,21 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"test/**/*.ts\""
   },
   "dependencies": {
-    "@xterm/addon-fit": "^0.10.0",
-    "@xterm/addon-search": "^0.15.0",
-    "@xterm/addon-serialize": "^0.13.0",
-    "@xterm/addon-web-links": "^0.11.0",
-    "@xterm/xterm": "^5.5.0",
-    "preact": "^10.29.8"
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-search": "^0.16.0",
+    "@xterm/addon-serialize": "^0.14.0",
+    "@xterm/addon-web-links": "^0.12.0",
+    "@xterm/xterm": "^6.0.0",
+    "preact": "^11.0.1"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "^4.1.8",
+    "@vitest/coverage-v8": "^5.0.4",
     "eslint": "^10.10.0",
     "jsdom": "^30.1.0",
     "prettier": "^3.8.3",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.70.0",
     "vite": "^8.0.16",
-    "vitest": "^4.1.8"
+    "vitest": "^5.0.4"
   }
 }
