@@ -182,6 +182,7 @@ def test_main_windowed_with_fake_webview(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "webview", fake_webview)
     monkeypatch.setitem(sys.modules, "webview.dom", fake_dom)
     _fake_cocoa(monkeypatch)
+    monkeypatch.setattr(app.gui_prereq, "explain_why_no_window", lambda: None)
     monkeypatch.setitem(sys.modules, "webview.menu", fake_menu)
 
     monkeypatch.setattr(sys, "argv", ["terminux"])
@@ -207,6 +208,7 @@ def test_main_windowed_create_window_none(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "webview", fake_webview)
     monkeypatch.setitem(sys.modules, "webview.dom", fake_dom)
     _fake_cocoa(monkeypatch)
+    monkeypatch.setattr(app.gui_prereq, "explain_why_no_window", lambda: None)
     monkeypatch.setattr(sys, "argv", ["terminux"])
     try:
         app.main()
@@ -360,6 +362,8 @@ def test_daemon_runs_the_window_in_the_background_and_stop_closes_it(
         encoding="utf-8",
     )
     (fake / "AppKit.py").write_text("raise ImportError\n", encoding="utf-8")
+    # On Linux, the GTK check runs first: a stand-in PyGObject passes it.
+    (fake / "gi.py").write_text("def require_version(*_a): pass\n", encoding="utf-8")
     (fake / "webview" / "platforms").mkdir()
     (fake / "webview" / "platforms" / "__init__.py").write_text("", encoding="utf-8")
     (fake / "webview" / "platforms" / "cocoa.py").write_text(
@@ -373,6 +377,7 @@ def test_daemon_runs_the_window_in_the_background_and_stop_closes_it(
         "XDG_DATA_HOME": str(tmp_path / "data"),
         "PYTHONPATH": str(fake),
         "FAKE_WEBVIEW_MARK": str(mark),
+        "DISPLAY": ":0",  # Linux: the window check wants a display
     }
     terminux = [sys.executable, "-m", "terminux"]
     started = subprocess.run(

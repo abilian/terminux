@@ -2,6 +2,12 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **On Linux, a missing GTK says what to install** (the distribution's packages, and a `pipx --system-site-packages` reinstall) instead of a pywebview traceback, and a missing display (as over SSH) points to `--no-window` and `--server`.
+
 ## [0.10.1] - 2026-10-13
 
 ### Added

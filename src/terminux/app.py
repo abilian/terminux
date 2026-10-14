@@ -29,7 +29,7 @@ from urllib.parse import urlparse
 import platformdirs
 import uvicorn
 
-from terminux import clipboard
+from terminux import clipboard, gui_prereq
 from terminux.constants import DOCS_URL
 from terminux.core import persistence
 from terminux.diagnostics import start_watchdog
@@ -408,6 +408,11 @@ def main() -> None:
     if args.stop:
         _stop_daemon()
         return
+    # Before anything starts (and before --daemon forks), so a machine that
+    # can't open the window says what to install instead of a traceback.
+    windowed = args.connect or not (args.server or args.no_window)
+    if windowed and (problem := gui_prereq.explain_why_no_window()):
+        raise SystemExit(problem)
 
     # ----- client mode: no local backend, just a window onto a remote ---
     if args.connect:

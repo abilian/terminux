@@ -18,12 +18,18 @@ The pitch comes down to three things:
 
 terminux is **local-first** with a small, auditable surface. There is no account, telemetry, AI, or editor: just a terminal that respects your flow, built with **reliability over features** as the guiding principle.
 
-Install and run in two commands:
+terminux is on PyPI, for macOS, Linux and Windows, with Python 3.12 or later:
 
 ```sh
-uv sync && make frontend
-uv run terminux
+uvx terminux                  # try it without installing
+uv tool install terminux      # or install it
 ```
+
+On Linux, the window needs a few system packages first: see [Installation](getting-started/index.md#on-linux), which also covers running from source.
+
+## In six slides
+
+<div class="deck" data-pdf="pdf/terminux.pdf"><a href="pdf/terminux.pdf">terminux, in six slides (PDF)</a></div>
 
 ## Where next
 

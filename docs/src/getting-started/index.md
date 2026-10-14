@@ -10,6 +10,36 @@ uv tool install terminux      # install it
 uv tool upgrade terminux      # upgrade later
 ```
 
+### On Linux
+
+The window needs GTK and WebKitGTK, with their Python bindings (PyGObject), from your distribution: PyPI can't provide them. Install them, then install terminux with `pipx`, which can let terminux see them (`uv tool` and `uvx` can't):
+
+=== "Fedora"
+
+    ```sh
+    sudo dnf install python3-gobject gtk3 webkit2gtk4.1
+    ```
+
+=== "Debian, Ubuntu"
+
+    ```sh
+    sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1
+    ```
+
+=== "Arch"
+
+    ```sh
+    sudo pacman -S python-gobject webkit2gtk-4.1
+    ```
+
+```sh
+pipx install --python /usr/bin/python3 --system-site-packages terminux
+```
+
+If something is missing, `terminux` says what to install instead of opening a window. Without GTK, `terminux --no-window` still works: it serves the same interface to any browser, at the URL it prints.
+
+Without a display (in an SSH session, say), there is no window to open: run `terminux --no-window`, or `terminux --server -d` and connect to it from a machine with a display, as [Remote access](../guides/remote.md) describes. terminux says so if you forget.
+
 ## Requirements for running from source
 
 - **Python ≥ 3.12** and [`uv`](https://docs.astral.sh/uv/) for the Python side.

@@ -12,6 +12,10 @@ site_author = "Stefane Fermigier"
 # The canonical published URL. Keep it a domain root: a path component
 # here would also move the local preview under that path.
 site_url = "https://terminux.lab.abilian.com/"
+# deck.js is the slide viewer the home page embeds its PDF deck with (pdf.js,
+# loaded from jsDelivr only on a page that has a deck).
+extra_javascript = ["assets/deck.js"]
+extra_css = ["assets/deck.css"]
 copyright = """
 Copyright &copy; 2026 The terminux authors
 """

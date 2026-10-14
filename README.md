@@ -35,6 +35,8 @@ uvx terminux                  # try it without installing
 uv tool install terminux      # or install it
 ```
 
+On Linux, the window needs your distribution's GTK and WebKitGTK packages, and terminux installed with `pipx install --python /usr/bin/python3 --system-site-packages terminux`; see [Installation](docs/src/getting-started/index.md#on-linux). terminux tells you what's missing if you skip this.
+
 ## ✨ What you get
 
 - **One workspace per project.** A sidebar of named workspaces, each with its own tabs. A workspace names itself after its first tab's directory (rename it to pin your own name). `Cmd+1..9` on macOS, `Ctrl+Shift+1..9` on Linux and Windows jumps straight to one.
