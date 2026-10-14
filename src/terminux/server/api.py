@@ -135,6 +135,9 @@ class Api:
         return JSONResponse({
             "hostname": hostname,
             "lan_ip": lan_ip,
+            # --public-host, when given: the name the user says other
+            # machines reach this one by, ahead of any guess.
+            "public_host": state.public_host,
             "bind_host": state.bind_host,
             # The port the server itself listens on. In --connect mode
             # the client's own location says the tunnel's local port,

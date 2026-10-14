@@ -23,6 +23,7 @@ uv tool upgrade terminux      # upgrade later
 uv sync                      # install Python dependencies
 make frontend                # build the web UI (needs Node; first run only)
 uv run terminux              # desktop window (pywebview)
+uv run terminux -d           # same, in the background (macOS, Linux)
 ```
 
 To run the backend without the desktop shell (the dev/test path and a preview

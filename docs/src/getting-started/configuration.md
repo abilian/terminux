@@ -25,7 +25,7 @@ All persistent state sits in one directory:
 | Linux | `~/.local/share/terminux/` |
 | Windows | `%LOCALAPPDATA%\terminux\` |
 
-Inside it: `state.json` (workspaces, tabs, UI preferences; written atomically and versioned), `scrollback/<tab>.ansi` (one capped file per tab, deleted when the tab closes), and `server.token` (only in `--server` mode). Deleting the directory resets terminux completely.
+Inside it: `state.json` (workspaces, tabs, UI preferences; written atomically and versioned), `scrollback/<tab>.ansi` (one capped file per tab, deleted when the tab closes), `server.token` (only in `--server` mode), and `state.json.corrupt` if a damaged `state.json` was ever found at startup (terminux sets it aside and starts fresh, so you can recover your workspaces from it). Deleting the directory resets terminux completely.
 
 Scrollback files can contain secrets a command echoed; they stay local, are capped at 2 MB per tab, and disappear when persistence is toggled off or the tab is closed.
 
@@ -35,8 +35,8 @@ Scrollback files can contain secrets a command echoed; they stay local, are capp
 | --- | --- |
 | `--no-window` | Server only; open the printed URL in any browser (dev/test path, web-mode preview) |
 | `--server` | Headless server with a persistent access token; pair with `--connect` |
-| `-d`, `--daemon` | Like `--server`, but goes to the background once the server answers, after printing the URL; logs to a file and writes a PID file (macOS, Linux) |
-| `--stop` | Stops the server started by `--daemon` and waits until it's gone |
+| `-d`, `--daemon` | Goes to the background once the server answers, after printing the URL; the window opens as usual, or none with `--server`. Logs to a file and writes a PID file (macOS, Linux) |
+| `--stop` | Stops the terminux started by `--daemon` (closing its window, if any) and waits until it's gone |
 | `--public-host NAME` | Hostname or address printed in the URL by `--server` and `--daemon`, so it works from other machines |
 | `--connect URL` | Desktop window attached to a remote server ([Remote access](../guides/remote.md)) |
 | `--host`, `--port` | Bind address and port (defaults: loopback; port 8443 with `--daemon`, else ephemeral) |

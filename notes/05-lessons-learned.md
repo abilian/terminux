@@ -112,6 +112,14 @@ Tab ids are server-generated uuid4s today, but a single `^[A-Za-z0-9_-]+$` guard
 
 `Foundation` is a dynamic Cocoa bridge; static type checkers can't introspect it. Add to mypy/pyrefly `ignore-missing-imports` lists; inline `# ty: ignore[unresolved-import]` and `# pyrefly: ignore[missing-module-attribute]` on the specific imported symbol.
 
+### A forked child that doesn't exec gets a blank window
+
+**Symptom.** `terminux -d` printed its URL and the window opened, but the page stayed blank. The log had `NSXPCSharedListener … Connection invalid` and `Connection Invalid error for service com.apple.hiservices-xpcservice`.
+
+**Cause.** `--daemon` went to the background with a double `fork()` + `setsid()` and kept running the same interpreter. On macOS, a child of `fork()` that doesn't `exec` can't use the system's XPC services, and WKWebView needs them to start its web content process. A headless server doesn't notice, which is why the integration tests (with no real window) kept passing.
+
+**Fix.** The launcher re-runs the same command as a new process (`subprocess.Popen(..., start_new_session=True)`) and passes it the readiness pipe's write end through `TERMINUX_DAEMON_READY_FD` (`app.py::_daemonize`). Any background-a-GUI trick on macOS needs an `exec`.
+
 ## Windows specifics (pywebview / WinForms)
 
 ### pywebview's `icon=` must be a `.ico` on Windows

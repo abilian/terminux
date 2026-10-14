@@ -179,8 +179,8 @@ are *not* still running.
 - macOS line-editing chords and `Shift+Cmd`+arrow navigation are supported;
   `Shift+Enter` inserts a newline (works with Claude Code and similar tools).
 - **Clickable URLs.** URLs in the terminal are highlighted on hover and open
-  with `Ctrl+click` on Linux or `Cmd+click` on macOS, matching iTerm2 and
-  Terminal.app, so a stray click never navigates.
+  with `Ctrl+click` on Linux and Windows or `Cmd+click` on macOS, matching
+  iTerm2 and Terminal.app, so a stray click never navigates.
 - **Auto-copy on select** (iTerm2-style) is available as a persisted
   preference; off by default. Toggle with `Ctrl+Shift+Alt+C` (Linux) or
   `Cmd+Alt+C` (macOS); see

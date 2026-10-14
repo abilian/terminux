@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import signal
 import subprocess
 import sys
 import threading
@@ -196,3 +197,36 @@ def test_pid_file_counts_only_a_live_process(tmp_path) -> None:
     assert app_mod._running_daemon_pid(pid_path) is None
     pid_path.write_text(f"{os.getpid()}\n", encoding="utf-8")
     assert app_mod._running_daemon_pid(pid_path) == os.getpid()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="no SIGTERM delivery on Windows")
+def test_sigterm_closes_the_window_while_the_gui_loop_holds_the_main_thread() -> None:
+    """``terminux --stop`` on a windowed daemon closes the window, which
+    saves the state, even though the GUI loop never returns to Python."""
+    closed = threading.Event()
+    win = SimpleNamespace(destroy=closed.set)
+    previous = signal.getsignal(signal.SIGTERM)
+    try:
+        app_mod._close_on_sigterm(win)  # type: ignore[arg-type]
+        os.kill(os.getpid(), signal.SIGTERM)
+        assert closed.wait(timeout=5)
+    finally:
+        signal.set_wakeup_fd(-1)
+        signal.signal(signal.SIGTERM, previous)
+
+
+@pytest.mark.parametrize("platform", ["darwin", "linux"])
+def test_full_screen_is_in_our_view_menu_on_macos(monkeypatch, platform) -> None:
+    """pywebview's View menu, which only had "Enter Full Screen", is turned
+    off on macOS so there's a single View menu; ours takes over the item."""
+    monkeypatch.setattr(app_mod.sys, "platform", platform)
+    toggled: list[bool] = []
+    window = SimpleNamespace(toggle_fullscreen=lambda: toggled.append(True))
+    menus = app_mod._build_menu(SimpleNamespace(active_window=lambda: window))
+    assert [m.title for m in menus].count("View") == 1
+    view = next(m for m in menus if m.title == "View")
+    items = {getattr(i, "title", None): i for i in view.items}
+    assert ("Toggle Full Screen" in items) is (platform == "darwin")
+    if platform == "darwin":
+        items["Toggle Full Screen"].function()
+        assert toggled == [True]

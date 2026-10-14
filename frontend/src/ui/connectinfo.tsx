@@ -12,6 +12,7 @@ import { createOverlay } from "./overlay";
 interface ConnectInfo {
   hostname: string;
   lan_ip: string | null;
+  public_host: string | null;
   bind_host: string;
   // The server's own listening port. Null when the app was built
   // outside the CLI (tests, library use); then our own location is the
@@ -77,8 +78,8 @@ function Body({ info: data }: { info: ConnectInfo }) {
   const port =
     data.port ??
     (location.port || (location.protocol === "https:" ? "443" : "80"));
-  const sshHost = data.hostname || "this-machine";
-  const directHost = data.lan_ip ?? data.hostname;
+  const sshHost = data.public_host || data.hostname || "this-machine";
+  const directHost = data.public_host ?? data.lan_ip ?? data.hostname;
   return (
     <>
       {data.loopback_only ? (

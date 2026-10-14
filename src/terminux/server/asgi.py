@@ -123,4 +123,5 @@ def build_app(*, persist: bool = True) -> Starlette:
     app.state.bind_host = "127.0.0.1"
     app.state.bind_port = None  # None: not launched by main(), ask the request
     app.state.token_persistent = False
+    app.state.public_host = None  # --public-host: the name clients should use
     return app

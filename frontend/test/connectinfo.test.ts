@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   info: {
     hostname: "mbp-15p",
     lan_ip: "192.168.1.42",
+    public_host: null as string | null,
     bind_host: "127.0.0.1",
     port: 54321,
     loopback_only: true,
@@ -49,6 +50,7 @@ beforeEach(async () => {
   mocks.info = {
     hostname: "mbp-15p",
     lan_ip: "192.168.1.42",
+    public_host: null as string | null,
     bind_host: "127.0.0.1",
     port: 54321,
     loopback_only: true,
@@ -93,6 +95,22 @@ describe("remote connection overlay", () => {
     };
     await open();
     expect(commands()[0]).toContain("http://mbp-15p:54321/");
+  });
+
+  it("names the --public-host in the direct URL and the SSH recipe", async () => {
+    mocks.info = {
+      ...mocks.info,
+      public_host: "macmini.example.com",
+      bind_host: "0.0.0.0",
+      loopback_only: false,
+    };
+    await open();
+    expect(commands()[0]).toContain("http://macmini.example.com:54321/");
+    mocks.info = { ...mocks.info, bind_host: "127.0.0.1", loopback_only: true };
+    await open();
+    expect(commands()[0]).toBe(
+      "ssh -N -L 8443:localhost:54321 macmini.example.com",
+    );
   });
 
   it("warns that a per-session address dies with the process", async () => {

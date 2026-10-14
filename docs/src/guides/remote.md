@@ -138,26 +138,12 @@ ship TLS support and intentionally keeps the token short.
 ### `--daemon`: start it and get your prompt back
 
 ```sh
-terminux --daemon --host 0.0.0.0 --public-host devbox.example.com
+terminux --server --daemon --host 0.0.0.0 --public-host devbox.example.com
 ```
 
-`-d` / `--daemon` starts the same server as `--server` (port 8443 unless you
-pass `--port`), waits until it answers, prints the URL to connect to, and
-goes to the background. `--public-host` sets the name in that URL; without
-it, a `--host 0.0.0.0` server prints this machine's network name, and a
-loopback server prints `127.0.0.1` for use through an SSH tunnel. If the
-server can't start (the port is taken, say), the command says why and
-exits with an error instead of leaving a dead process behind.
+`-d` / `--daemon` starts the server (port 8443 unless you pass `--port`), waits until it answers, prints the URL to connect to, and goes to the background. With `--server` it's headless; without, the desktop window opens as usual, from the background process, and the printed URL lets other machines connect to it too. `--public-host` sets the name in that URL; without it, a `--host 0.0.0.0` server prints this machine's network name, and a loopback server prints `127.0.0.1` for use through an SSH tunnel. If the server can't start (the port is taken, say), the command says why and exits with an error instead of leaving a dead process behind.
 
-The background server logs to `~/Library/Logs/terminux/terminux.log` on
-macOS and `~/.local/state/terminux/log/terminux.log` on Linux; its output
-streams (fault dumps, crash tracebacks) go to the same file. Its PID is
-in `terminux.pid`, in `~/Library/Application Support/terminux/` on macOS
-and `~/.local/state/terminux/` on Linux. Stop it with `terminux --stop`,
-which waits until it's gone (`kill <pid>` works too). While a daemon
-runs, starting another one fails with its PID, since both would share
-the same saved state. `--daemon` isn't available on Windows; run
-`terminux --server` there.
+The background process logs to `~/Library/Logs/terminux/terminux.log` on macOS and `~/.local/state/terminux/log/terminux.log` on Linux; its output streams (fault dumps, crash tracebacks) go to the same file. Its PID is in `terminux.pid`, in `~/Library/Application Support/terminux/` on macOS and `~/.local/state/terminux/` on Linux. Stop it with `terminux --stop`, which closes its window, if it has one, and waits until it's gone (`kill <pid>` works too); closing the window stops it as well. While a daemon runs, starting another one fails with its PID, since both would share the same saved state. `--daemon` isn't available on Windows.
 
 ### With a service manager
 

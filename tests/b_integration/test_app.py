@@ -18,6 +18,7 @@ import pytest
 import terminux.__main__  # noqa: F401  (import executes module body for coverage)
 from terminux import app
 from terminux.server.asgi import build_app
+from tests.conftest import wait_until
 
 
 def test_free_port_returns_bindable_port() -> None:
@@ -67,6 +68,17 @@ def test_main_no_window_waits_for_server_start(monkeypatch) -> None:
     monkeypatch.setattr(app, "build_app", lambda persist=True: build_app(persist=False))
     monkeypatch.setattr(sys, "argv", ["terminux", "--no-window"])
     app.main()  # exercises the `while not server.started: sleep` loop body
+
+
+def _fake_cocoa(monkeypatch) -> None:
+    """``webview.platforms.cocoa``, which the window setup patches on macOS
+    (it turns off pywebview's own View menu)."""
+    cocoa = types.ModuleType("webview.platforms.cocoa")
+    cocoa.BrowserView = type("BrowserView", (), {})  # type: ignore[attr-defined]
+    platforms = types.ModuleType("webview.platforms")
+    platforms.cocoa = cocoa  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "webview.platforms", platforms)
+    monkeypatch.setitem(sys.modules, "webview.platforms.cocoa", cocoa)
 
 
 def test_main_windowed_with_fake_webview(monkeypatch) -> None:
@@ -169,6 +181,7 @@ def test_main_windowed_with_fake_webview(monkeypatch) -> None:
 
     monkeypatch.setitem(sys.modules, "webview", fake_webview)
     monkeypatch.setitem(sys.modules, "webview.dom", fake_dom)
+    _fake_cocoa(monkeypatch)
     monkeypatch.setitem(sys.modules, "webview.menu", fake_menu)
 
     monkeypatch.setattr(sys, "argv", ["terminux"])
@@ -193,6 +206,7 @@ def test_main_windowed_create_window_none(monkeypatch) -> None:
     fake_dom.DOMEventHandler = lambda *a, **k: None  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "webview", fake_webview)
     monkeypatch.setitem(sys.modules, "webview.dom", fake_dom)
+    _fake_cocoa(monkeypatch)
     monkeypatch.setattr(sys, "argv", ["terminux"])
     try:
         app.main()
@@ -220,9 +234,9 @@ def _assert_page_token_works(url: str, port: int) -> None:
         assert resp.status == 200
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="--daemon needs fork()")
+@pytest.mark.skipif(sys.platform == "win32", reason="no --daemon on Windows")
 def test_daemon_prints_the_url_goes_to_the_background_and_logs(tmp_path) -> None:
-    """``terminux --daemon`` returns once the server answers, printing the
+    """``terminux --server --daemon`` returns once the server answers, printing the
     URL with the public host; the server keeps running detached, logs to a
     file and records its PID. A second daemon is refused while the first
     runs; ``--stop`` ends it and removes the PID file."""
@@ -233,7 +247,8 @@ def test_daemon_prints_the_url_goes_to_the_background_and_logs(tmp_path) -> None
         "XDG_STATE_HOME": str(tmp_path / "state"),
     }
     port = _free_tcp_port()
-    argv = [sys.executable, "-m", "terminux", "--daemon", "--port", str(port)]
+    argv = [sys.executable, "-m", "terminux", "--server", "--daemon"]
+    argv += ["--port", str(port)]
     started = subprocess.run(
         [*argv, "--public-host", "devbox.example.com"],
         env=env,
@@ -285,3 +300,104 @@ def test_daemon_prints_the_url_goes_to_the_background_and_logs(tmp_path) -> None
     )
     assert nothing.returncode == 1
     assert "no terminux daemon is running" in nothing.stderr
+
+
+# A stand-in for pywebview, for a subprocess: ``start`` marks the window
+# open and blocks until ``destroy``, like the real GUI loop. The AppKit
+# stub keeps the test from touching the Dock.
+_FAKE_WEBVIEW = """
+import os, threading, types
+
+class _Event(list):
+    def __iadd__(self, fn):
+        self.append(fn)
+        return self
+
+class Window:
+    def __init__(self):
+        self.events = types.SimpleNamespace(
+            loaded=_Event(), closed=_Event(), resized=_Event(), moved=_Event()
+        )
+        self._gone = threading.Event()
+
+    def destroy(self):
+        self._gone.set()
+
+_windows = []
+
+def create_window(*_a, **_k):
+    _windows.append(Window())
+    return _windows[-1]
+
+def active_window():
+    return _windows[-1]
+
+def start(**_k):
+    open(os.environ["FAKE_WEBVIEW_MARK"], "w").close()
+    _windows[-1]._gone.wait()
+    for fn in _windows[-1].events.closed:
+        fn()
+"""
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="no --daemon on Windows")
+def test_daemon_runs_the_window_in_the_background_and_stop_closes_it(
+    tmp_path,
+) -> None:
+    """``terminux -d`` is the desktop app gone to the background: it prints
+    the URL, the window opens in the detached process, and ``--stop``
+    closes that window, which saves the state."""
+    fake = tmp_path / "fake"
+    (fake / "webview").mkdir(parents=True)
+    (fake / "webview" / "__init__.py").write_text(_FAKE_WEBVIEW, encoding="utf-8")
+    (fake / "webview" / "dom.py").write_text(
+        "class DOMEventHandler:\n    def __init__(self, *a, **k): pass\n",
+        encoding="utf-8",
+    )
+    (fake / "webview" / "menu.py").write_text(
+        "class _Item:\n    def __init__(self, *a, **k): pass\n"
+        "Menu = MenuAction = MenuSeparator = _Item\n",
+        encoding="utf-8",
+    )
+    (fake / "AppKit.py").write_text("raise ImportError\n", encoding="utf-8")
+    (fake / "webview" / "platforms").mkdir()
+    (fake / "webview" / "platforms" / "__init__.py").write_text("", encoding="utf-8")
+    (fake / "webview" / "platforms" / "cocoa.py").write_text(
+        "class BrowserView: pass\n", encoding="utf-8"
+    )
+    mark = tmp_path / "window-opened"
+    env = {
+        **os.environ,
+        "HOME": str(tmp_path),
+        "XDG_STATE_HOME": str(tmp_path / "state"),
+        "XDG_DATA_HOME": str(tmp_path / "data"),
+        "PYTHONPATH": str(fake),
+        "FAKE_WEBVIEW_MARK": str(mark),
+    }
+    terminux = [sys.executable, "-m", "terminux"]
+    started = subprocess.run(
+        [*terminux, "-d", "--port", str(_free_tcp_port())],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert started.returncode == 0, started.stderr
+    pid = re.search(r"pid (\d+)", started.stderr)
+    assert pid, started.stderr
+    try:
+        assert wait_until(mark.exists, timeout=10), "the window never opened"
+    finally:
+        stopped = subprocess.run(
+            [*terminux, "--stop"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if stopped.returncode:
+            os.kill(int(pid.group(1)), signal.SIGKILL)
+    assert stopped.returncode == 0, stopped.stderr
+    assert list(tmp_path.rglob("state.json"))  # saved on the way out

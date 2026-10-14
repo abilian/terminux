@@ -882,6 +882,7 @@ def test_connect_info_reports_bind_and_stability(server: LiveServer) -> None:
     assert set(info) == {
         "hostname",
         "lan_ip",
+        "public_host",
         "bind_host",
         "port",
         "loopback_only",
@@ -896,16 +897,19 @@ def test_connect_info_follows_the_bind_it_was_given(server: LiveServer) -> None:
     app_state.bind_host = "0.0.0.0"  # noqa: S104 — the case under test
     app_state.bind_port = 8443
     app_state.token_persistent = True
+    app_state.public_host = "devbox.example.com"
     try:
         info = _req(f"{server.url}/api/connect-info?t={T}")
         assert info["loopback_only"] is False
         assert info["stable_url"] is True
+        assert info["public_host"] == "devbox.example.com"
         # The server's own port, not the one this client connected to.
         assert info["port"] == 8443
     finally:
         app_state.bind_host = "127.0.0.1"
         app_state.bind_port = None
         app_state.token_persistent = False
+        app_state.public_host = None
 
 
 # ----- several clients on one terminal ------------------------------------

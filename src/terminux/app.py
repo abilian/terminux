@@ -16,13 +16,14 @@ import os
 import re
 import signal
 import socket
+import subprocess  # noqa: S404 — argv form only, no shell: relaunches this program
 import sys
 import threading
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, NoReturn, Protocol, cast
 from urllib.parse import urlparse
 
 import platformdirs
@@ -64,6 +65,7 @@ if TYPE_CHECKING:
 
 class _WebviewWindowLike(Protocol):
     def evaluate_js(self, script: str) -> object: ...
+    def toggle_fullscreen(self) -> None: ...
 
 
 class _WebviewModuleLike(Protocol):
@@ -131,20 +133,50 @@ def _banner(url: str, bind: str) -> str:
     return text + "\n"
 
 
+# Set in the background process's environment: the write end of the pipe
+# its launcher waits on.
+_READY_FD_ENV = "TERMINUX_DAEMON_READY_FD"
+
+
 def _daemonize(banner: str) -> Callable[[str | None], None]:
-    """Go to the background, Unix style, and return the child's readiness
+    """Go to the background and return the background process's readiness
     callback.
 
-    Double fork plus ``setsid``: the server is never a session leader, so a
-    PTY it opens can't become its controlling terminal. The original process
-    waits on a pipe until the server is accepting connections (or failed to
-    bind), prints the banner or the error, and exits; the shell gets its
-    prompt back only once the URL works. The background process logs to
-    ``_daemon_log_path()``, stdout and stderr included (fault dumps,
-    uncaught tracebacks). Its PID goes to ``_daemon_pid_path()``, removed
-    when it stops; a second daemon refuses to start while the first is alive,
-    since both would write the same saved state.
+    The launcher (the process the user started) runs the same command again
+    as a new process in its own session, detached from the terminal, and
+    waits on a pipe until that process is accepting connections (or failed
+    to bind). It prints the banner or the error and exits; the shell gets
+    its prompt back only once the URL works. A plain fork would be lighter,
+    but on macOS a forked child that doesn't exec can't reach the system's
+    XPC services, and its window stays blank.
+
+    The background process logs to ``_daemon_log_path()``, stdout and stderr
+    included (fault dumps, uncaught tracebacks). Its PID goes to
+    ``_daemon_pid_path()``, removed when it stops; a second daemon refuses
+    to start while the first is alive, since both would write the same
+    saved state.
     """
+    ready_fd = os.environ.pop(_READY_FD_ENV, None)  # shells mustn't inherit it
+    if ready_fd is None:
+        _launch_daemon(banner)  # exits
+    write_end = int(ready_fd)
+    pid_path = _daemon_pid_path()
+
+    def notify_ready(error: str | None) -> None:
+        if error is None:
+            pid_path.write_text(f"{os.getpid()}\n", encoding="utf-8")
+            # SIGTERM stops the server gracefully (``_serve_until_stopped``,
+            # ``_close_on_sigterm``), so the interpreter exits normally and
+            # runs this.
+            atexit.register(pid_path.unlink, missing_ok=True)
+        message = error if error is not None else f"ok {os.getpid()}"
+        os.write(write_end, message.encode())
+        os.close(write_end)
+
+    return notify_ready
+
+
+def _launch_daemon(banner: str) -> NoReturn:
     log_path = _daemon_log_path()
     pid_path = _daemon_pid_path()
     running = _running_daemon_pid(pid_path)
@@ -156,45 +188,34 @@ def _daemonize(banner: str) -> Callable[[str | None], None]:
         raise SystemExit(msg)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     pid_path.parent.mkdir(parents=True, exist_ok=True)
+    frozen = getattr(sys, "frozen", False)  # a PyInstaller bundle
+    command = [sys.executable] if frozen else [sys.executable, "-m", "terminux"]
     read_end, write_end = os.pipe()
-    if os.fork():  # the original process: report, then leave
-        os.close(write_end)
-        with os.fdopen(read_end, "rb") as pipe:
-            report = pipe.read().decode()
-        if not report.startswith("ok "):
-            raise SystemExit(
-                report or f"terminux daemon died while starting; see {log_path}"
-            )
-        pid = report.split()[1]
-        sys.stderr.write(
-            f"{banner}Running in the background (pid {pid}).\n"
-            f"  log: {log_path}\n  pid file: {pid_path}\n"
-        )
-        raise SystemExit(0)
-    os.close(read_end)
-    os.setsid()
-    if os.fork():
-        os._exit(0)  # the session leader's only job was to fork
-    os.chdir("/")
-    devnull = os.open(os.devnull, os.O_RDONLY)
     logfile = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
-    os.dup2(devnull, 0)
-    os.dup2(logfile, 1)
-    os.dup2(logfile, 2)
-    os.close(devnull)
+    subprocess.Popen(  # noqa: S603 — this program's own argv, no shell
+        [*command, *sys.argv[1:]],
+        stdin=subprocess.DEVNULL,
+        stdout=logfile,
+        stderr=logfile,
+        cwd="/",
+        env={**os.environ, _READY_FD_ENV: str(write_end)},
+        pass_fds=(write_end,),
+        start_new_session=True,
+    )
     os.close(logfile)
-
-    def notify_ready(error: str | None) -> None:
-        if error is None:
-            pid_path.write_text(f"{os.getpid()}\n", encoding="utf-8")
-            # SIGTERM stops the server gracefully (``_serve_until_stopped``),
-            # so the interpreter exits normally and runs this.
-            atexit.register(pid_path.unlink, missing_ok=True)
-        message = error if error is not None else f"ok {os.getpid()}"
-        os.write(write_end, message.encode())
-        os.close(write_end)
-
-    return notify_ready
+    os.close(write_end)
+    with os.fdopen(read_end, "rb") as pipe:
+        report = pipe.read().decode()
+    if not report.startswith("ok "):
+        raise SystemExit(
+            report or f"terminux daemon died while starting; see {log_path}"
+        )
+    pid = report.split()[1]
+    sys.stderr.write(
+        f"{banner}Running in the background (pid {pid}).\n"
+        f"  log: {log_path}\n  pid file: {pid_path}\n"
+    )
+    raise SystemExit(0)
 
 
 def _free_port() -> int:
@@ -310,15 +331,15 @@ def _parse_args() -> argparse.Namespace:
         "--daemon",
         action="store_true",
         help=(
-            "like --server, but go to the background once the server is up, "
-            "after printing the connect URL; logs go to "
-            f"{_daemon_log_path()}. Not available on Windows."
+            "go to the background once the server is up, after printing the "
+            "connect URL; the window opens as usual (with --server, there is "
+            f"none). Logs go to {_daemon_log_path()}. Not available on Windows."
         ),
     )
     parser.add_argument(
         "--stop",
         action="store_true",
-        help="stop the server started by --daemon, and wait until it is gone",
+        help="stop the terminux started by --daemon, and wait until it is gone",
     )
     parser.add_argument(
         "--public-host",
@@ -358,10 +379,8 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     args = parser.parse_args()
-    if args.daemon:
-        if sys.platform == "win32":
-            parser.error("--daemon needs fork(); on Windows run `terminux --server`")
-        args.server = True
+    if args.daemon and sys.platform == "win32":
+        parser.error("--daemon is not available on Windows")
     return args
 
 
@@ -401,8 +420,10 @@ def main() -> None:
         return
 
     # The daemon picks its port and token before forking, so the parent can
-    # print the URL; everything else (logging, threads) starts in the child.
-    if args.server:
+    # print the URL; everything else (logging, threads, the window) starts in
+    # the child. The printed URL outlives a restart, as with --server.
+    persistent = args.server or args.daemon
+    if persistent:
         token = auth_mod.load_or_create_persistent_token(server_token_path())
     else:
         token = SESSION_TOKEN
@@ -421,7 +442,8 @@ def main() -> None:
     # say whether a tunnel is needed and whether the URL outlives the run.
     app.state.bind_host = args.host
     app.state.bind_port = port
-    app.state.token_persistent = bool(args.server)
+    app.state.token_persistent = persistent
+    app.state.public_host = args.public_host
     config = uvicorn.Config(
         app,
         host=args.host,
@@ -532,6 +554,25 @@ def _disable_macos_press_and_hold() -> None:
     )
 
 
+def _name_macos_app() -> None:
+    """Call the app "terminux" in the menu bar and its app menu. Launched
+    from a console script, the process has no bundle of its own, so macOS
+    takes the interpreter's name ("Python" for a framework build). The
+    info dictionary is mutable in place; pywebview edits it the same way,
+    and reads ``CFBundleName`` from it when it builds the app menu."""
+    if sys.platform != "darwin":
+        return
+    try:
+        from Foundation import (  # noqa: PLC0415
+            NSBundle,  # ty: ignore[unresolved-import]  # pyrefly: ignore[missing-module-attribute]
+        )
+    except ImportError:
+        return
+    bundle = NSBundle.mainBundle()
+    info = bundle.localizedInfoDictionary() or bundle.infoDictionary()
+    info["CFBundleName"] = "terminux"
+
+
 def _disable_macos_app_nap() -> object | None:
     """Keep macOS from App-Napping terminux while its window is hidden.
 
@@ -598,9 +639,18 @@ def _open_window(
     """Open the terminux window on ``url`` at ``geometry`` (width, height,
     x, y) and run the GUI loop until it closes. Dropped files go to
     ``on_paths``; ``on_window`` hooks more events before the loop starts."""
+    _name_macos_app()  # before pywebview reads the name
     _disable_macos_press_and_hold()
     _app_nap = _disable_macos_app_nap()  # held: releasing it re-enables App Nap
     import webview  # noqa: PLC0415  (heavy GUI import; only when windowing)
+
+    if sys.platform == "darwin":
+        from webview.platforms import cocoa  # noqa: PLC0415
+
+        # pywebview adds a View menu of its own, holding only "Enter Full
+        # Screen", next to ours; ours carries that item (``_build_menu``).
+        # No setting turns off that menu alone, hence the private patch.
+        cocoa.BrowserView._add_view_menu = lambda *_a, **_k: None  # type: ignore[method-assign]  # noqa: SLF001
     from webview.dom import DOMEventHandler  # noqa: PLC0415
 
     window = webview.create_window(
@@ -669,6 +719,8 @@ def _run_windowed(
         win.events.resized += _on_resized
         win.events.moved += _on_moved
         win.events.closed += _shutdown
+        if sys.platform != "win32":
+            _close_on_sigterm(win)
 
     _open_window(
         url,
@@ -677,6 +729,25 @@ def _run_windowed(
         on_window=_track,
         debug=debug,
     )
+
+
+def _close_on_sigterm(win: Window) -> None:
+    """Make SIGTERM (``terminux --stop``, ``kill``) close the window as its
+    close button does, so the state is saved. The GUI loop holds the main
+    thread, where Python signal handlers run, so they may never get to; the
+    C-level handler still writes the signal number to the wakeup fd at once,
+    and a thread waiting on it closes the window."""
+    read_fd, write_fd = os.pipe()
+    os.set_blocking(write_fd, False)
+    signal.set_wakeup_fd(write_fd)
+    signal.signal(signal.SIGTERM, lambda _signum, _frame: None)
+
+    def wait() -> None:
+        while os.read(read_fd, 1)[0] != signal.SIGTERM:  # Ctrl-C writes too
+            pass
+        win.destroy()
+
+    threading.Thread(target=wait, daemon=True, name="sigterm").start()
 
 
 # Default window geometry for ``--connect`` mode. No per-client persistence
@@ -758,15 +829,19 @@ def _build_menu(webview_mod: _WebviewModuleLike) -> list[Menu]:
     # webview can stub the module via the argument.
     from webview.menu import Menu, MenuAction, MenuSeparator  # noqa: PLC0415
 
-    def _cmd(command_id: str) -> Callable[[], None]:
-        js = f"window.terminux?.invoke({json.dumps(command_id)})"
-
+    def _on_window(
+        action: Callable[[_WebviewWindowLike], object],
+    ) -> Callable[[], None]:
         def callback() -> None:
             win = webview_mod.active_window()
             if win is not None:
-                win.evaluate_js(js)
+                action(win)
 
         return callback
+
+    def _cmd(command_id: str) -> Callable[[], None]:
+        js = f"window.terminux?.invoke({json.dumps(command_id)})"
+        return _on_window(lambda w: w.evaluate_js(js))
 
     def _url(target: str) -> Callable[[], None]:
         def callback() -> None:
@@ -788,6 +863,40 @@ def _build_menu(webview_mod: _WebviewModuleLike) -> list[Menu]:
         MenuAction("Sort by Time Spent", _cmd("workspace.sort.time-spent")),
     ])
 
+    view_items: list[MenuEntry] = [
+        MenuAction("Quick Switcher", _cmd("palette.quick")),
+        MenuAction("Command Palette", _cmd("palette.command")),
+        MenuSeparator(),
+        MenuAction("Find…", _cmd("view.find")),
+        MenuAction("Usage Stats", _cmd("view.stats")),
+        MenuAction("Remote Connection URL", _cmd("view.connect-info")),
+        MenuSeparator(),
+        MenuAction("Zoom In", _cmd("view.zoom.in")),
+        MenuAction("Zoom Out", _cmd("view.zoom.out")),
+        MenuAction("Reset Zoom", _cmd("view.zoom.reset")),
+        MenuSeparator(),
+        MenuAction("Toggle Sidebar", _cmd("view.sidebar.toggle")),
+        MenuSeparator(),
+        MenuAction(
+            "Toggle Auto-Copy on Selection",
+            _cmd("view.copy-on-select.toggle"),
+        ),
+        MenuAction(
+            "Toggle Scrollback Persistence",
+            _cmd("view.scrollback-persist.toggle"),
+        ),
+    ]
+    if sys.platform == "darwin":
+        # pywebview's own View menu, holding only this item, is turned off
+        # in ``_open_window``: next to ours, it looked like ours with most
+        # entries missing.
+        view_items.extend([
+            MenuSeparator(),
+            MenuAction(
+                "Toggle Full Screen", _on_window(lambda w: w.toggle_fullscreen())
+            ),
+        ])
+
     menus = [
         Menu(
             "File",
@@ -799,32 +908,7 @@ def _build_menu(webview_mod: _WebviewModuleLike) -> list[Menu]:
                 MenuAction("Close Workspace", _cmd("workspace.close")),
             ],
         ),
-        Menu(
-            "View",
-            [
-                MenuAction("Quick Switcher", _cmd("palette.quick")),
-                MenuAction("Command Palette", _cmd("palette.command")),
-                MenuSeparator(),
-                MenuAction("Find…", _cmd("view.find")),
-                MenuAction("Usage Stats", _cmd("view.stats")),
-                MenuAction("Remote Connection URL", _cmd("view.connect-info")),
-                MenuSeparator(),
-                MenuAction("Zoom In", _cmd("view.zoom.in")),
-                MenuAction("Zoom Out", _cmd("view.zoom.out")),
-                MenuAction("Reset Zoom", _cmd("view.zoom.reset")),
-                MenuSeparator(),
-                MenuAction("Toggle Sidebar", _cmd("view.sidebar.toggle")),
-                MenuSeparator(),
-                MenuAction(
-                    "Toggle Auto-Copy on Selection",
-                    _cmd("view.copy-on-select.toggle"),
-                ),
-                MenuAction(
-                    "Toggle Scrollback Persistence",
-                    _cmd("view.scrollback-persist.toggle"),
-                ),
-            ],
-        ),
+        Menu("View", view_items),
         Menu("Workspace", workspace_items),
         Menu("Help", [MenuAction("Documentation", _url(DOCS_URL))]),
     ]
