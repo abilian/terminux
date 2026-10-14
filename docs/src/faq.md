@@ -54,7 +54,7 @@ They're still on the roadmap.
 
 ## Does terminux work on Windows?
 
-Yes, on Windows 10 and 11. The shell is PowerShell 7 if it's installed, else Windows PowerShell, else `cmd`; there's no setting to pick another one (Git Bash, MSYS2) yet. Windows can't tell terminux which directory a shell is in, so add the PowerShell snippet from [Shell integration](guides/shell-integration.md) to get workspace names and new tabs that open in the same directory. A Windows machine can also be a client of a terminux server on a Mac or a Linux box; see [Remote access](guides/remote.md).
+Yes, it runs on Windows 10 and 11. The shell is PowerShell 7 if it's installed, else Windows PowerShell, else `cmd`; there's no setting to pick another one (Git Bash, MSYS2) yet. Windows can't tell terminux which directory a shell is in, so add the PowerShell snippet from [Shell integration](guides/shell-integration.md) to get workspace names and new tabs that open in the same directory. A Windows machine can also be a client of a terminux server on a Mac or a Linux box; see [Remote access](guides/remote.md).
 
 ## Is it safe to expose terminux on the network?
 

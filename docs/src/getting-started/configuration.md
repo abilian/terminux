@@ -25,7 +25,7 @@ All persistent state sits in one directory:
 | Linux | `~/.local/share/terminux/` |
 | Windows | `%LOCALAPPDATA%\terminux\` |
 
-Inside it: `state.json` (workspaces, tabs, UI preferences; written atomically and versioned), `scrollback/<tab>.ansi` (one capped file per tab, deleted when the tab closes), `server.token` (only in `--server` mode), and `state.json.corrupt` if a damaged `state.json` was ever found at startup (terminux sets it aside and starts fresh, so you can recover your workspaces from it). Deleting the directory resets terminux completely.
+It holds `state.json` (workspaces, tabs, UI preferences; written atomically and versioned), `scrollback/<tab>.ansi` (one capped file per tab, deleted when the tab closes) and, in `--server` mode, `server.token`. If terminux ever finds a damaged `state.json` at startup, it sets it aside as `state.json.corrupt` and starts fresh, so you can recover your workspaces from it. Deleting the directory resets terminux completely.
 
 Scrollback files can contain secrets a command echoed; they stay local, are capped at 2 MB per tab, and disappear when persistence is toggled off or the tab is closed.
 
