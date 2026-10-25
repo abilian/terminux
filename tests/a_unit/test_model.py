@@ -189,13 +189,9 @@ def test_dwell_clears_only_active_tab() -> None:
     assert s.tabs[first_tab].has_unseen_output is True
 
 
-def test_workspace_status_missing_is_idle() -> None:
-    assert AppState().workspace_status("x") == WorkspaceStatus.IDLE
-
-
 def test_workspace_status_active() -> None:
     s = AppState.default()
-    assert s.workspace_status(s.workspaces[0].id) == WorkspaceStatus.ACTIVE
+    assert s.workspace_status(s.workspaces[0]) == WorkspaceStatus.ACTIVE
 
 
 def test_workspace_status_exited_unseen_idle() -> None:
@@ -204,13 +200,13 @@ def test_workspace_status_exited_unseen_idle() -> None:
     s.add_tab(other.id)
     s.set_active_workspace(s.workspaces[0].id)  # `other` not active
     # No live terminal on `other` -> EXITED
-    assert s.workspace_status(other.id) == WorkspaceStatus.EXITED
+    assert s.workspace_status(other) == WorkspaceStatus.EXITED
     # Mark a live terminal -> not exited; unseen -> RUNNING
     s.tabs[other.tab_ids[0]].terminal_id = "term-1"
     other.has_unseen_output = True
-    assert s.workspace_status(other.id) == WorkspaceStatus.UNSEEN
+    assert s.workspace_status(other) == WorkspaceStatus.UNSEEN
     other.has_unseen_output = False
-    assert s.workspace_status(other.id) == WorkspaceStatus.IDLE
+    assert s.workspace_status(other) == WorkspaceStatus.IDLE
 
 
 def test_to_from_json_roundtrip() -> None:
@@ -375,3 +371,14 @@ def test_set_active_tab_ignores_tabs_of_other_workspaces() -> None:
     assert not s.tabs[mine].has_unseen_output  # looking at it clears the dot
     s.set_active_tab(ws, None)
     assert ws.active_tab_id is None
+
+
+def test_uiprefs_bad_values_fall_back_to_defaults() -> None:
+    ui = UiPrefs.from_json({
+        "font_size": "huge",
+        "copy_on_select": 1,
+        "win_x": True,
+        "win_w": 900,
+    })
+    assert (ui.font_size, ui.copy_on_select, ui.win_x) == (13, False, None)
+    assert ui.win_w == 900  # the good ones are kept

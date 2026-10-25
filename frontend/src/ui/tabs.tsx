@@ -6,7 +6,7 @@ import { render } from "preact";
 import { useState } from "preact/hooks";
 
 import { invoke } from "../input/commands";
-import { toggleSidebar } from "./layout";
+import { isSidebarHidden, toggleSidebar } from "./layout";
 import { RenameInput } from "./rename";
 import { makeDraggable, recentlyReordered } from "./reorder";
 import {
@@ -17,6 +17,7 @@ import {
 } from "../state/store";
 import { disposeSession } from "../term/terminal";
 import type { StateView, TabView, WorkspaceView } from "../state/types";
+import { byId } from "../util/dom";
 
 export function closeTab(tid: string): void {
   disposeSession(tid);
@@ -35,20 +36,13 @@ export function switchTab(delta: number): void {
 }
 
 export function renderTabs(): void {
-  const bar = document.getElementById("tabbar");
-  if (bar) {
-    render(<TabBar />, bar);
-  }
-}
-
-function sidebarHidden(): boolean {
-  return document.getElementById("sidebar")?.style.display === "none";
+  render(<TabBar />, byId("tabbar"));
 }
 
 function TabBar() {
   const [editing, setEditing] = useState<string | null>(null);
   const state = getState();
-  const ws = state ? activeWorkspace() : null;
+  const ws = activeWorkspace();
   if (!state || !ws) {
     return null;
   }
@@ -56,7 +50,7 @@ function TabBar() {
     <>
       {/* With the sidebar hidden, nothing else on screen says which
           workspace this is — the chip stands in for it. */}
-      {sidebarHidden() && <WsChip state={state} ws={ws} />}
+      {isSidebarHidden() && <WsChip state={state} ws={ws} />}
       <div id="tabs-list">
         {ws.tab_ids.map((tid) => {
           const t = state.tabs[tid];
@@ -90,10 +84,7 @@ function WsChip({ state, ws }: { state: StateView; ws: WorkspaceView }) {
     <div
       id="ws-chip"
       title={`${ws.name} (${n} tab${n === 1 ? "" : "s"}) — click to show the sidebar`}
-      onClick={() => {
-        toggleSidebar();
-        renderTabs(); // the chip just made itself redundant
-      }}
+      onClick={toggleSidebar}
     >
       <span class={"dot " + ws.status} />
       {idx >= 0 && idx < 9 && <span class="keycap">{String(idx + 1)}</span>}

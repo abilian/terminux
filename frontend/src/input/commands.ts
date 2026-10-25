@@ -25,10 +25,6 @@ export function invoke(id: string): boolean {
   return run() !== false; // an async command runs on its own
 }
 
-export function has(id: string): boolean {
-  return registry.has(id);
-}
-
 // Test-only seam: clear the registry between cases.
 export function _reset(): void {
   registry.clear();

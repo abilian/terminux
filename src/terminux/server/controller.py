@@ -331,9 +331,7 @@ class AppController:
             now = time.monotonic()
             by_id = {w.id: w for w in self.state.workspaces}
             for wv in view["workspaces"]:
-                ws = by_id.get(wv["id"])
-                if ws is None:
-                    continue
+                ws = by_id[wv["id"]]  # same state, same lock
                 wv["name"] = self._workspace_label(ws)
                 wv["active_seconds"] = self.active_seconds(ws.id)
                 # Active/exited carry more urgent meaning and stay untouched.

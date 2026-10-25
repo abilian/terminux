@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from enum import Enum
 from typing import Any
 
@@ -185,38 +185,23 @@ class UiPrefs:
     win_y: int | None = None
 
     def to_json(self) -> dict[str, Any]:
-        return {
-            "sidebar_width": self.sidebar_width,
-            "sidebar_collapsed": self.sidebar_collapsed,
-            "font_size": self.font_size,
-            "copy_on_select": self.copy_on_select,
-            "scrollback_persist": self.scrollback_persist,
-            "win_w": self.win_w,
-            "win_h": self.win_h,
-            "win_x": self.win_x,
-            "win_y": self.win_y,
-        }
+        return asdict(self)
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> UiPrefs:
-        def _opt_int(key: str) -> int | None:
-            v = data.get(key)
-            return int(v) if v is not None else None
-
-        d = cls()  # the defaults, defined once on the fields above
-        return cls(
-            sidebar_width=int(data.get("sidebar_width", d.sidebar_width)),
-            sidebar_collapsed=bool(data.get("sidebar_collapsed", d.sidebar_collapsed)),
-            font_size=int(data.get("font_size", d.font_size)),
-            copy_on_select=bool(data.get("copy_on_select", d.copy_on_select)),
-            scrollback_persist=bool(
-                data.get("scrollback_persist", d.scrollback_persist)
-            ),
-            win_w=int(data.get("win_w", d.win_w)),
-            win_h=int(data.get("win_h", d.win_h)),
-            win_x=_opt_int("win_x"),
-            win_y=_opt_int("win_y"),
-        )
+        """The stored values of the right type; a missing or malformed one
+        falls back to its default, so a bad value doesn't fail the load."""
+        defaults = cls()
+        kept: dict[str, Any] = {}
+        for f in fields(cls):
+            value, default = data.get(f.name), getattr(defaults, f.name)
+            is_int = isinstance(value, int) and not isinstance(value, bool)
+            if isinstance(default, bool):
+                fits = isinstance(value, bool)
+            else:  # int, or None for "let the OS place the window"
+                fits = is_int or (default is None and value is None)
+            kept[f.name] = value if fits else default
+        return cls(**kept)
 
 
 SCHEMA_VERSION = 1
@@ -231,7 +216,8 @@ VISIT_DWELL_SECONDS = 3.0
 
 @dataclass
 class AppState:
-    """Authoritative state. All mutation happens on the backend event loop."""
+    """Authoritative state. Every access holds the controller's lock: the
+    handlers mutate it from the event loop and from worker threads."""
 
     workspaces: list[Workspace] = field(default_factory=list)
     tabs: dict[str, Tab] = field(default_factory=dict)
@@ -286,7 +272,7 @@ class AppState:
         self.workspaces = [w for w in self.workspaces if w.id != ws_id]
         self.ensure_baseline()
         if self.active_workspace_id == ws_id:
-            self.active_workspace_id = self.workspaces[0].id
+            self.set_active_workspace(self.workspaces[0].id)
         return tab_ids
 
     def ensure_baseline(self) -> None:
@@ -389,11 +375,8 @@ class AppState:
 
     # ----- status -------------------------------------------------------
 
-    def workspace_status(self, ws_id: str) -> WorkspaceStatus:
-        ws = self.get_workspace(ws_id)
-        if ws is None:
-            return WorkspaceStatus.IDLE
-        if ws_id == self.active_workspace_id:
+    def workspace_status(self, ws: Workspace) -> WorkspaceStatus:
+        if ws.id == self.active_workspace_id:
             return WorkspaceStatus.ACTIVE
         has_live = any(
             (t := self.tabs.get(tid)) is not None and t.terminal_id is not None
@@ -448,7 +431,7 @@ class AppState:
         self.tabs = {tid: t for tid, t in self.tabs.items() if tid in referenced}
         self.ensure_baseline()
         if self.get_workspace(self.active_workspace_id or "") is None:
-            self.active_workspace_id = self.workspaces[0].id
+            self.set_active_workspace(self.workspaces[0].id)
 
     def view_json(self) -> dict[str, Any]:
         """Snapshot for the frontend, including derived status."""
@@ -456,7 +439,7 @@ class AppState:
             "workspaces": [
                 {
                     **w.to_json(),
-                    "status": self.workspace_status(w.id).value,
+                    "status": self.workspace_status(w).value,
                     "ready_since": w.ready_since,
                 }
                 for w in self.workspaces

@@ -13,6 +13,7 @@ import { isReordering } from "./ui/reorder";
 import { applyLayout, installSidebarResizer } from "./ui/layout";
 import { renderSidebar } from "./ui/sidebar";
 import {
+  activeSession,
   activeWorkspace,
   configure,
   poll,
@@ -33,7 +34,6 @@ configure({
     // cue that works even when the app is in the background.
     const ws = activeWorkspace();
     document.title = ws ? `${ws.name} — terminux` : "terminux";
-    syncFontFromState(); // before the first terminal opens; one-shot
     // The islands diff the DOM, so a rename in progress survives the
     // 2 s poll on its own. Only a live drag still pauses rendering:
     // the drop-marker classes are managed imperatively by reorder.ts,
@@ -53,11 +53,8 @@ byId("new-ws").onclick = (): void => {
 };
 
 window.addEventListener("resize", () => {
-  const ws = activeWorkspace();
-  const s = ws?.active_tab_id ? sessions.get(ws.active_tab_id) : null;
-  if (s) {
-    s.fit.fit();
-  }
+  activeSession()?.fit.fit();
+  renderTabs(); // a sidebar toggle shows or hides the workspace chip
 });
 
 // Must come before any surface that calls ``invoke()`` — keymap and
@@ -80,7 +77,10 @@ setInterval(() => {
 // exercise the reconnect path).
 (window as unknown as { __terminux: object }).__terminux = { sessions };
 
-void refresh().then(() => {
+// First load: render, adopt the persisted font and layout, and only then
+// open the active terminal (refresh activates it).
+void poll().then(() => {
+  syncFontFromState();
   applyLayout();
-  renderTabs(); // applyLayout may have just hidden the sidebar → chip
+  return refresh();
 });

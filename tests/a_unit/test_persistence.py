@@ -68,7 +68,7 @@ def test_state_path_uses_platformdirs(tmp_path: Path, monkeypatch) -> None:
     )
     p = state_path()
     assert p == tmp_path / "tnx" / "state.json"
-    assert p.parent.is_dir()  # directory created
+    assert not p.parent.exists()  # created by the first save, not here
 
 
 def test_save_default_path(tmp_path: Path, monkeypatch) -> None:

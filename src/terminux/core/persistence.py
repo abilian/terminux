@@ -33,9 +33,7 @@ def data_dir() -> Path:
 
 
 def state_path() -> Path:
-    path = data_dir()
-    path.mkdir(parents=True, exist_ok=True)
-    return path / "state.json"
+    return data_dir() / "state.json"
 
 
 # Hard cap so a runaway capture can't fill the disk. SerializeAddon output
@@ -48,9 +46,7 @@ _TAB_ID_OK = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def scrollback_dir() -> Path:
-    d = state_path().parent / "scrollback"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    return state_path().parent / "scrollback"
 
 
 def _scrollback_file(tab_id: str) -> Path | None:
@@ -69,6 +65,7 @@ def _atomic_write(path: Path, data: bytes, *, prefix: str, label: str) -> None:
     """
     tmp_path: Path | None = None
     try:
+        path.parent.mkdir(parents=True, exist_ok=True)  # the only writer
         fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=prefix, suffix=".tmp")
         tmp_path = Path(tmp_name)
         _write_synced(fd, data)

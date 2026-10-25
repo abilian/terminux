@@ -39,13 +39,10 @@ beforeEach(async () => {
 });
 
 describe("font", () => {
-  it("adopts the persisted size once, then never re-syncs", () => {
+  it("adopts the persisted size", () => {
     font.syncFontFromState();
     expect(font.getFontSize()).toBe(16);
     expect(sess.term.options.fontSize).toBe(16);
-    mocks.fontFromServer = 20;
-    font.syncFontFromState(); // one-shot: a later poll can't revert zooms
-    expect(font.getFontSize()).toBe(16);
   });
 
   it("applies an explicit zoom, clamped, to sessions and the server", () => {
@@ -59,9 +56,6 @@ describe("font", () => {
     );
     font.applyFontSize(1);
     expect(font.getFontSize()).toBe(6); // FONT_MIN
-    // An explicit zoom marks the module initialized: sync won't override.
-    font.syncFontFromState();
-    expect(font.getFontSize()).toBe(6);
   });
 
   it("resetFontSize returns to the default", () => {

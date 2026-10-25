@@ -158,10 +158,9 @@ def load_or_create_persistent_token(path: Path) -> str:
     """
     global SESSION_TOKEN  # noqa: PLW0603 — exposed mutable for the persisted-token path
     if path.is_file():
-        try:
-            text = path.read_text(encoding="utf-8").strip()
-        except OSError:
-            text = ""
+        # An unreadable file raises: silently replacing it would change the
+        # user's stable URL. Undecodable bytes are just malformed content.
+        text = path.read_text(encoding="utf-8", errors="replace").strip()
         if TOKEN_RE.match(text):
             SESSION_TOKEN = text
             return text

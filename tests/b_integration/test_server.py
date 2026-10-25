@@ -863,8 +863,10 @@ def test_malformed_numeric_bodies_return_400(server: LiveServer) -> None:
 
 
 def _status_of(url: str, method: str, body: bytes) -> tuple[int, Any]:
+    req = urllib.request.Request(url, method=method, data=body)  # noqa: S310
     try:
-        return 200, _req(url, method=method, body=body)
+        with urllib.request.urlopen(req) as r:  # noqa: S310
+            return r.status, json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as exc:
         return exc.code, json.loads(exc.read())
 
@@ -891,6 +893,32 @@ def test_patch_workspace_rejects_bad_types_before_changing_anything(
         assert payload["error"].split()[0] in {"order", "name"}
     after = _req(f"{server.url}/api/state?t={T}")["workspaces"][0]
     assert after["name"] == ws["name"]
+
+
+def test_patch_ui_takes_json_types_only(server: LiveServer) -> None:
+    url = f"{server.url}/api/ui?t={T}"
+    for bad in (
+        {"copy_on_select": "false"},
+        {"sidebar_width": "300"},
+        {"font_size": True},
+    ):
+        code, payload = _status_of(url, "PATCH", json.dumps(bad).encode())
+        assert code == 400, bad
+        assert next(iter(bad)) in payload["error"]
+    _req(url, "PATCH", json.dumps({"sidebar_width": 300.4}).encode())
+    assert _req(f"{server.url}/api/state?t={T}")["ui"]["sidebar_width"] == 300
+
+
+def test_creates_answer_201_and_404s_name_the_resource(server: LiveServer) -> None:
+    base = server.url
+    code, created = _status_of(f"{base}/api/workspaces?t={T}", "POST", b"{}")
+    assert code == 201
+    code, _ = _status_of(
+        f"{base}/api/workspaces/{created['id']}/tabs?t={T}", "POST", b"{}"
+    )
+    assert code == 201
+    code, payload = _status_of(f"{base}/api/tabs/nope?t={T}", "PATCH", b"{}")
+    assert (code, payload["error"]) == (404, "no tab 'nope'")
 
 
 def test_out_of_range_terminal_size_is_clamped(server: LiveServer) -> None:

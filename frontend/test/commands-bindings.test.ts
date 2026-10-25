@@ -16,7 +16,6 @@ const mocks = vi.hoisted(() => ({
   openStatsPanel: vi.fn(),
   openConnectInfo: vi.fn(),
   toggleSidebar: vi.fn(),
-  renderTabs: vi.fn(),
   closeTab: vi.fn(),
   switchTab: vi.fn(),
   closeWorkspace: vi.fn(),
@@ -64,7 +63,6 @@ vi.mock("../src/ui/sidebar", () => ({
 vi.mock("../src/ui/tabs", () => ({
   closeTab: mocks.closeTab,
   switchTab: mocks.switchTab,
-  renderTabs: mocks.renderTabs,
 }));
 vi.mock("../src/term/font", () => ({
   applyFontSize: mocks.applyFontSize,
@@ -152,10 +150,9 @@ describe("command dispatch table", () => {
     expect(mocks.resetFontSize).toHaveBeenCalled();
   });
 
-  it("sidebar toggle also re-renders the tab bar (workspace chip)", () => {
+  it("toggles the sidebar", () => {
     invoke("view.sidebar.toggle");
     expect(mocks.toggleSidebar).toHaveBeenCalled();
-    expect(mocks.renderTabs).toHaveBeenCalled();
   });
 
   it("pref toggles PATCH the negated value and refresh", () => {

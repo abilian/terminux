@@ -32,6 +32,7 @@ import uvicorn
 from terminux import clipboard, gui_prereq
 from terminux.constants import DOCS_URL
 from terminux.core import persistence
+from terminux.core.model import UiPrefs
 from terminux.diagnostics import start_watchdog
 from terminux.openurl import open_url_in_default_app
 from terminux.server import auth as auth_mod
@@ -57,6 +58,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from types import ModuleType
 
+    from starlette.applications import Starlette
     from webview import Window
     from webview.menu import Menu, MenuAction, MenuSeparator
 
@@ -410,22 +412,29 @@ def main() -> None:
     if args.stop:
         _stop_daemon()
         return
+    headless = args.server or args.no_window
+    verbose = args.debug or args.trace
     # Before anything starts (and before --daemon forks), so a machine that
     # can't open the window says what to install instead of a traceback.
-    windowed = args.connect or not (args.server or args.no_window)
-    if windowed and (problem := gui_prereq.explain_why_no_window()):
+    if (args.connect or not headless) and (
+        problem := gui_prereq.explain_why_no_window()
+    ):
         raise SystemExit(problem)
 
-    # ----- client mode: no local backend, just a window onto a remote ---
     if args.connect:
-        _configure_logging(debug=args.debug or args.trace, trace=args.trace)
+        # Client mode: no local backend, just a window onto a remote.
+        _configure_logging(debug=verbose, trace=args.trace)
         _install_freeze_diagnostics()
         # No watchdog here: it monitors the local server's asyncio
         # heartbeat, and client mode runs no local server — arming it
         # would warn every 10 s about a loop that doesn't exist.
-        _run_connected(args.connect, debug=args.debug or args.trace)
+        _run_connected(args.connect, debug=verbose)
         return
+    _run_local(args, headless=headless, verbose=verbose)
 
+
+def _run_local(args: argparse.Namespace, *, headless: bool, verbose: bool) -> None:
+    """Run the local server, then the window unless ``headless``."""
     # The daemon picks its port and token before forking, so the parent can
     # print the URL; everything else (logging, threads, the window) starts in
     # the child. The printed URL outlives a restart, as with --server.
@@ -438,12 +447,10 @@ def main() -> None:
     url = _connect_url(args.public_host, args.host, port, token)
     notify_ready = _daemonize(_banner(url, args.host)) if args.daemon else None
 
-    _configure_logging(debug=args.debug or args.trace, trace=args.trace)
+    _configure_logging(debug=verbose, trace=args.trace)
     _install_freeze_diagnostics()
-
     start_watchdog()
 
-    headless = args.server or args.no_window
     app = build_app(persist=True)
     # Tell the app how it was bound, so "Show remote connection URL" can
     # say whether a tunnel is needed and whether the URL outlives the run.
@@ -451,21 +458,7 @@ def main() -> None:
     app.state.bind_port = port
     app.state.token_persistent = persistent
     app.state.public_host = args.public_host
-    config = uvicorn.Config(
-        app,
-        host=args.host,
-        port=port,
-        log_level="info" if (args.debug or args.trace) else "warning",
-        access_log=args.debug or args.trace,
-        ws="websockets-sansio",  # avoid the deprecated legacy websockets impl
-        # A stop waits for open connections (websockets) to close; don't
-        # let a stuck one keep the process, and ``--stop``, waiting.
-        timeout_graceful_shutdown=3,
-    )
-    server = uvicorn.Server(config)
-
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
+    server, thread = _start_server(app, args.host, port, verbose=verbose)
     try:
         _wait_until_started(server, thread, f"{args.host}:{port}")
     except SystemExit as exc:
@@ -488,10 +481,29 @@ def main() -> None:
     # The local window always goes through loopback, whatever is printed.
     local = "127.0.0.1" if args.host in _WILDCARD_BINDS else args.host
     local_url = _connect_url(local, args.host, port, token)
-    _run_windowed(
-        local_url, app.state.controller, server, debug=args.debug or args.trace
-    )
+    _run_windowed(local_url, app.state.controller, server, debug=verbose)
     thread.join(timeout=5)  # let the lifespan shutdown save and close
+
+
+def _start_server(
+    app: Starlette, host: str, port: int, *, verbose: bool
+) -> tuple[uvicorn.Server, threading.Thread]:
+    """Start uvicorn on a thread; the caller waits for it to be up."""
+    config = uvicorn.Config(
+        app,
+        host=host,
+        port=port,
+        log_level="info" if verbose else "warning",
+        access_log=verbose,
+        ws="websockets-sansio",  # avoid the deprecated legacy websockets impl
+        # A stop waits for open connections (websockets) to close; don't
+        # let a stuck one keep the process, and ``--stop``, waiting.
+        timeout_graceful_shutdown=3,
+    )
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    return server, thread
 
 
 def _serve_until_stopped(server: uvicorn.Server, thread: threading.Thread) -> None:
@@ -797,12 +809,6 @@ def _close_on_sigterm(win: Window) -> None:
     threading.Thread(target=wait, daemon=True, name="sigterm").start()
 
 
-# Default window geometry for ``--connect`` mode. No per-client persistence
-# (intentional v1 scope): every connection opens at this size.
-_CONNECT_DEFAULT_W = 1100
-_CONNECT_DEFAULT_H = 720
-
-
 def _post_paste_paths(server_url: str, paths: list[str]) -> None:
     """POST dropped file paths to a remote terminux via /api/paste-paths.
 
@@ -842,7 +848,8 @@ def _run_connected(remote_url: str, *, debug: bool = False) -> None:
     # local controller to flush.
     _open_window(
         remote_url,
-        geometry=(_CONNECT_DEFAULT_W, _CONNECT_DEFAULT_H, None, None),
+        # No per-client persistence: every connection opens at the default size.
+        geometry=(UiPrefs.win_w, UiPrefs.win_h, None, None),
         on_paths=lambda paths: _post_paste_paths(remote_url, paths),
         debug=debug,
     )

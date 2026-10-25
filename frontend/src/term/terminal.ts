@@ -54,9 +54,8 @@ interface SavedScrollback {
   content: string;
   // Dimensions the buffer was captured at — used to construct the fresh
   // xterm at the same size so the post-write fit() reflows cleanly.
-  // Missing for legacy (pre-v2) saves; the caller falls back to defaults.
-  cols?: number;
-  rows?: number;
+  cols: number;
+  rows: number;
 }
 
 async function fetchScrollback(tid: string): Promise<SavedScrollback | null> {

@@ -38,6 +38,10 @@ class _FakePty:
         self.sizes.append((cols, rows))
 
 
+def _drained(sub: Subscriber) -> bytes:
+    return asyncio.run(sub.drain())[1]
+
+
 def _terminal(pty: _FakePty | None = None) -> Terminal:
     """A real Terminal, built on a throwaway loop: the fake PTY never
     schedules anything on it."""
@@ -87,7 +91,8 @@ def test_subscriber_close_drains_closed() -> None:
         assert closed is True
         assert data == b"tail"
         s.feed(b"ignored after close")
-        assert s._pending == bytearray()
+        s.close()  # wakes drain again
+        assert await s.drain() == (False, b"", True)
 
     asyncio.run(go())
 
@@ -102,8 +107,8 @@ def test_on_data_feeds_subscribers_and_trims_backlog(monkeypatch) -> None:
     t.on_activity = lambda: seen.append(1)
     monkeypatch.setattr(term_mod, "BACKLOG_CAP", 4)
     t._on_data(b"abcdefgh")
-    assert sub._pending == bytearray(b"abcdefgh")
-    assert len(t._backlog) == 4  # trimmed to cap
+    assert _drained(sub) == b"abcdefgh"
+    assert _drained(t.subscribe()) == b"efgh"  # the replayed backlog is capped
     assert seen == [1]
 
 
@@ -216,9 +221,7 @@ def test_is_busy_recovers_from_stuck_osc133() -> None:
     import time
 
     t = _terminal()
-    # Simulate the stuck state: in_command=True, no ;D ever.
-    t._attention._osc133_seen = True
-    t._attention._in_command = True
+    t._on_data(b"\x1b]133;C\x07")  # a command starts; no ;D ever comes
 
     t._last_output_at = time.monotonic()
     assert t.is_busy() is True  # output still flowing
@@ -260,7 +263,7 @@ def test_on_data_eof_detaches_and_closes() -> None:
     assert t.exited is True
     assert t.exit_code == 9
     assert pty.detached == 1
-    assert sub._closed is True
+    assert asyncio.run(sub.drain())[2] is True  # closed
 
 
 def test_constructor_attaches_the_backend() -> None:
@@ -337,11 +340,10 @@ def test_handle_eof_idempotent_and_on_exit() -> None:
 
 def test_subscribe_after_exit_is_closed_then_unsubscribe() -> None:
     t = _terminal()
-    t._backlog += b"hi"
-    t._exited = True
+    t._on_data(b"hi")
+    t._on_data(b"")  # EOF: the shell exited
     sub = t.subscribe()
-    assert sub._pending == bytearray(b"hi")  # backlog replayed
-    assert sub._closed is True
+    assert asyncio.run(sub.drain()) == (False, b"hi", True)  # backlog, closed
     t.unsubscribe(sub)
     assert sub not in t._subscribers
 
@@ -367,7 +369,7 @@ def test_close_marks_subscribers_closed() -> None:
     sub = t.subscribe()
     t.close()
     assert p.terminated is True
-    assert sub._closed is True
+    assert asyncio.run(sub.drain())[2] is True  # closed
 
 
 # ----- ownership (several clients, one PTY size) ------------------------
@@ -443,7 +445,6 @@ def test_after_the_last_client_leaves_the_next_one_owns() -> None:
     t = _terminal()
     only = t.subscribe()
     t.unsubscribe(only)
-    assert t._owner is None
     nxt = t.subscribe()
     assert t.is_owner(nxt)
     assert _owner_news(nxt) == [True]

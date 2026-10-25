@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { _reset, has, invoke, register } from "../src/input/commands";
+import { _reset, invoke, register } from "../src/input/commands";
 
 afterEach(() => _reset());
 
@@ -32,12 +32,6 @@ describe("commands bus", () => {
     register("test.dup", () => {});
     expect(warn).toHaveBeenCalledOnce();
     warn.mockRestore();
-  });
-
-  it("has() reports registry membership", () => {
-    register("test.exists", () => {});
-    expect(has("test.exists")).toBe(true);
-    expect(has("test.missing")).toBe(false);
   });
 
   it("the registered handler can be async; invoke does not await", async () => {

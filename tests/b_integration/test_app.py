@@ -12,6 +12,7 @@ import time
 import types
 import urllib.request
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -58,16 +59,25 @@ class _SlowStartServer(_FakeServer):
 
 def test_main_no_window(monkeypatch) -> None:
     _patch_common(monkeypatch)
+    configs: list[dict[str, Any]] = []
+    monkeypatch.setattr(app.uvicorn, "Config", lambda *_a, **k: configs.append(k))
     monkeypatch.setattr(sys, "argv", ["terminux", "--no-window", "--port", "9"])
     app.main()  # returns once the (fake) server thread finishes
+    assert [(c["host"], c["port"]) for c in configs] == [("127.0.0.1", 9)]
 
 
 def test_main_no_window_waits_for_server_start(monkeypatch) -> None:
-    monkeypatch.setattr(app.uvicorn, "Server", _SlowStartServer)
-    monkeypatch.setattr(app.uvicorn, "Config", lambda *a, **k: None)
-    monkeypatch.setattr(app, "build_app", lambda persist=True: build_app(persist=False))
+    servers: list[_SlowStartServer] = []
+
+    def server(*a: object, **k: object) -> _SlowStartServer:
+        servers.append(_SlowStartServer(*a, **k))
+        return servers[-1]
+
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(app.uvicorn, "Server", server)
     monkeypatch.setattr(sys, "argv", ["terminux", "--no-window"])
     app.main()  # exercises the `while not server.started: sleep` loop body
+    assert [s.started for s in servers] == [True]
 
 
 def _fake_cocoa(monkeypatch) -> None:

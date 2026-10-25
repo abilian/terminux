@@ -12,8 +12,9 @@ import { makeDraggable, recentlyReordered } from "./reorder";
 import { getState, mutate, setActiveWorkspaceOptimistic } from "../state/store";
 import { disposeSession } from "../term/terminal";
 import type { WorkspaceView } from "../state/types";
+import { byId } from "../util/dom";
 
-const DOT_TOOLTIP: Record<string, string> = {
+const DOT_TOOLTIP: Record<WorkspaceView["status"], string> = {
   active: "This workspace is the one in view",
   unseen: "Ready for review (a task finished or signalled here)",
   busy: "A foreground task is running",
@@ -22,10 +23,7 @@ const DOT_TOOLTIP: Record<string, string> = {
 };
 
 export function renderSidebar(): void {
-  const list = document.getElementById("ws-list");
-  if (list) {
-    render(<WorkspaceList />, list);
-  }
+  render(<WorkspaceList />, byId("ws-list"));
 }
 
 function WorkspaceList() {
@@ -94,7 +92,7 @@ function WorkspaceRow({ w, idx, active, editing, setEditing }: RowProps) {
       <span class={idx < 9 ? "slot keycap" : "slot"}>
         {idx < 9 ? String(idx + 1) : ""}
       </span>
-      <span class={"dot " + w.status} title={DOT_TOOLTIP[w.status] ?? ""} />
+      <span class={"dot " + w.status} title={DOT_TOOLTIP[w.status]} />
       {editing ? (
         <RenameInput
           value={w.name}

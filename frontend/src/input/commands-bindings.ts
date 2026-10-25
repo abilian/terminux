@@ -26,7 +26,7 @@ import {
   mutate,
   setActiveWorkspaceOptimistic,
 } from "../state/store";
-import { closeTab, renderTabs, switchTab } from "../ui/tabs";
+import { closeTab, switchTab } from "../ui/tabs";
 import { byRecentActivity, byTimeSpent } from "../state/sorting";
 import type { WorkspaceView } from "../state/types";
 
@@ -117,7 +117,6 @@ export function installCommands(): void {
   register("view.find", openFind);
   register("view.sidebar.toggle", () => {
     toggleSidebar();
-    renderTabs(); // the workspace chip appears/disappears with the sidebar
   });
 
   // ----- font zoom ----------------------------------------------------

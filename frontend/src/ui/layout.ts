@@ -4,30 +4,31 @@
 
 import { send } from "../state/api";
 import { getState } from "../state/store";
+import { byId } from "../util/dom";
 
 const MIN_W = 120;
 const MAX_W = 600;
 
-function setHidden(hidden: boolean, persist: boolean): void {
-  const el = document.getElementById("sidebar");
-  const divider = document.getElementById("divider");
-  if (!el) {
-    return;
-  }
-  el.style.display = hidden ? "none" : "flex";
-  if (divider) {
-    divider.style.display = hidden ? "none" : "";
-  }
+let hidden = false;
+
+export function isSidebarHidden(): boolean {
+  return hidden;
+}
+
+function setHidden(next: boolean, persist: boolean): void {
+  hidden = next;
+  byId("sidebar").style.display = hidden ? "none" : "flex";
+  byId("divider").style.display = hidden ? "none" : "";
   if (persist) {
     void send("PATCH", "/ui", { sidebar_collapsed: hidden });
   }
-  // The terminal area resized — let the resize handler refit xterm.
+  // The terminal area resized: the resize handler refits xterm and
+  // re-renders the tab bar (its workspace chip shows with the sidebar off).
   window.dispatchEvent(new Event("resize"));
 }
 
 export function toggleSidebar(): void {
-  const el = document.getElementById("sidebar");
-  setHidden(el?.style.display !== "none", true);
+  setHidden(!hidden, true);
 }
 
 // Apply persisted width + collapsed state from server state (no re-persist).
@@ -36,21 +37,15 @@ export function applyLayout(): void {
   if (!ui) {
     return;
   }
-  const el = document.getElementById("sidebar");
-  if (el && ui.sidebar_width) {
-    el.style.width = `${ui.sidebar_width}px`;
-  }
+  byId("sidebar").style.width = `${ui.sidebar_width}px`;
   if (ui.sidebar_collapsed) {
     setHidden(true, false);
   }
 }
 
 export function installSidebarResizer(): void {
-  const divider = document.getElementById("divider");
-  const sidebar = document.getElementById("sidebar");
-  if (!divider || !sidebar) {
-    return;
-  }
+  const divider = byId("divider");
+  const sidebar = byId("sidebar");
 
   divider.addEventListener("mousedown", (down: MouseEvent) => {
     if (down.button !== 0) {

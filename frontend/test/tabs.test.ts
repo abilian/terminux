@@ -30,6 +30,9 @@ vi.mock("../src/state/store", () => ({
 vi.mock("../src/term/terminal", () => ({ disposeSession: vi.fn() }));
 
 const { renderTabs, closeTab, switchTab } = await import("../src/ui/tabs");
+const layout = await import("../src/ui/layout");
+// As main.ts does: a sidebar toggle fires "resize", which re-renders.
+window.addEventListener("resize", renderTabs);
 const storeMod = await import("../src/state/store");
 const termMod = await import("../src/term/terminal");
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -78,8 +81,11 @@ function state(): StateView {
 
 beforeEach(() => {
   document.body.innerHTML =
-    '<aside id="sidebar"></aside><div id="tabbar"></div>';
+    '<aside id="sidebar"></aside><div id="divider"></div><div id="tabbar"></div>';
   fakeState = state();
+  if (layout.isSidebarHidden()) {
+    layout.toggleSidebar();
+  }
   apiMock.mockClear();
   vi.mocked(storeMod.setActiveTabOptimistic).mockClear();
   vi.mocked(termMod.disposeSession).mockClear();
@@ -99,8 +105,7 @@ describe("tab bar island", () => {
   it("shows the workspace chip only while the sidebar is hidden", () => {
     renderTabs();
     expect(document.querySelector("#ws-chip")).toBeNull();
-    document.getElementById("sidebar")!.style.display = "none";
-    renderTabs();
+    layout.toggleSidebar(); // hides it, and re-renders through "resize"
     const chip = document.querySelector("#ws-chip")!;
     expect(chip.querySelector(".name")?.textContent).toBe("alpha");
     expect(chip.querySelector(".keycap")?.textContent).toBe("1");
@@ -108,8 +113,7 @@ describe("tab bar island", () => {
   });
 
   it("clicking the chip restores the sidebar and drops the chip", () => {
-    document.getElementById("sidebar")!.style.display = "none";
-    renderTabs();
+    layout.toggleSidebar();
     (document.querySelector("#ws-chip") as HTMLElement).click();
     expect(document.getElementById("sidebar")!.style.display).not.toBe("none");
     expect(document.querySelector("#ws-chip")).toBeNull();

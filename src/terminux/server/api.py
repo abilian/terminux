@@ -85,6 +85,10 @@ async def _json_object(request: Request) -> dict[str, Any]:
     return body
 
 
+def _not_found(kind: str, ident: str) -> JSONResponse:
+    return JSONResponse({"error": f"no {kind} {ident!r}"}, status_code=404)
+
+
 def _check_types(body: dict[str, Any], **kinds: type) -> None:
     """400 before any state is touched, so nothing is half-applied."""
     for key, kind in kinds.items():
@@ -94,12 +98,12 @@ def _check_types(body: dict[str, Any], **kinds: type) -> None:
 
 
 def _clamped_int(value: object, lo: int, hi: int, field: str) -> int:
-    msg = f"{field} must be an integer"
-    if not isinstance(value, int | float | str):
+    msg = f"{field} must be a number"
+    if isinstance(value, bool) or not isinstance(value, int | float):
         raise BadRequestError(msg)
     try:
-        n = int(value)
-    except (ValueError, OverflowError) as exc:  # Infinity → OverflowError
+        n = round(value)
+    except (ValueError, OverflowError) as exc:  # NaN, Infinity
         raise BadRequestError(msg) from exc
     return max(lo, min(hi, n))
 
@@ -161,7 +165,7 @@ class Api:
             self.ctl.state.add_tab(ws.id)
             self.ctl.state.set_active_workspace(ws.id)
         self.ctl.save()
-        return JSONResponse({"id": ws.id})
+        return JSONResponse({"id": ws.id}, status_code=201)
 
     async def patch_workspace(self, request: Request) -> Response:
         body = await _json_object(request)
@@ -190,7 +194,7 @@ class Api:
             return True
 
         if not await asyncio.to_thread(_apply):
-            return JSONResponse({"error": "not found"}, status_code=404)
+            return _not_found("workspace", ws_id)
         return JSONResponse({"ok": True})
 
     def delete_workspace(self, request: Request) -> Response:
@@ -203,9 +207,9 @@ class Api:
             spawn_cwd = self.ctl.inherit_cwd(ws_id)
             tab = self.ctl.state.add_tab(ws_id, spawn_cwd=spawn_cwd)
         if tab is None:
-            return JSONResponse({"error": "not found"}, status_code=404)
+            return _not_found("workspace", ws_id)
         self.ctl.save()
-        return JSONResponse({"id": tab.id})
+        return JSONResponse({"id": tab.id}, status_code=201)
 
     async def patch_tab(self, request: Request) -> Response:
         body = await _json_object(request)
@@ -226,7 +230,7 @@ class Api:
             return True
 
         if not await asyncio.to_thread(_apply):
-            return JSONResponse({"error": "not found"}, status_code=404)
+            return _not_found("tab", tab_id)
         return JSONResponse({"ok": True})
 
     async def patch_ui(self, request: Request) -> Response:
@@ -248,7 +252,7 @@ class Api:
         with self.ctl.lock:
             tab = self.ctl.state.tabs.get(tab_id)
             if tab is None:
-                return JSONResponse({"error": "not found"}, status_code=404)
+                return _not_found("tab", tab_id)
             if not self.ctl.state.remove_tab(tab_id):
                 msg = "a workspace keeps at least one tab; close the workspace"
                 return JSONResponse({"error": msg}, status_code=409)
@@ -276,7 +280,7 @@ class Api:
 
         content = await asyncio.to_thread(_load)
         if content is None:
-            return JSONResponse({"error": "not found"}, status_code=404)
+            return _not_found("tab", tab_id)
         return PlainTextResponse(content)
 
     async def put_scrollback(self, request: Request) -> Response:
@@ -304,7 +308,7 @@ class Api:
             return True
 
         if not await asyncio.to_thread(_save):
-            return JSONResponse({"error": "not found"}, status_code=404)
+            return _not_found("tab", tab_id)
         return JSONResponse({"ok": True})
 
     async def delete_scrollback(self, request: Request) -> Response:
@@ -326,12 +330,13 @@ class Api:
         _check_types(body, url=str)
         url = body.get("url", "").strip()
         if not url:
-            return JSONResponse({"error": "missing url"}, status_code=400)
+            msg = "missing url"
+            raise BadRequestError(msg)
         # open_url_in_default_app does ``shutil.which`` + Popen — both
         # potentially slow under load, so keep them off the event loop.
         if not await asyncio.to_thread(open_url_in_default_app, url):
             msg = "rejected: not an http, https or mailto URL, or no opener here"
-            return JSONResponse({"error": msg}, status_code=400)
+            raise BadRequestError(msg)
         return JSONResponse({"ok": True})
 
     async def paste_paths(self, request: Request) -> Response:
@@ -363,7 +368,7 @@ class Api:
                 request.path_params["tab_id"], cols, rows
             )
         if term is None:
-            return JSONResponse({"error": "not found"}, status_code=404)
+            return _not_found("tab", request.path_params["tab_id"])
         return JSONResponse({"terminal_id": term.id})
 
     # ----- data plane ---------------------------------------------------
@@ -428,13 +433,9 @@ def ui_updates(body: dict[str, Any]) -> dict[str, Any]:
         updates["font_size"] = _clamped_int(
             body["font_size"], FONT_SIZE_MIN, FONT_SIZE_MAX, "font_size"
         )
-    for k in (
-        "sidebar_collapsed",
-        "copy_on_select",
-        "scrollback_persist",
-    ):
-        if k in body:
-            updates[k] = bool(body[k])
+    flags = ("sidebar_collapsed", "copy_on_select", "scrollback_persist")
+    _check_types(body, **dict.fromkeys(flags, bool))
+    updates.update({k: body[k] for k in flags if k in body})
     for k in ("win_w", "win_h"):
         if k in body:
             updates[k] = _clamped_int(body[k], WIN_DIM_MIN, WIN_COORD_LIMIT, k)

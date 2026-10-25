@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Changed
 
+- **The API is stricter and more explicit**: creating a workspace or tab answers 201, a 404 names what is missing, and numbers and flags must be JSON numbers and booleans (`"300"` or `"false"` is now a 400).
+- **An unreadable `server.token` stops the server with an error** instead of being replaced silently, which changed the stable URL. A bad value in the saved UI preferences now falls back to its default instead of setting the whole state file aside.
 - **Linux copies and pastes like Windows**: plain `Ctrl+C` copies while text is selected (and interrupts otherwise), and plain `Ctrl+V` pastes, so the same keys work on every PC.
 - **`F1` opens the command palette on macOS too**, and `Cmd+Shift+O` opens the quick switcher, as `Ctrl+Shift+O` does on Linux and Windows.
 

@@ -13,16 +13,16 @@ The server rate-limits non-loopback clients. After 10 bad tokens from one IP, it
 
 ## Control plane
 
-Errors come back as JSON (`{"error": "..."}`) with 400/403/404/413 as appropriate; successful mutations return `{"ok": true}` unless noted.
+Errors come back as JSON (`{"error": "..."}`) with 400/403/404/409/413 as appropriate; a 404 names what is missing (`no tab '…'`). Successful mutations return `{"ok": true}` unless noted, and creations answer 201.
 
 | Method & path | Body | Returns |
 | --- | --- | --- |
 | `GET /api/state` | *none* | Full state snapshot: workspaces (with status and active seconds), tabs, UI prefs |
 | `GET /api/connect-info` | *none* | How to reach this server from elsewhere: `hostname`, `lan_ip`, `public_host` (from `--public-host`, else null), `bind_host`, `port`, `loopback_only`, `stable_url` |
-| `POST /api/workspaces` | *none* | `{"id": ...}`; creates a workspace with one tab and activates it |
+| `POST /api/workspaces` | *none* | 201 `{"id": ...}`; creates a workspace with one tab and activates it |
 | `PATCH /api/workspaces/{id}` | any of `name` (pins; blank goes back to the cwd), `active: true`, `active_tab_id`, `order` (workspace ids), `tab_order` (tab ids) | `{"ok": true}` |
 | `DELETE /api/workspaces/{id}` | *none* | Kills its terminals, drops its scrollback; at least one workspace always remains |
-| `POST /api/workspaces/{id}/tabs` | *none* | `{"id": ...}`; the new tab inherits the active shell's directory |
+| `POST /api/workspaces/{id}/tabs` | *none* | 201 `{"id": ...}`; the new tab inherits the active shell's directory |
 | `PATCH /api/tabs/{id}` | `title` (pins; blank unpins) or `osc_title` (tracks unless pinned) | `{"ok": true}` |
 | `DELETE /api/tabs/{id}` | *none* | Kills the shell and the saved scrollback; 409 for a workspace's last tab (close the workspace instead) |
 | `POST /api/tabs/{id}/spawn` | `{"cols": N, "rows": N}` | `{"terminal_id": ...}`; idempotent while the shell lives |

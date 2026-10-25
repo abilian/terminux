@@ -10,7 +10,6 @@ const FONT_MAX = 32;
 const DEFAULT = 13;
 
 let fontSize = DEFAULT;
-let initialized = false;
 
 const clamp = (n: number): number => Math.max(FONT_MIN, Math.min(FONT_MAX, n));
 
@@ -25,18 +24,14 @@ function applyToSessions(): void {
   }
 }
 
-// Adopt the persisted size once, before the first terminal opens. Idempotent
-// and one-shot so a later poll can't revert an in-flight zoom change.
+// Adopt the persisted size. main.ts calls it once, before the first
+// terminal opens; later polls must not, or they'd revert a zoom in flight.
 export function syncFontFromState(): void {
-  if (initialized) {
-    return;
-  }
   const f = getState()?.ui.font_size;
   if (f) {
     fontSize = clamp(f);
     applyToSessions();
   }
-  initialized = true;
 }
 
 export function resetFontSize(): void {
@@ -44,7 +39,6 @@ export function resetFontSize(): void {
 }
 
 export function applyFontSize(next: number): void {
-  initialized = true; // user changed it explicitly; don't let sync override
   fontSize = clamp(next);
   applyToSessions();
   void send("PATCH", "/ui", { font_size: fontSize });
