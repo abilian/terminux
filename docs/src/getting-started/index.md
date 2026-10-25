@@ -2,7 +2,7 @@
 
 ## Install from PyPI
 
-terminux runs on macOS, Linux and Windows 10/11 with Python 3.12 or later. With [`uv`](https://docs.astral.sh/uv/):
+terminux runs on macOS 12 (Monterey) or later, Linux, and Windows 10/11, with Python 3.12 or later. On macOS 11 (Big Sur), installing or upgrading gets you 0.10.1, the last version that runs there. With [`uv`](https://docs.astral.sh/uv/):
 
 ```sh
 uvx terminux                  # try it without installing

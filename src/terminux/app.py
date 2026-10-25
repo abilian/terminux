@@ -35,6 +35,7 @@ from terminux.core import persistence
 from terminux.diagnostics import start_watchdog
 from terminux.openurl import open_url_in_default_app
 from terminux.server import auth as auth_mod
+from terminux.server.api import ui_updates
 from terminux.server.asgi import build_app
 from terminux.server.auth import LOOPBACK_BINDS, SESSION_TOKEN
 
@@ -54,6 +55,7 @@ def server_token_path() -> Path:
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from types import ModuleType
 
     from webview import Window
     from webview.menu import Menu, MenuAction, MenuSeparator
@@ -578,6 +580,37 @@ def _name_macos_app() -> None:
     info["CFBundleName"] = "terminux"
 
 
+class _KeyEvent(Protocol):
+    def modifierFlags(self) -> int: ...  # noqa: N802  (Cocoa method)
+    def keyCode(self) -> int: ...  # noqa: N802
+
+
+class _Pastable(Protocol):
+    def paste_(self, sender: object) -> None: ...
+
+
+def _paste_on_ctrl_shift_v(cocoa: ModuleType) -> None:
+    """Make Ctrl+Shift+V paste on macOS, as on Linux and Windows.
+
+    WKWebView won't let the page read the clipboard (it pops a "Paste"
+    bubble at best), so the chord runs the native paste, as pywebview's
+    ``keyDown_`` does for Cmd+V. The page never sees the key.
+    """
+    shift, ctrl, option, cmd = (1 << 17, 1 << 18, 1 << 19, 1 << 20)  # NSEvent flags
+    key_v = 9  # kVK_ANSI_V: the physical key, as the page's ``e.code``
+    host = cocoa.BrowserView.WebKitHost
+    key_down = host.keyDown_
+
+    def keyDown_(self: _Pastable, event: _KeyEvent) -> None:  # noqa: N802  (Cocoa selector)
+        mods = event.modifierFlags() & (shift | ctrl | option | cmd)
+        if mods == ctrl | shift and event.keyCode() == key_v:
+            self.paste_(self)
+            return
+        key_down(self, event)
+
+    host.keyDown_ = keyDown_
+
+
 def _disable_macos_app_nap() -> object | None:
     """Keep macOS from App-Napping terminux while its window is hidden.
 
@@ -656,6 +689,7 @@ def _open_window(
         # Screen", next to ours; ours carries that item (``_build_menu``).
         # No setting turns off that menu alone, hence the private patch.
         cocoa.BrowserView._add_view_menu = lambda *_a, **_k: None  # type: ignore[method-assign]  # noqa: SLF001
+        _paste_on_ctrl_shift_v(cocoa)
     from webview.dom import DOMEventHandler  # noqa: PLC0415
 
     window = webview.create_window(
@@ -707,12 +741,20 @@ def _run_windowed(
 ) -> None:
     ui = ctl.state.ui
 
+    def _remember(**geometry: int) -> None:
+        # Same clamps as PATCH /api/ui; the GUI thread takes the state lock
+        # like every other writer.
+        updates = ui_updates(geometry)
+        with ctl.lock:
+            for k, v in updates.items():
+                setattr(ui, k, v)
+
     def _track(win: Window) -> None:
         def _on_resized(width: int, height: int) -> None:
-            ui.win_w, ui.win_h = int(width), int(height)
+            _remember(win_w=width, win_h=height)
 
         def _on_moved(x: int, y: int) -> None:
-            ui.win_x, ui.win_y = int(x), int(y)
+            _remember(win_x=x, win_y=y)
 
         def _shutdown() -> None:
             # The final save and closing the shells happen in the app's

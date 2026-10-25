@@ -5,14 +5,17 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(() => true), windows: false }));
+const mocks = vi.hoisted(() => ({
+  invoke: vi.fn(() => true),
+  browser: false,
+}));
 vi.mock("../src/input/commands", () => ({ invoke: mocks.invoke }));
 vi.mock("../src/input/platform", () => ({
   IS_MAC: false,
-  get IS_WINDOWS() {
-    return mocks.windows;
-  },
   appMod: (e: KeyboardEvent | MouseEvent) => e.ctrlKey && e.shiftKey,
+  inBrowser: () => mocks.browser,
+  browserMod: (e: KeyboardEvent) =>
+    mocks.browser && e.altKey && e.shiftKey && !e.ctrlKey,
 }));
 
 function press(init: KeyboardEventInit): KeyboardEvent {
@@ -28,7 +31,7 @@ installShortcuts();
 
 beforeEach(() => {
   mocks.invoke.mockClear();
-  mocks.windows = false;
+  mocks.browser = false;
 });
 
 describe("keymap (Linux conventions)", () => {
@@ -116,14 +119,7 @@ describe("clipboard chords", () => {
     expect(e.defaultPrevented).toBe(false);
   });
 
-  it("leaves bare Ctrl+C and Ctrl+V to the shell on Linux", () => {
-    press({ code: "KeyC", ctrlKey: true });
-    press({ code: "KeyV", ctrlKey: true });
-    expect(mocks.invoke).not.toHaveBeenCalled();
-  });
-
-  it("copies with bare Ctrl+C on Windows only while text is selected", () => {
-    mocks.windows = true;
+  it("copies with bare Ctrl+C only while text is selected", () => {
     const copied = press({ code: "KeyC", ctrlKey: true });
     expect(mocks.invoke).toHaveBeenCalledWith("edit.copy");
     expect(copied.defaultPrevented).toBe(true);
@@ -132,10 +128,34 @@ describe("clipboard chords", () => {
     expect(interrupt.defaultPrevented).toBe(false);
   });
 
-  it("pastes with bare Ctrl+V on Windows", () => {
-    mocks.windows = true;
+  it("pastes with bare Ctrl+V", () => {
     const e = press({ code: "KeyV", ctrlKey: true });
     expect(mocks.invoke).toHaveBeenCalledWith("edit.paste.keyboard");
     expect(e.defaultPrevented).toBe(false);
+  });
+});
+
+describe("browser tabs", () => {
+  it("takes Alt+Shift as a second app modifier", () => {
+    mocks.browser = true;
+    const e = press({ code: "KeyW", altKey: true, shiftKey: true });
+    expect(mocks.invoke).toHaveBeenCalledWith("tab.close");
+    expect(e.defaultPrevented).toBe(true);
+    press({ code: "KeyP", altKey: true, shiftKey: true });
+    expect(mocks.invoke).toHaveBeenLastCalledWith("palette.command");
+    press({ code: "Digit2", altKey: true, shiftKey: true });
+    expect(mocks.invoke).toHaveBeenLastCalledWith("workspace.jump.2");
+  });
+
+  it("leaves Alt+Shift to the shell in the desktop window", () => {
+    const e = press({ code: "KeyW", altKey: true, shiftKey: true });
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(e.defaultPrevented).toBe(false);
+  });
+
+  it("does not toggle auto-copy on Alt+Shift+C", () => {
+    mocks.browser = true;
+    press({ code: "KeyC", altKey: true, shiftKey: true });
+    expect(mocks.invoke).not.toHaveBeenCalled();
   });
 });

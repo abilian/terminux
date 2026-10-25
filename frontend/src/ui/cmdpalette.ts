@@ -3,6 +3,7 @@
 // lists workspaces and tabs) but built on the same FuzzyOverlay.
 
 import { invoke } from "../input/commands";
+import { inBrowser } from "../input/platform";
 import { getState } from "../state/store";
 import { createFuzzyOverlay, type FuzzyEntry } from "./fuzzyoverlay";
 
@@ -24,6 +25,13 @@ function buildEntries(): FuzzyEntry[] {
   // Labels reflect the action that *will* run, not the current state,
   // so reading the label tells you what selecting it will do.
   const commands: CommandEntry[] = [
+    {
+      label: document.fullscreenElement
+        ? "Exit full screen"
+        : "Enter full screen (lets Chrome and Edge pass every shortcut)",
+      commandId: "view.fullscreen.toggle",
+      visible: inBrowser,
+    },
     { label: "Display usage stats", commandId: "view.stats" },
     {
       label: "Show remote connection URL",

@@ -79,11 +79,10 @@ installScrollbackAutosave();
 installOwnershipClaims();
 
 // Light status polling so sidebar dots reflect background activity. A
-// transient network error (backend stall, sleeping laptop) must never kill
-// the poll — terminals reconnect on their own; the sidebar just goes stale
-// until the next successful poll.
+// transient network error (backend stall, sleeping laptop) never kills the
+// poll (``poll`` keeps the last state); a render error reaches the console.
 setInterval(() => {
-  void poll().catch(() => {});
+  void poll();
 }, 2000);
 
 // E2E hook: lets Playwright reach live sessions (e.g. sever a websocket to

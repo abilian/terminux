@@ -3,10 +3,10 @@
 // just maps physical chords to command ids.
 //
 // Modifier conventions (see ./platform.ts):
-//   macOS  — Cmd        for app shortcuts; Ctrl flows to the shell.
+//   macOS  — Cmd or Ctrl+Shift for app shortcuts; Ctrl flows to the shell.
 //   Linux and Windows — Ctrl+Shift for app shortcuts (the GNOME Terminal
 //            and Windows Terminal convention); raw Ctrl flows to the shell,
-//            except the zoom keys, which those terminals also take bare.
+//            except the zoom keys, Ctrl+V, and Ctrl+C with a selection.
 //
 // Key matching uses ``e.code`` (layout-independent: ``KeyT``/``Digit1``/
 // ``BracketLeft``) rather than ``e.key`` for any chord that requires Shift
@@ -14,7 +14,7 @@
 // ``"="``→``"+"``) and a single check needs to fire on both platforms.
 
 import { invoke } from "./commands";
-import { IS_MAC, IS_WINDOWS, appMod } from "./platform";
+import { IS_MAC, appMod, browserMod } from "./platform";
 
 // Zoom keys: the typed character wins (``-`` sits on the 6 key on AZERTY,
 // and the key in the US ``=`` position types ``-`` on the Mac French
@@ -39,16 +39,17 @@ function zoomCommand(e: KeyboardEvent): string | null {
   return null;
 }
 
-// Linux/Windows chords that live outside the ``appMod`` gate: F1 as a
-// second key for the command palette, and bare Ctrl+= / Ctrl+- / Ctrl+0 for zoom, as in GNOME Terminal and
+// Chords that live outside the ``appMod`` gate: F1 as a second key for
+// the command palette, and, on Linux and Windows, bare Ctrl+= / Ctrl+- / Ctrl+0 for zoom, as in GNOME Terminal and
 // Windows Terminal. Everything else — including workspace digit jumps —
 // uses the unified Ctrl+Shift app modifier inside ``handleAppChord``.
-function handleNonMacChord(e: KeyboardEvent): boolean {
+function handleBareChord(e: KeyboardEvent): boolean {
+  const bare = !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey;
+  if (e.key === "F1" && bare) {
+    return invoke("palette.command");
+  }
   if (IS_MAC) {
     return false;
-  }
-  if (e.key === "F1" && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
-    return invoke("palette.command");
   }
   const zoom = zoomCommand(e);
   if (zoom && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
@@ -57,21 +58,21 @@ function handleNonMacChord(e: KeyboardEvent): boolean {
   return false;
 }
 
-// Clipboard chords, Linux and Windows only (macOS has its native Edit
-// menu): Ctrl+Shift+C / V / A, plus bare Ctrl+C and Ctrl+V on Windows as
-// in Windows Terminal. Bare Ctrl+C copies only while something is
-// selected (``edit.copy`` declines otherwise), so it still interrupts.
+// Clipboard chords: Ctrl+Shift+C / V / A everywhere (macOS also has its
+// native Edit menu, and pastes Ctrl+Shift+V natively, see app.py), plus,
+// on Linux and Windows, bare Ctrl+C and Ctrl+V as in Windows Terminal, so
+// a hand used to Cmd+C / Cmd+V finds them on every PC. Bare
+// Ctrl+C copies only while something is selected (``edit.copy`` declines
+// otherwise), so it still interrupts.
 function clipboardCommand(e: KeyboardEvent): string | null {
-  if (IS_MAC || !e.ctrlKey || e.altKey || e.metaKey) {
+  if (!e.ctrlKey || e.altKey || e.metaKey || (IS_MAC && !e.shiftKey)) {
     return null;
   }
-  if (e.shiftKey || IS_WINDOWS) {
-    if (e.code === "KeyC") {
-      return "edit.copy";
-    }
-    if (e.code === "KeyV") {
-      return "edit.paste.keyboard";
-    }
+  if (e.code === "KeyC") {
+    return "edit.copy";
+  }
+  if (e.code === "KeyV") {
+    return "edit.paste.keyboard";
   }
   if (e.shiftKey && e.code === "KeyA") {
     return "edit.select-all";
@@ -81,7 +82,7 @@ function clipboardCommand(e: KeyboardEvent): string | null {
 
 function handleAppChord(e: KeyboardEvent): boolean {
   // Cmd/Ctrl+Shift+Alt+C — toggle iTerm2-style auto-copy on selection.
-  if (e.altKey && e.code === "KeyC") {
+  if (e.altKey && appMod(e) && e.code === "KeyC") {
     return invoke("view.copy-on-select.toggle");
   }
 
@@ -100,11 +101,11 @@ function handleAppChord(e: KeyboardEvent): boolean {
   // Command palette: Cmd+Shift+P on macOS, Ctrl+Shift+P elsewhere (the
   // VS Code / Windows Terminal chord). The quick switcher is Cmd+P on
   // macOS; Linux/Windows can't take bare Ctrl+P (shell history), so it
-  // lives on Ctrl+Shift+O.
+  // lives on Ctrl+Shift+O (and so does the browser's spare modifier).
   if (e.code === "KeyP") {
     return invoke(IS_MAC && !e.shiftKey ? "palette.quick" : "palette.command");
   }
-  if (!IS_MAC && e.code === "KeyO") {
+  if (e.shiftKey && e.code === "KeyO") {
     return invoke("palette.quick");
   }
 
@@ -162,10 +163,10 @@ export function installShortcuts(): void {
         invoke(clip);
         return;
       }
-      // Ctrl+Shift+C with nothing selected does nothing; only Windows'
-      // bare Ctrl+C falls through to the shell.
-      let handled = clip ? invoke(clip) || e.shiftKey : handleNonMacChord(e);
-      if (!handled && !clip && appMod(e)) {
+      // Ctrl+Shift+C with nothing selected does nothing; bare Ctrl+C
+      // falls through to the shell.
+      let handled = clip ? invoke(clip) || e.shiftKey : handleBareChord(e);
+      if (!handled && !clip && (appMod(e) || browserMod(e))) {
         handled = handleAppChord(e);
       }
       if (handled) {

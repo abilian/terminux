@@ -1,9 +1,12 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
-    "python_full_version >= '3.15'",
-    "python_full_version < '3.15'",
+    "(python_full_version >= '3.15' and platform_release >= '21') or (python_full_version >= '3.15' and sys_platform != 'darwin')",
+    "(python_full_version < '3.15' and platform_release >= '21') or (python_full_version < '3.15' and sys_platform != 'darwin')",
+]
+supported-markers = [
+    "platform_release >= '21' or sys_platform != 'darwin'",
 ]
 
 [[package]]
@@ -1362,6 +1365,7 @@ requires-dist = [
     { name = "platformdirs", specifier = ">=4.0" },
     { name = "ptyprocess", marker = "sys_platform != 'win32'", specifier = ">=0.7" },
     { name = "pywebview", specifier = ">=5.0" },
+    { name = "pywebview", marker = "platform_release < '21' and sys_platform == 'darwin'", specifier = ">=999" },
     { name = "pywinpty", marker = "sys_platform == 'win32'", specifier = ">=2" },
     { name = "starlette", specifier = ">=0.40" },
     { name = "uvicorn", specifier = ">=0.30" },

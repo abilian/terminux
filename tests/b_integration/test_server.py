@@ -134,6 +134,16 @@ def test_tab_rename_and_delete(server: LiveServer) -> None:
     assert tab not in _req(f"{base}/api/state?t={T}")["tabs"]
 
 
+def test_delete_tab_keeps_the_last_tab_and_404s_unknown(server: LiveServer) -> None:
+    base = server.url
+    tab = _req(f"{base}/api/state?t={T}")["workspaces"][0]["tab_ids"][0]
+    for tab_id, code in ((tab, 409), ("nope", 404)):
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _req(f"{base}/api/tabs/{tab_id}?t={T}", "DELETE", b"{}")
+        assert exc.value.code == code
+    assert _req(f"{base}/api/state?t={T}")["workspaces"][0]["tab_ids"] == [tab]
+
+
 def test_active_tab_id_can_be_set_and_cleared(server: LiveServer) -> None:
     base = server.url
     ws = _req(f"{base}/api/state?t={T}")["workspaces"][0]["id"]
@@ -172,6 +182,14 @@ def test_workspace_label_tracks_cwd_then_pins(server: LiveServer) -> None:
     )
     assert _req(f"{base}/api/state?t={T}")["workspaces"][0]["name"] == "pinned"
 
+    # A blank name unpins it: the label tracks the cwd again.
+    _req(
+        f"{base}/api/workspaces/{ws0.id}?t={T}",
+        "PATCH",
+        json.dumps({"name": "  "}).encode(),
+    )
+    assert _req(f"{base}/api/state?t={T}")["workspaces"][0]["name"] == target.name
+
 
 def test_tab_osc_title_tracks_until_pinned(server: LiveServer) -> None:
     base = server.url
@@ -203,6 +221,14 @@ def test_tab_osc_title_tracks_until_pinned(server: LiveServer) -> None:
         json.dumps({"osc_title": "sh"}).encode(),
     )
     assert title() == "logs"
+    # A blank title unpins it; OSC titles track again.
+    _req(f"{base}/api/tabs/{tab}?t={T}", "PATCH", json.dumps({"title": ""}).encode())
+    _req(
+        f"{base}/api/tabs/{tab}?t={T}",
+        "PATCH",
+        json.dumps({"osc_title": "top"}).encode(),
+    )
+    assert title() == "top"
 
 
 def test_patch_ui_clamps_and_persists(server: LiveServer) -> None:
@@ -251,8 +277,8 @@ def test_scrollback_endpoints(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     base = server.url
-    st = _req(f"{base}/api/state?t={T}")
-    tab_id = st["workspaces"][0]["tab_ids"][0]
+    ws = _req(f"{base}/api/state?t={T}")["workspaces"][0]["id"]
+    tab_id = _req(f"{base}/api/workspaces/{ws}/tabs?t={T}", "POST", b"{}")["id"]
 
     # Wire up file-backed storage in a tmp dir so we can verify lifecycle.
     # ``monkeypatch`` restores both the persistence path and the controller's
@@ -674,7 +700,8 @@ def test_ws_pump_resize_and_exit(server: LiveServer) -> None:
     # the resize control frame is accepted, and exiting yields an exit frame).
     # Matching command output is too shell/line-editor dependent to assert on.
     base = server.url
-    tab = _req(f"{base}/api/state?t={T}")["workspaces"][0]["tab_ids"][0]
+    ws = _req(f"{base}/api/state?t={T}")["workspaces"][0]["id"]
+    tab = _req(f"{base}/api/workspaces/{ws}/tabs?t={T}", "POST", b"{}")["id"]
     tid = _req(f"{base}/api/tabs/{tab}/spawn?t={T}", "POST", b"{}")["terminal_id"]
     url = base.replace("http", "ws") + f"/pty/{tid}?t={T}"
 
@@ -707,6 +734,26 @@ def test_ws_pump_resize_and_exit(server: LiveServer) -> None:
                         return
 
             await asyncio.wait_for(run(), timeout=15)
+
+    asyncio.run(scenario())
+
+
+def test_ws_survives_malformed_control_frames(server: LiveServer) -> None:
+    """A bad text frame is skipped; the connection keeps working."""
+    base = server.url
+    tab = _req(f"{base}/api/state?t={T}")["workspaces"][0]["tab_ids"][0]
+    tid = _req(f"{base}/api/tabs/{tab}/spawn?t={T}", "POST", b"{}")["terminal_id"]
+    url = base.replace("http", "ws") + f"/pty/{tid}?t={T}"
+
+    async def scenario() -> None:
+        async with websockets.connect(url) as desk:
+            await _until(desk, _owner_frame(True))
+            async with websockets.connect(url) as laptop:
+                await _until(laptop, _owner_frame(False))
+                for bad in ("not json", "[1]", json.dumps({"type": "resize"})):
+                    await laptop.send(bad)
+                await laptop.send(json.dumps({"type": "claim"}))
+                await _until(laptop, _owner_frame(True))
 
     asyncio.run(scenario())
 

@@ -72,9 +72,10 @@ def test_main_no_window_waits_for_server_start(monkeypatch) -> None:
 
 def _fake_cocoa(monkeypatch) -> None:
     """``webview.platforms.cocoa``, which the window setup patches on macOS
-    (it turns off pywebview's own View menu)."""
+    (it turns off pywebview's own View menu and wraps the key handler)."""
     cocoa = types.ModuleType("webview.platforms.cocoa")
-    cocoa.BrowserView = type("BrowserView", (), {})  # type: ignore[attr-defined]
+    host = type("WebKitHost", (), {"keyDown_": lambda _self, _event: None})
+    cocoa.BrowserView = type("BrowserView", (), {"WebKitHost": host})  # type: ignore[attr-defined]
     platforms = types.ModuleType("webview.platforms")
     platforms.cocoa = cocoa  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "webview.platforms", platforms)
@@ -367,7 +368,10 @@ def test_daemon_runs_the_window_in_the_background_and_stop_closes_it(
     (fake / "webview" / "platforms").mkdir()
     (fake / "webview" / "platforms" / "__init__.py").write_text("", encoding="utf-8")
     (fake / "webview" / "platforms" / "cocoa.py").write_text(
-        "class BrowserView: pass\n", encoding="utf-8"
+        "class BrowserView:\n"
+        "    class WebKitHost:\n"
+        "        def keyDown_(self, event): pass\n",
+        encoding="utf-8",
     )
     mark = tmp_path / "window-opened"
     env = {

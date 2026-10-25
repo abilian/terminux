@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -218,6 +219,13 @@ def test_spawn_pty_unix_smoke() -> None:
 class _FakeLoop:
     def __init__(self) -> None:
         self.readers: dict[int, object] = {}
+        self.scheduled: list[tuple[Any, tuple[object, ...]]] = []
+
+    def is_closed(self) -> bool:
+        return False
+
+    def call_soon_threadsafe(self, cb: Any, *args: object) -> None:
+        self.scheduled.append((cb, args))
 
     def add_reader(self, fd: int, cb: object) -> None:
         self.readers[fd] = cb
@@ -236,6 +244,8 @@ def _attached(monkeypatch, read) -> tuple[UnixPty, _FakeLoop, list[bytes]]:
     got: list[bytes] = []
     pty.attach(loop, got.append)  # type: ignore[arg-type]
     monkeypatch.setattr(pty_backend.os, "read", read)
+    # The test runs "on the loop thread".
+    monkeypatch.setattr(pty_backend.asyncio, "get_running_loop", lambda: loop)
     return pty, loop, got
 
 
@@ -271,6 +281,20 @@ def test_unixpty_read_oserror_is_eof(monkeypatch) -> None:
     assert got == [b""]
     assert loop.readers == {}
     pty.detach()  # idempotent
+
+
+def test_unixpty_detach_off_the_loop_thread_defers_to_the_loop(monkeypatch) -> None:
+    pty, loop, _got = _attached(monkeypatch, lambda *_a: b"")
+
+    def no_loop() -> None:
+        raise RuntimeError
+
+    monkeypatch.setattr(pty_backend.asyncio, "get_running_loop", no_loop)
+    pty.detach()  # as from a worker thread
+    assert 7 in loop.readers  # the selector isn't touched off its thread
+    for cb, args in loop.scheduled:
+        cb(*args)
+    assert loop.readers == {}
 
 
 def test_unixpty_foreground_busy_compares_pgrp_to_shell(monkeypatch) -> None:

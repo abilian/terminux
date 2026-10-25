@@ -7,6 +7,9 @@ license = "Apache-2.0"
 requires-python = ">=3.12"
 dependencies = [
     "pywebview>=5.0",
+    # macOS 12 or later: on Big Sur (Darwin 20), no pywebview satisfies this,
+    # so pip and uv fall back to 0.10.1, the last release that runs there.
+    "pywebview>=999; sys_platform == 'darwin' and platform_release < '21'",
     "starlette>=0.40",
     "uvicorn>=0.30",
     "ptyprocess>=0.7; sys_platform != 'win32'",
@@ -52,6 +55,10 @@ Changelog = "https://github.com/abilian/terminux/blob/main/CHANGES.md"
 #
 # pytest
 #
+[tool.uv]
+# The lock leaves out Big Sur, where the dependency above can't be met.
+environments = ["sys_platform != 'darwin' or platform_release >= '21'"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [

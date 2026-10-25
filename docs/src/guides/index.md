@@ -16,4 +16,4 @@ The same guide's [Working vs ready](workspaces-and-tabs.md#working-vs-ready) sec
 
 ## Drive everything from the keyboard
 
-[**Keyboard shortcuts**](keyboard-shortcuts.md) lists every chord on both platforms: workspace jumps, the two palettes, find-in-terminal, zoom, and the conventions that keep raw `Ctrl` free for your shell.
+[**Keyboard shortcuts**](keyboard-shortcuts.md) lists every chord: one set of `Ctrl+Shift` keys for Linux, Windows and macOS, plus `Cmd` on macOS, and what changes in a browser.

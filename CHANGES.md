@@ -4,8 +4,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Removed
+
+- **macOS 11 (Big Sur) is no longer supported**; terminux now needs macOS 12 or later. On Big Sur, installing or upgrading with pip, pipx or uv stays on 0.10.1, which keeps working there.
+
+### Added
+
+- **The same shortcuts on all three platforms.** Every `Ctrl+Shift` shortcut of Linux and Windows now works on macOS too, copy and paste included, next to the `Cmd` ones.
+- **Shortcuts the browser keeps have a second chord in a browser tab.** Browsers don't let a page take some chords (Cmd+W, T and N; Ctrl+Shift+T, W, N and, in Firefox, P). In a browser tab on Linux and Windows, every app shortcut also works with Alt+Shift. The palette's "Enter full screen" makes Chrome and Edge hand every shortcut to terminux.
+
+### Changed
+
+- **Linux copies and pastes like Windows**: plain `Ctrl+C` copies while text is selected (and interrupts otherwise), and plain `Ctrl+V` pastes, so the same keys work on every PC.
+- **`F1` opens the command palette on macOS too**, and `Cmd+Shift+O` opens the quick switcher, as `Ctrl+Shift+O` does on Linux and Windows.
+
 ### Fixed
 
+- **A malformed message from a client no longer drops its terminal connection.**
+- **Renaming a workspace to a blank name no longer shows "workspace N"**: a blank name goes back to the directory name (and a blank tab title back to the shell's).
+- **The API refuses to close a workspace's last tab** (409), so other clients can't leave an empty workspace. Closing a tab or workspace also no longer touches the event loop from a worker thread, and window size and position are saved under the state lock.
+- **Errors while redrawing the sidebar show in the console** instead of being silently dropped every 2 seconds.
 - **On Linux, a missing GTK says what to install** (the distribution's packages, and a `pipx --system-site-packages` reinstall) instead of a pywebview traceback, and a missing display (as over SSH) points to `--no-window` and `--server`.
 
 ## [0.10.1] - 2026-10-13

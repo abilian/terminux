@@ -54,8 +54,8 @@ seconds you've actually been typing into one of its tabs. Counting rules:
 Each workspace's accumulated time shows inline in the sidebar (small, dim,
 right-aligned next to the name). Hover for the same value as a tooltip.
 
-The **command palette** (`Ctrl+Shift+P` or `F1` on Linux and Windows;
-`Cmd+Shift+P` on macOS) is a launcher: verbs only, fuzzy-filtered. Four of its commands
+The **command palette** (`Ctrl+Shift+P` on Linux and Windows,
+`Cmd+Shift+P` on macOS, or `F1` everywhere) is a launcher: verbs only, fuzzy-filtered. Four of its commands
 act on activity:
 
 - **Display usage stats**: opens a focused overlay listing every

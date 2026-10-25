@@ -81,7 +81,7 @@ if IS_MAC:
             "CFBundleName": "terminux",
             "CFBundleDisplayName": "terminux",
             "CFBundleShortVersionString": "0.1.0",
-            "LSMinimumSystemVersion": "10.15.0",
+            "LSMinimumSystemVersion": "12.0",
             "NSHighResolutionCapable": True,
             "NSRequiresAquaSystemAppearance": False,
         },

@@ -58,6 +58,12 @@ class Tab:
     spawn_cwd: str | None = None  # directory inherited from the previous tab
     last_cwd: str | None = None  # last observed shell cwd (for the label)
 
+    def rename(self, title: str) -> None:
+        """Pin ``title`` (ignore OSC titles); a blank one unpins it."""
+        if title := title.strip():
+            self.title = title
+        self.user_set_title = bool(title)
+
     def to_json(self) -> dict[str, Any]:
         return {
             "id": self.id,
@@ -121,6 +127,12 @@ class Workspace:
             self.ready_since = None
         elif self.ready_since is None:  # keep the first time it turned ready
             self.ready_since = time.time()
+
+    def rename(self, name: str) -> None:
+        """Pin ``name`` (stop tracking the cwd); a blank one unpins it."""
+        if name := name.strip():
+            self.name = name
+        self.user_set_name = bool(name)
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -336,13 +348,20 @@ class AppState:
         ws.active_tab_id = tab.id
         return tab
 
-    def remove_tab(self, tab_id: str) -> None:
-        for ws in self.workspaces:
-            if tab_id in ws.tab_ids:
-                ws.tab_ids.remove(tab_id)
-                if ws.active_tab_id == tab_id:
-                    ws.active_tab_id = ws.tab_ids[-1] if ws.tab_ids else None
+    def remove_tab(self, tab_id: str) -> bool:
+        """Remove a tab; False, changing nothing, for a workspace's last tab.
+
+        Upholds the "≥ 1 workspace with ≥ 1 tab" invariant: closing the last
+        tab means closing the workspace, which is the caller's decision.
+        """
+        ws = next((w for w in self.workspaces if tab_id in w.tab_ids), None)
+        if ws is None or len(ws.tab_ids) == 1:
+            return False
+        ws.tab_ids.remove(tab_id)
+        if ws.active_tab_id == tab_id:
+            ws.active_tab_id = ws.tab_ids[-1]
         self.tabs.pop(tab_id, None)
+        return True
 
     # ----- status -------------------------------------------------------
 

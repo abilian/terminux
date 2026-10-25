@@ -20,11 +20,11 @@ Errors come back as JSON (`{"error": "..."}`) with 400/403/404/413 as appropriat
 | `GET /api/state` | *none* | Full state snapshot: workspaces (with status and active seconds), tabs, UI prefs |
 | `GET /api/connect-info` | *none* | How to reach this server from elsewhere: `hostname`, `lan_ip`, `public_host` (from `--public-host`, else null), `bind_host`, `port`, `loopback_only`, `stable_url` |
 | `POST /api/workspaces` | *none* | `{"id": ...}`; creates a workspace with one tab and activates it |
-| `PATCH /api/workspaces/{id}` | any of `name`, `active: true`, `active_tab_id`, `order` (workspace ids), `tab_order` (tab ids) | `{"ok": true}` |
+| `PATCH /api/workspaces/{id}` | any of `name` (pins; blank goes back to the cwd), `active: true`, `active_tab_id`, `order` (workspace ids), `tab_order` (tab ids) | `{"ok": true}` |
 | `DELETE /api/workspaces/{id}` | *none* | Kills its terminals, drops its scrollback; at least one workspace always remains |
 | `POST /api/workspaces/{id}/tabs` | *none* | `{"id": ...}`; the new tab inherits the active shell's directory |
-| `PATCH /api/tabs/{id}` | `title` (pins) or `osc_title` (tracks unless pinned) | `{"ok": true}` |
-| `DELETE /api/tabs/{id}` | *none* | Kills the shell and the saved scrollback |
+| `PATCH /api/tabs/{id}` | `title` (pins; blank unpins) or `osc_title` (tracks unless pinned) | `{"ok": true}` |
+| `DELETE /api/tabs/{id}` | *none* | Kills the shell and the saved scrollback; 409 for a workspace's last tab (close the workspace instead) |
 | `POST /api/tabs/{id}/spawn` | `{"cols": N, "rows": N}` | `{"terminal_id": ...}`; idempotent while the shell lives |
 | `GET /api/tabs/{id}/scrollback` | *none* | The saved buffer: a one-line JSON header (`{"v":2,"cols":…,"rows":…}`) then raw ANSI |
 | `PUT /api/tabs/{id}/scrollback` | the buffer in the same envelope | 413 above 4 MB |

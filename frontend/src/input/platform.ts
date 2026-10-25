@@ -2,8 +2,9 @@
 //
 // Different platforms reserve their modifier real estate differently:
 //
-//   macOS  — Cmd is the app modifier. Ctrl is sacred for terminal/Emacs
-//            chords (Ctrl+B tmux prefix, Ctrl+P fish/zsh history, etc.).
+//   macOS  — Cmd is the app modifier, and so is Ctrl+Shift, so the Linux
+//            and Windows chords work on a Mac too. Plain Ctrl is sacred for
+//            terminal/Emacs chords (Ctrl+B tmux prefix, Ctrl+P history...).
 //   Linux  — raw Ctrl belongs to the shell. Per the GNOME / Konsole /
 //            xfce4-terminal / Alacritty / Ghostty / kitty convention,
 //            apps use **Ctrl+Shift** for their shortcuts; raw Ctrl flows
@@ -14,11 +15,27 @@
 // hijacks Ctrl+P / Ctrl+B / Ctrl+F / Ctrl+N / Ctrl+W from readline.
 
 export const IS_MAC = /Mac|iPod|iPhone|iPad/.test(navigator.platform);
-export const IS_WINDOWS = /^Win/.test(navigator.platform);
 
-/** True for the key event's "app modifier": Cmd on macOS, Ctrl+Shift on Linux. */
+/** True for the key event's "app modifier": Ctrl+Shift, or Cmd on macOS. */
 export function appMod(e: KeyboardEvent): boolean {
-  return IS_MAC ? e.metaKey : e.ctrlKey && e.shiftKey;
+  return (e.ctrlKey && e.shiftKey) || (IS_MAC && e.metaKey);
+}
+
+/** True in a browser tab, false in terminux's own window (pywebview defines ``window.pywebview``). */
+export function inBrowser(): boolean {
+  return !("pywebview" in window);
+}
+
+/**
+ * A second app modifier for browser tabs on Linux and Windows, where the
+ * browser keeps some Ctrl+Shift chords for itself (T, W, N, and P in
+ * Firefox): Alt+Shift, which no browser binds. A Mac has Ctrl+Shift
+ * besides Cmd already.
+ */
+export function browserMod(e: KeyboardEvent): boolean {
+  return (
+    !IS_MAC && inBrowser() && e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey
+  );
 }
 
 /** The link-opening modifier: Cmd+click on macOS, plain Ctrl+click elsewhere. */

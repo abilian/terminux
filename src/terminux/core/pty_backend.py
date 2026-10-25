@@ -7,6 +7,7 @@ Both push output to the event loop through ``attach``; see
 
 from __future__ import annotations
 
+import asyncio
 import codecs
 import contextlib
 import ctypes
@@ -27,7 +28,6 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 from terminux.diagnostics import time_op
 
 if TYPE_CHECKING:
-    import asyncio
     from collections.abc import Callable
 
 log = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ class PtyBackend(Protocol):
         """
 
     def detach(self) -> None:
-        """Stop delivering output (idempotent, loop thread)."""
+        """Stop delivering output (idempotent, any thread)."""
 
     def foreground_busy(self) -> bool | None:
         """Kernel-level "a command is running" guess; None = can't tell."""
@@ -117,9 +117,22 @@ class UnixPty:
     def detach(self) -> None:
         loop, self._loop = self._loop, None
         self._on_data = None
-        if loop is not None:
-            with contextlib.suppress(OSError, ValueError):
-                loop.remove_reader(self.fd)
+        if loop is None or loop.is_closed():
+            return
+        try:
+            on_loop = asyncio.get_running_loop() is loop
+        except RuntimeError:  # no loop in this thread
+            on_loop = False
+        if on_loop:
+            self._unwatch(loop)
+        else:
+            # A tab closed by a sync handler detaches from a worker thread;
+            # the selector belongs to the loop thread.
+            loop.call_soon_threadsafe(self._unwatch, loop)
+
+    def _unwatch(self, loop: asyncio.AbstractEventLoop) -> None:
+        with contextlib.suppress(OSError, ValueError):
+            loop.remove_reader(self.fd)
 
     def _on_readable(self) -> None:
         on_data = self._on_data

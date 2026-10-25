@@ -28,7 +28,7 @@ terminux gives each project a home (a **workspace** in a sidebar) with its own t
 
 ## Try it
 
-terminux is on PyPI. It runs on macOS, Linux and Windows 10/11, with Python 3.12 or later:
+terminux is on PyPI. It runs on macOS 12 or later, Linux and Windows 10/11, with Python 3.12 or later (macOS 11 stays on 0.10.1):
 
 ```sh
 uvx terminux                  # try it without installing
@@ -43,10 +43,10 @@ On Linux, the window needs your distribution's GTK and WebKitGTK packages, and t
 - **Know when something is done.** Each workspace's dot works like a traffic light: **amber** while a task is running there, **green** once it finishes while you were elsewhere. It works out of the box; the optional [shell integration](docs/src/guides/shell-integration.md) makes it exact.
 - **Everything comes back.** Quit and reopen: workspaces, tabs, window size, font size, each tab's directory and *the visible scrollback of every tab* are restored. The shells are fresh; the view is the one you left.
 - **Nothing pauses in the background.** A server keeps logging and a build keeps building while you work in another workspace.
-- **Keyboard-first.** A fuzzy quick switcher for workspaces and tabs, a command palette, find-in-terminal, font zoom. Shortcuts follow each platform's habits (`Cmd` on macOS, `Ctrl+Shift` on Linux and Windows, as in GNOME Terminal and Windows Terminal), so your shell keeps its own `Ctrl` keys.
+- **Keyboard-first.** A fuzzy quick switcher for workspaces and tabs, a command palette, find-in-terminal, font zoom. The same `Ctrl+Shift` shortcuts work on Linux, Windows and macOS (as in GNOME Terminal and Windows Terminal), and `Cmd` works too on macOS, so your shell keeps its own `Ctrl` keys.
 - **Know where you are.** Hide the sidebar for more room and the current workspace's name stays visible in the tab bar; the window title shows it too.
 - **Your shells on another machine.** Run terminux as a server and connect from your laptop. Close the lid, change networks, come back later: terminals reconnect on their own and repaint what happened. See [Remote access](docs/src/guides/remote.md).
-- **The small things.** Copy and paste with `Ctrl+Shift+C` / `Ctrl+Shift+V` (`Cmd+C` / `Cmd+V` on macOS, plain `Ctrl+C` / `Ctrl+V` on Windows), `Cmd`/`Ctrl`+click opens links (including the hyperlinks modern tools print), `Shift+Enter` inserts a newline in Claude Code and similar tools, drag and drop reorders workspaces and tabs, dropping a file pastes its path, and copy-on-select is one toggle away.
+- **The small things.** Copy and paste with `Ctrl+Shift+C` / `Ctrl+Shift+V` (`Cmd+C` / `Cmd+V` on macOS; plain `Ctrl+C` / `Ctrl+V` also work on Linux and Windows), `Cmd`/`Ctrl`+click opens links (including the hyperlinks modern tools print), `Shift+Enter` inserts a newline in Claude Code and similar tools, drag and drop reorders workspaces and tabs, dropping a file pastes its path, and copy-on-select is one toggle away.
 - **Local and sturdy.** Everything stays on your machine, in readable local files. It listens only on your machine unless you ask otherwise, a stuck program can't freeze the app, and saves are atomic.
 
 <div align="center">

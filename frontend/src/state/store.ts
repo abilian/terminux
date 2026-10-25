@@ -93,7 +93,10 @@ let expectedActiveWs: string | null = null;
 const expectedActiveTabByWs = new Map<string, string>();
 
 function enqueueActivation(call: () => Promise<unknown>): void {
-  activationQueue = activationQueue.then(call).catch(() => undefined);
+  // A failed switch must not jam the queue, but it must show up.
+  activationQueue = activationQueue.then(call).catch((err: unknown) => {
+    console.error("switch failed:", err);
+  });
 }
 
 async function fetchState(): Promise<void> {
@@ -129,8 +132,14 @@ export async function refresh(): Promise<void> {
 }
 
 // Lightweight poll: re-render only, so it never steals terminal focus.
+// Like ``refresh``, a failed fetch keeps the last state; a render error
+// propagates.
 export async function poll(): Promise<void> {
-  await fetchState();
+  try {
+    await fetchState();
+  } catch {
+    return;
+  }
   await onRender();
 }
 

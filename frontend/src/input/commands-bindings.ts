@@ -31,6 +31,19 @@ import { closeTab, renderTabs, switchTab } from "../ui/tabs";
 import { byRecentActivity, byTimeSpent } from "../state/sorting";
 import type { WorkspaceView } from "../state/types";
 
+// In full screen, Chromium's Keyboard Lock hands the page the chords the
+// browser otherwise keeps (Cmd/Ctrl+W, T, N...); holding Esc still exits.
+// Other browsers just go full screen.
+function toggleFullscreen(): void {
+  if (document.fullscreenElement) {
+    void document.exitFullscreen();
+    return;
+  }
+  void document.documentElement
+    .requestFullscreen()
+    .then(() => navigator.keyboard?.lock());
+}
+
 function applySort(sort: (ws: WorkspaceView[]) => WorkspaceView[]): void {
   const state = getState();
   if (!state || state.workspaces.length < 2) {
@@ -44,6 +57,10 @@ function applySort(sort: (ws: WorkspaceView[]) => WorkspaceView[]): void {
 }
 
 declare global {
+  // Keyboard Lock, Chromium only (not in TypeScript's DOM types).
+  interface Navigator {
+    keyboard?: { lock(): Promise<void> };
+  }
   interface Window {
     terminux: {
       invoke(id: string): boolean;
@@ -135,6 +152,7 @@ export function installCommands(): void {
   });
 
   // ----- session activity ---------------------------------------------
+  register("view.fullscreen.toggle", toggleFullscreen);
   register("view.stats", () => openStatsPanel());
   register("view.connect-info", () => openConnectInfo());
   register("view.activity.reset", () => {

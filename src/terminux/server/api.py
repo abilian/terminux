@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import socket
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -65,7 +66,10 @@ PTY_DIM_MIN, PTY_DIM_MAX = 1, 1000
 SCROLLBACK_REJECT_BYTES = SCROLLBACK_MAX_BYTES * 2
 
 
-class BadRequestError(Exception):
+log = logging.getLogger(__name__)
+
+
+class BadRequestError(ValueError):
     """A malformed request body; ``asgi`` renders it as a JSON 400."""
 
 
@@ -175,8 +179,7 @@ class Api:
                 if ws is None:
                     return False
                 if "name" in body:
-                    ws.name = body["name"].strip() or ws.name
-                    ws.user_set_name = True  # pin it; stop tracking cwd
+                    ws.rename(body["name"])
                 if body.get("active"):
                     self.ctl.state.set_active_workspace(ws.id)
                 if "active_tab_id" in body:
@@ -257,9 +260,7 @@ class Api:
                 if tab is None:
                     return False
                 if "title" in body:
-                    # Explicit rename pins the title.
-                    tab.title = body["title"].strip() or tab.title
-                    tab.user_set_title = True
+                    tab.rename(body["title"])
                 elif "osc_title" in body and not tab.user_set_title:
                     # OSC 0/2 from the shell — tracks unless the user pinned a name.
                     tab.title = body["osc_title"].strip() or tab.title
@@ -273,7 +274,7 @@ class Api:
     async def patch_ui(self, request: Request) -> Response:
         # Validate/clamp up front (pure, outside the lock): a malformed field
         # is a 400 with nothing half-applied, not a 500 mid-mutation.
-        updates = _ui_updates(await _json_object(request))
+        updates = ui_updates(await _json_object(request))
 
         def _apply() -> None:
             with self.ctl.lock:
@@ -288,9 +289,13 @@ class Api:
         tab_id = request.path_params["tab_id"]
         with self.ctl.lock:
             tab = self.ctl.state.tabs.get(tab_id)
-            if tab is not None and tab.terminal_id is not None:
+            if tab is None:
+                return JSONResponse({"error": "not found"}, status_code=404)
+            if not self.ctl.state.remove_tab(tab_id):
+                msg = "a workspace keeps at least one tab; close the workspace"
+                return JSONResponse({"error": msg}, status_code=409)
+            if tab.terminal_id is not None:
                 self.ctl.terminals.close(tab.terminal_id)
-            self.ctl.state.remove_tab(tab_id)
         # Deliberate close drops the captured scrollback too (restart-in-place
         # uses the dedicated DELETE /scrollback endpoint); the unlink runs
         # outside the lock (disk is never touched under it).
@@ -446,7 +451,7 @@ def _network_identity() -> tuple[str, str | None]:
     return hostname, None
 
 
-def _ui_updates(body: dict[str, Any]) -> dict[str, Any]:
+def ui_updates(body: dict[str, Any]) -> dict[str, Any]:
     """Clamp a ``PATCH /api/ui`` body into UiPrefs attribute assignments.
 
     Pure: raises ``BadRequestError`` on a malformed field without touching any
@@ -524,13 +529,24 @@ async def _pump_in(
             continue
         text = message.get("text")
         if text is not None:
-            msg = json.loads(text)
-            # Both may resize the PTY — a ``TIOCSWINSZ`` ioctl, non-blocking,
-            # no offload needed.
-            kind = msg.get("type")
-            if kind == "resize":
-                cols = _clamped_int(msg.get("cols"), PTY_DIM_MIN, PTY_DIM_MAX, "cols")
-                rows = _clamped_int(msg.get("rows"), PTY_DIM_MIN, PTY_DIM_MAX, "rows")
-                term.report_size(sub, cols, rows)
-            elif kind == "claim":
-                term.claim(sub)
+            try:
+                _apply_control(text, term, sub)
+            except ValueError as exc:  # one bad frame must not drop the terminal
+                log.warning("ignored malformed control frame: %s", exc)
+
+
+def _apply_control(text: str, term: Terminal, sub: Subscriber) -> None:
+    """Apply one JSON control frame from the client (resize or claim)."""
+    msg = json.loads(text)
+    if not isinstance(msg, dict):
+        err = "control frame must be a JSON object"
+        raise BadRequestError(err)
+    # Both may resize the PTY — a ``TIOCSWINSZ`` ioctl, non-blocking, no
+    # offload needed.
+    kind = msg.get("type")
+    if kind == "resize":
+        cols = _clamped_int(msg.get("cols"), PTY_DIM_MIN, PTY_DIM_MAX, "cols")
+        rows = _clamped_int(msg.get("rows"), PTY_DIM_MIN, PTY_DIM_MAX, "rows")
+        term.report_size(sub, cols, rows)
+    elif kind == "claim":
+        term.claim(sub)

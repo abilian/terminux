@@ -141,17 +141,17 @@ def test_add_tab_unknown_workspace_returns_none() -> None:
     assert AppState().add_tab("nope") is None
 
 
-def test_remove_tab_reassigns_active_then_none() -> None:
+def test_remove_tab_reassigns_active_and_keeps_the_last_tab() -> None:
     s = AppState.default()
     ws = s.workspaces[0]
     t1 = ws.tab_ids[0]
     t2 = s.add_tab(ws.id)
     assert ws.active_tab_id == t2.id
-    s.remove_tab(t2.id)
+    assert s.remove_tab(t2.id)
     assert ws.active_tab_id == t1
-    s.remove_tab(t1)
-    assert ws.active_tab_id is None
-    assert ws.tab_ids == []
+    assert not s.remove_tab(t1)  # a workspace keeps its last tab
+    assert ws.tab_ids == [t1]
+    assert ws.active_tab_id == t1
 
 
 def test_remove_non_active_workspace_keeps_active() -> None:

@@ -212,6 +212,8 @@ This **landed on 2026-07-29**, after a field freeze of exactly this shape (a blo
 
 **Fix.** We pinned xterm to the 5.x line and set Vite's `build.target` explicitly to `["es2020", "safari14"]`, with a comment naming the support floor. The CSP is now built per request with `ws://<host> wss://<host>` added to `connect-src` (the Host header is validated before interpolation into the header). `--debug` cracked it: it now enables pywebview's inspector (right-click → Inspect Element). The blocked connection had stayed invisible until the console reported it. The desktop app's browser is *the OS's WebKit*, so every frontend dependency bump and build-target default is silently a support-matrix decision. The frontend must also treat any synchronous `new WebSocket()` throw as a retryable connection failure.
 
+**Update (after 0.10.1).** We dropped Big Sur on purpose to take xterm 6: the floor is now macOS 12 (Safari 15). Big Sur users must not be upgraded into a broken app, so `pyproject.toml` adds a dependency that can't be met there (`pywebview>=999` when `platform_release < '21'`, Darwin 20 being Big Sur). pip and uv then backtrack to 0.10.1, the last release without it. `tool.uv.environments` keeps that environment out of `uv.lock`, which would otherwise fail to resolve. The .app sets `LSMinimumSystemVersion` to 12.0. The same trick works for any future floor: raise the Darwin bound.
+
 ### Field runbook: unfreeze a live server without killing it (macOS)
 
 **Symptom.** A running (pre-fix) instance freezes mid-session: every terminal dead, HTTP unresponsive, tab switching still works. Long-running jobs in other tabs must keep running, so `kill` is not an option. Executed successfully twice against a live 0.7.0 with 20 shells.

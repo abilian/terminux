@@ -136,7 +136,7 @@ describe("store", () => {
     });
   });
 
-  it("a failed refresh keeps the last state and doesn't reject", async () => {
+  it("a failed refresh or poll keeps the last state and doesn't reject", async () => {
     await store.refresh();
     mocks.api.mockImplementation(() =>
       Promise.resolve({ ok: false, status: 403 }),
@@ -144,7 +144,8 @@ describe("store", () => {
     await expect(store.refresh()).resolves.toBeUndefined();
     expect(store.getState()?.active_workspace_id).toBe("w1");
     expect([rendered, activated]).toEqual([1, 1]);
-    await expect(store.poll()).rejects.toThrow("HTTP 403");
+    await expect(store.poll()).resolves.toBeUndefined();
+    expect(rendered).toBe(1); // nothing new to render
   });
 
   it("activeSession returns the live session of the active tab", async () => {

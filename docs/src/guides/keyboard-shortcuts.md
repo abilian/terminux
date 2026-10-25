@@ -1,69 +1,97 @@
 # Keyboard shortcuts
 
-terminux follows the platform convention for the app modifier:
+## One set of keys on every platform
 
-- **Linux and Windows**: `Ctrl+Shift+<key>` for everything, including
-  digit jumps. A raw `Ctrl+<letter>` chord flows to the shell unchanged,
-  matching GNOME Terminal, Konsole, Alacritty, Ghostty, kitty and Windows
-  Terminal. The zoom keys also work without Shift, as in GNOME Terminal and
-  Windows Terminal.
-- **macOS**: `Cmd+<key>`. Raw `Ctrl` is left alone so terminal/Emacs
-  chords (tmux prefix, fish/zsh history, readline editing) flow straight
-  to the shell.
+Every terminux shortcut is ++ctrl+shift++ plus a key, and it is the same on Linux, Windows and macOS. If you move between machines during the day, your hands don't have to switch.
 
-All shortcuts keep working while the terminal has focus.
+On macOS, ++cmd++ works too: ++cmd+t++ and ++ctrl+shift+t++ both open a tab. Use whichever you like; the native menus show the ++cmd++ form.
 
-## Navigation
+Plain ++ctrl++ belongs to your shell. Shell history, tmux's prefix, readline and Emacs editing all keep working. The exceptions are zoom on Linux and Windows, and copy and paste, below.
 
-| Action | Linux & Windows | macOS |
+All shortcuts work while the terminal has focus.
+
+## Workspaces and tabs
+
+| Action | All platforms | Also on macOS |
 | --- | --- | --- |
+| New tab | ++ctrl+shift+t++ | ++cmd+t++ |
+| New workspace | ++ctrl+shift+n++ | ++cmd+n++ |
+| Close tab | ++ctrl+shift+w++ | ++cmd+w++ |
 | Jump to workspace 1–9 | ++ctrl+shift+1++ … ++ctrl+shift+9++ | ++cmd+1++ … ++cmd+9++ |
-| Quick switcher (fuzzy, workspaces & tabs) | ++ctrl+shift+o++ | ++cmd+p++ |
-| Command palette (commands + actions) | ++ctrl+shift+p++ or ++f1++ | ++cmd+shift+p++ |
-| Previous / next tab | ++ctrl+shift+bracket-left++ / ++ctrl+shift+bracket-right++ | ++cmd+shift+bracket-left++ / ++cmd+shift+bracket-right++ |
-| Previous / next workspace | ++ctrl+shift+up++ / ++ctrl+shift+down++ | ++shift+cmd+up++ / ++shift+cmd+down++ |
+| Previous / next tab | ++ctrl+shift+bracket-left++ / ++ctrl+shift+bracket-right++, or ++ctrl+shift+left++ / ++ctrl+shift+right++ | ++cmd+shift+bracket-left++ / ++cmd+shift+bracket-right++ |
+| Previous / next workspace | ++ctrl+shift+up++ / ++ctrl+shift+down++ | ++cmd+shift+up++ / ++cmd+shift+down++ |
+
+Closing the last tab of a workspace closes the workspace and activates another one, rather than quitting the app. The numbers 1 to 9 are shown next to the workspaces in the sidebar.
+
+## Palettes
+
+| Action | All platforms | Also on macOS |
+| --- | --- | --- |
+| Quick switcher (fuzzy, workspaces and tabs) | ++ctrl+shift+o++ | ++cmd+p++, ++cmd+shift+o++ |
+| Command palette (every command) | ++ctrl+shift+p++ or ++f1++ | ++cmd+shift+p++ |
 
 The quick switcher fuzzy-matches across every workspace and tab:
 
 ![The fuzzy quick switcher overlay listing workspaces and tabs](../images/quick-switcher.png){ loading=lazy }
 
-## Workspace & tab lifecycle
-
-| Action | Linux & Windows | macOS |
-| --- | --- | --- |
-| New tab | ++ctrl+shift+t++ | ++cmd+t++ |
-| New workspace | ++ctrl+shift+n++ | ++cmd+n++ |
-| Close tab / workspace | ++ctrl+shift+w++ | ++cmd+w++ |
-
-Closing the last tab of a workspace closes the workspace and activates another
-one rather than quitting the app.
+The command palette holds the commands that have no shortcut of their own: sorting the sidebar, usage stats, the remote connection URL, and the toggles.
 
 ## View
 
-| Action | Linux & Windows | macOS |
+| Action | All platforms | Also on macOS |
 | --- | --- | --- |
 | Toggle sidebar | ++ctrl+shift+b++ | ++cmd+b++ |
 | Find in terminal | ++ctrl+shift+f++ | ++cmd+f++ |
-| Zoom terminal font in / out | ++ctrl+plus++ / ++ctrl+minus++ (Shift optional) | ++cmd+plus++ / ++cmd+minus++ |
-| Reset font size | ++ctrl+0++ (Shift optional) | ++cmd+0++ |
+| Zoom the font in / out | ++ctrl+shift+plus++ / ++ctrl+shift+minus++ | ++cmd+plus++ / ++cmd+minus++ |
+| Reset the font size | ++ctrl+shift+0++ | ++cmd+0++ |
 
-## Editing
+On Linux and Windows, zoom also works without Shift (++ctrl+plus++, ++ctrl+minus++, ++ctrl+0++), as in GNOME Terminal and Windows Terminal.
 
-- macOS line-editing chords are supported.
-- `Shift+Cmd` + arrow keys for navigation.
-- ++shift+enter++ inserts a newline (works with Claude Code and similar tools).
+## Copy and paste
 
-## Selection & links
+| Action | All platforms | Also on Linux and Windows | Also on macOS |
+| --- | --- | --- | --- |
+| Copy the selection | ++ctrl+shift+c++ | ++ctrl+c++ while text is selected | ++cmd+c++ |
+| Paste | ++ctrl+shift+v++ | ++ctrl+v++ | ++cmd+v++ |
+| Select all | ++ctrl+shift+a++ | | ++cmd+a++ |
+| Toggle auto-copy on selection | ++ctrl+shift+alt+c++ | | ++cmd+alt+c++ |
 
-| Action | Linux & Windows | macOS |
+Plain ++ctrl+c++ copies only while text is selected, and clears the selection. With nothing selected, it interrupts the running program as usual, so pressing it twice always interrupts. This matches Windows Terminal, and means the PC version of ++cmd+c++ / ++cmd+v++ works on any PC. On a Mac, plain ++ctrl+c++ always interrupts.
+
+Auto-copy (as in iTerm2) copies whatever you select, without a key. It is off by default, and the setting is kept across restarts.
+
+On Linux and Windows, the **Edit** menu has the same commands.
+
+## Editing the command line
+
+| Action | macOS | Linux and Windows |
 | --- | --- | --- |
-| Copy the selection | ++ctrl+shift+c++ | ++cmd+c++ |
-| Paste | ++ctrl+shift+v++ | ++cmd+v++ |
-| Select all | ++ctrl+shift+a++ | ++cmd+a++ |
-| Toggle auto-copy on select (iTerm2-style) | ++ctrl+shift+alt+c++ | ++cmd+alt+c++ |
-| Open URL under cursor | ++ctrl+click++ | ++cmd+click++ |
+| Start / end of line | ++cmd+left++ / ++cmd+right++ | ++home++ / ++end++ |
+| Previous / next word | ++option+left++ / ++option+right++ | ++alt+left++ / ++alt+right++ |
+| Delete the previous word | ++option+backspace++ | ++alt+backspace++ |
+| Delete to the start of the line | ++cmd+backspace++ | ++ctrl+u++ |
 
-On Windows, plain ++ctrl+c++ also copies while text is selected (and interrupts the running program otherwise), and plain ++ctrl+v++ pastes, as in Windows Terminal. The **Edit** menu has the same commands on Windows and Linux.
+++shift+enter++ inserts a newline instead of running the line, in Claude Code and similar tools.
 
-Auto-copy is **off by default**; toggling persists the preference across
-restarts. Linux users who rely on middle-click paste can leave it off.
+## Links
+
+++ctrl++-click (++cmd++-click on macOS) opens the URL under the pointer, including the hyperlinks modern tools print.
+
+## Moving between a Mac and a PC
+
+If you stick to ++ctrl+shift++, the shortcuts behave the same everywhere. The differences you may still run into:
+
+- On a Mac, ++cmd+p++ is the quick switcher, but ++ctrl+shift+p++ is the command palette everywhere. Use ++ctrl+shift+o++ for the quick switcher, and it's the same on all three.
+- Plain ++ctrl+c++ and ++ctrl+v++ copy and paste on a PC, but go to the shell on a Mac. ++ctrl+shift+c++ and ++ctrl+shift+v++ copy and paste on all three.
+- A few shell keys need ++ctrl+shift++ on most keyboards, and terminux takes them on every platform. The one you may miss is `Ctrl+_` (++ctrl+shift+minus++), readline's and Emacs's undo, which zooms out instead.
+
+## In a browser
+
+When terminux runs in a browser tab (`--no-window` or `--server`), the browser keeps some keys for itself and never passes them to the page: ++cmd+w++, ++cmd+t++ and ++cmd+n++ on macOS; ++ctrl+shift+t++, ++ctrl+shift+w++ and ++ctrl+shift+n++ on Linux and Windows; and ++ctrl+shift+p++ in Firefox.
+
+- On macOS, ++ctrl+shift++ still works for all of them.
+- On Linux and Windows, every shortcut also works with ++alt+shift++ in a browser tab: ++alt+shift+w++ closes a tab, ++alt+shift+p++ opens the command palette.
+- ++f1++ opens the command palette in every browser.
+- In Chrome and Edge, the command palette's **Enter full screen** makes the browser pass every key to terminux, ++cmd+w++ included. Hold ++esc++ to leave full screen.
+
+terminux's own window, and `terminux --connect`, have none of these limits.
