@@ -6,7 +6,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StateView } from "../src/state/types";
 
 const mocks = vi.hoisted(() => ({ api: vi.fn() }));
-vi.mock("../src/state/api", () => ({ api: mocks.api, TOKEN: "t" }));
+vi.mock("../src/state/api", () => ({
+  api: mocks.api,
+  TOKEN: "t",
+  send: (method: string, path: string, body?: object) =>
+    mocks.api(path, { method, body: body && JSON.stringify(body) }),
+}));
 
 type Store = typeof import("../src/state/store");
 
@@ -20,6 +25,8 @@ function serverState(activeWs: string): StateView {
         active_tab_id: "t1",
         status: activeWs === "w1" ? "active" : "idle",
         active_seconds: 0,
+        last_used_at: null,
+        ready_since: null,
       },
       {
         id: "w2",
@@ -28,6 +35,8 @@ function serverState(activeWs: string): StateView {
         active_tab_id: "t2",
         status: activeWs === "w2" ? "active" : "idle",
         active_seconds: 0,
+        last_used_at: null,
+        ready_since: null,
       },
     ],
     tabs: {},

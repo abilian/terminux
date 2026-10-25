@@ -7,7 +7,7 @@
 import { useState } from "preact/hooks";
 
 import { api, TOKEN } from "../state/api";
-import { createOverlay } from "./overlay";
+import { createOverlay, Modal } from "./overlay";
 
 interface ConnectInfo {
   hostname: string;
@@ -33,9 +33,6 @@ const overlay = createOverlay(
     info = null;
   },
 );
-
-export const installConnectInfo = overlay.install;
-export const closeConnectInfo = overlay.close;
 
 export function openConnectInfo(): void {
   overlay.open();
@@ -130,33 +127,16 @@ interface Props {
 
 function ConnectOverlay({ visible: shown, info: data }: Props) {
   return (
-    <div
+    <Modal
       id="connect-overlay"
-      hidden={!shown}
-      onClick={(e) => {
-        // Click on the backdrop (not the card) dismisses.
-        if (e.target === e.currentTarget) {
-          closeConnectInfo();
-        }
-      }}
+      cardId="connect-card"
+      visible={shown}
+      onClose={overlay.close}
     >
-      <div
-        id="connect-card"
-        // Focusable so Escape lands here, not on the still-focused xterm
-        // textarea (which would otherwise feed ESC to the shell).
-        tabIndex={-1}
-        ref={(el) => {
-          if (el && el.dataset.mounted !== "1") {
-            el.dataset.mounted = "1";
-            el.focus();
-          }
-        }}
-      >
-        <div class="connect-header">Connect from another machine</div>
-        <div class="connect-body">
-          {data ? <Body info={data} /> : <p>Asking the server…</p>}
-        </div>
+      <div class="connect-header">Connect from another machine</div>
+      <div class="connect-body">
+        {data ? <Body info={data} /> : <p>Asking the server…</p>}
       </div>
-    </div>
+    </Modal>
   );
 }

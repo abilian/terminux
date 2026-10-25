@@ -30,7 +30,9 @@ function buildEntries(): FuzzyEntry[] {
         ? "Exit full screen"
         : "Enter full screen (lets Chrome and Edge pass every shortcut)",
       commandId: "view.fullscreen.toggle",
-      visible: inBrowser,
+      // Safari before 16.4 lacks the unprefixed API.
+      visible: () =>
+        inBrowser() && "requestFullscreen" in document.documentElement,
     },
     { label: "Display usage stats", commandId: "view.stats" },
     {
@@ -67,10 +69,6 @@ function buildEntries(): FuzzyEntry[] {
   return commands
     .filter((e) => e.visible === undefined || e.visible())
     .map((e) => ({ label: e.label, run: () => void invoke(e.commandId) }));
-}
-
-export function installCmdPalette(): void {
-  overlay.install();
 }
 
 export function openCmdPalette(): void {

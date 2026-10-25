@@ -5,14 +5,10 @@ import "./style.css";
 
 import { invoke } from "./input/commands";
 import { installCommands } from "./input/commands-bindings";
-import { installCmdPalette } from "./ui/cmdpalette";
 import { installDragAndDrop } from "./ui/dragdrop";
-import { installFind } from "./ui/find";
 import { syncFontFromState } from "./term/font";
 import { installShortcuts } from "./input/keymap";
-import { installPalette } from "./ui/palette";
-import { installConnectInfo } from "./ui/connectinfo";
-import { installStatsPanel, renderStatsPanel } from "./ui/statspanel";
+import { renderStatsPanel } from "./ui/statspanel";
 import { isReordering } from "./ui/reorder";
 import { applyLayout, installSidebarResizer } from "./ui/layout";
 import { renderSidebar } from "./ui/sidebar";
@@ -68,11 +64,6 @@ window.addEventListener("resize", () => {
 // the palettes both dispatch through the bus.
 installCommands();
 installSidebarResizer();
-installFind();
-installPalette();
-installCmdPalette();
-installStatsPanel();
-installConnectInfo();
 installShortcuts();
 installDragAndDrop();
 installScrollbackAutosave();

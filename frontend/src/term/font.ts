@@ -2,7 +2,7 @@
 // app exit — localStorage can't, because the loopback port (and thus the
 // page origin) changes every launch.
 
-import { api } from "../state/api";
+import { send } from "../state/api";
 import { getState, sessions } from "../state/store";
 
 const FONT_MIN = 6;
@@ -47,8 +47,5 @@ export function applyFontSize(next: number): void {
   initialized = true; // user changed it explicitly; don't let sync override
   fontSize = clamp(next);
   applyToSessions();
-  api("/ui", {
-    method: "PATCH",
-    body: JSON.stringify({ font_size: fontSize }),
-  });
+  void send("PATCH", "/ui", { font_size: fontSize });
 }

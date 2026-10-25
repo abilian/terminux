@@ -4,9 +4,10 @@
 // island; while open it re-renders from the 2 s poll, so the numbers
 // tick live instead of freezing at open time.
 
+import { byTimeSpent } from "../state/sorting";
 import { getState } from "../state/store";
 import { formatDuration } from "../util/duration";
-import { createOverlay } from "./overlay";
+import { createOverlay, Modal } from "./overlay";
 
 function elapsedSince(epochSecs: number): string {
   // Wall-clock delta between *now* and the session start — matches the
@@ -19,7 +20,6 @@ const overlay = createOverlay((visible, key) => (
   <StatsOverlay key={key} visible={visible} />
 ));
 
-export const installStatsPanel = overlay.install;
 export const openStatsPanel = overlay.open;
 export const closeStatsPanel = overlay.close;
 
@@ -34,69 +34,48 @@ function StatsOverlay({ visible: shown }: { visible: boolean }) {
   const state = getState();
   const workspaces = state?.workspaces ?? [];
   const total = workspaces.reduce((s, w) => s + w.active_seconds, 0);
-  const ranked = [...workspaces].sort(
-    (a, b) => b.active_seconds - a.active_seconds,
-  );
+  const ranked = byTimeSpent(workspaces);
   const max = ranked[0]?.active_seconds ?? 0;
   return (
-    <div
+    <Modal
       id="stats-overlay"
-      hidden={!shown}
-      onClick={(e) => {
-        // Click on the backdrop (not the card) dismisses.
-        if (e.target === e.currentTarget) {
-          closeStatsPanel();
-        }
-      }}
+      cardId="stats-card"
+      visible={shown}
+      onClose={closeStatsPanel}
     >
-      <div
-        id="stats-card"
-        // Focusable so Escape lands here, not on the still-focused xterm
-        // textarea (which would otherwise feed ESC to the shell).
-        tabIndex={-1}
-        ref={(el) => {
-          if (el && el.dataset.mounted !== "1") {
-            el.dataset.mounted = "1";
-            el.focus();
-          }
-        }}
-      >
-        <div class="stats-header">
-          <div class="stats-title">Workspace activity</div>
-          {state && (
-            <div class="stats-meta">
-              {`session started ${elapsedSince(state.session_started_at)} ago` +
-                ` · ${formatDuration(total)} active`}
-            </div>
-          )}
-        </div>
-        <div class="stats-body">
-          {ranked.length === 0 || total === 0 ? (
-            <div class="stats-empty">
-              No keystrokes recorded yet in this session — type into a workspace
-              to start accruing time.
-            </div>
-          ) : (
-            ranked.map((w) => (
-              <div key={w.id} class="stats-row">
-                <div class="stats-name">{w.name}</div>
-                <div class="stats-bar">
-                  <div
-                    class="stats-bar-fill"
-                    style={{
-                      width:
-                        max > 0
-                          ? `${Math.round((w.active_seconds / max) * 100)}%`
-                          : "0%",
-                    }}
-                  />
-                </div>
-                <div class="stats-time">{formatDuration(w.active_seconds)}</div>
-              </div>
-            ))
-          )}
-        </div>
+      <div class="stats-header">
+        <div class="stats-title">Workspace activity</div>
+        {state && (
+          <div class="stats-meta">
+            {`session started ${elapsedSince(state.session_started_at)} ago` +
+              ` · ${formatDuration(total)} active`}
+          </div>
+        )}
       </div>
-    </div>
+      <div class="stats-body">
+        {ranked.length === 0 || total === 0 ? (
+          <div class="stats-empty">
+            No keystrokes recorded yet in this session — type into a workspace
+            to start accruing time.
+          </div>
+        ) : (
+          ranked.map((w) => (
+            <div key={w.id} class="stats-row">
+              <div class="stats-name">{w.name}</div>
+              <div class="stats-bar">
+                <div
+                  class="stats-bar-fill"
+                  style={{
+                    // max > 0 here: total > 0 picked this branch.
+                    width: `${Math.round((w.active_seconds / max) * 100)}%`,
+                  }}
+                />
+              </div>
+              <div class="stats-time">{formatDuration(w.active_seconds)}</div>
+            </div>
+          ))
+        )}
+      </div>
+    </Modal>
   );
 }

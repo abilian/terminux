@@ -6,16 +6,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StateView } from "../src/state/types";
 
-const apiMock = vi.fn(() => Promise.resolve({}));
+const apiMock = vi.fn((..._args: unknown[]) => Promise.resolve({}));
 let fakeState: StateView | null = null;
 
 vi.mock("../src/state/api", () => ({
   api: (...args: unknown[]) => apiMock(...args),
   TOKEN: "t",
+  send: (...args: Parameters<typeof send>) => send(...args),
 }));
+// ``send`` and ``mutate`` as the app does them, through the mocked ``api``.
+const send = (method: string, path: string, body?: object) =>
+  apiMock(path, { method, body: body && JSON.stringify(body) });
+const mutate = send;
 vi.mock("../src/state/store", () => ({
   getState: () => fakeState,
   refresh: vi.fn(() => Promise.resolve()),
+  mutate: (...args: Parameters<typeof mutate>) => mutate(...args),
   setActiveWorkspaceOptimistic: vi.fn(() => Promise.resolve()),
 }));
 // terminal.ts drags in xterm; the sidebar only needs disposeSession.
@@ -36,6 +42,8 @@ function state(): StateView {
         active_tab_id: "t1",
         status: "active",
         active_seconds: 0,
+        last_used_at: null,
+        ready_since: null,
       },
       {
         id: "w2",
@@ -44,6 +52,8 @@ function state(): StateView {
         active_tab_id: "t2",
         status: "busy",
         active_seconds: 95,
+        last_used_at: null,
+        ready_since: null,
       },
     ],
     tabs: {},

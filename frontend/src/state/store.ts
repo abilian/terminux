@@ -6,7 +6,7 @@ import type { SearchAddon } from "@xterm/addon-search";
 import type { SerializeAddon } from "@xterm/addon-serialize";
 import type { Terminal } from "@xterm/xterm";
 
-import { api } from "./api";
+import { api, send } from "./api";
 import type { Kitty } from "../term/kitty";
 import { reconcile } from "./reconcile";
 import type { StateView, WorkspaceView } from "./types";
@@ -131,6 +131,16 @@ export async function refresh(): Promise<void> {
   await onActivate();
 }
 
+/** ``send`` a change, then refresh the screen. */
+export async function mutate(
+  method: "POST" | "PATCH" | "DELETE",
+  path: string,
+  body?: object,
+): Promise<void> {
+  await send(method, path, body);
+  await refresh();
+}
+
 // Lightweight poll: re-render only, so it never steals terminal focus.
 // Like ``refresh``, a failed fetch keeps the last state; a render error
 // propagates.
@@ -191,10 +201,7 @@ export async function activateOptimistic(
   }
   await localApply();
   enqueueActivation(async () => {
-    await api(`/workspaces/${wsId}`, {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    });
+    await send("PATCH", `/workspaces/${wsId}`, body);
     await poll();
   });
 }

@@ -128,6 +128,12 @@ class Workspace:
         elif self.ready_since is None:  # keep the first time it turned ready
             self.ready_since = time.time()
 
+    def reorder_tabs(self, order: list[object]) -> None:
+        """Put the listed tabs first, in that order. Ids from elsewhere are
+        dropped, and tabs a stale client left out keep their place after."""
+        listed = [t for t in dict.fromkeys(map(str, order)) if t in self.tab_ids]
+        self.tab_ids = listed + [t for t in self.tab_ids if t not in listed]
+
     def rename(self, name: str) -> None:
         """Pin ``name`` (stop tracking the cwd); a blank one unpins it."""
         if name := name.strip():
@@ -331,7 +337,25 @@ class AppState:
                         if tab is not None:
                             tab.has_unseen_output = False
 
+    def reorder_workspaces(self, order: list[object]) -> None:
+        """Sort by ``order``; unlisted workspaces (a stale client) go after
+        the listed ones, keeping their relative order."""
+        pos = {str(x): i for i, x in enumerate(order)}
+        self.workspaces.sort(key=lambda w: pos.get(w.id, len(pos)))
+
     # ----- tab ops ------------------------------------------------------
+
+    def set_active_tab(self, ws: Workspace, tab_id: object) -> None:
+        """Make ``tab_id`` the workspace's active tab, or clear it with None.
+
+        Anything else that isn't one of its tabs (a stale client racing a
+        tab delete) is ignored, as reorders tolerate it.
+        """
+        if tab_id is None:
+            ws.active_tab_id = None
+        elif tab_id in ws.tab_ids:
+            ws.active_tab_id = str(tab_id)
+            self.tabs[ws.active_tab_id].has_unseen_output = False
 
     def add_tab(
         self,

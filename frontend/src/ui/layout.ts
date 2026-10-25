@@ -2,7 +2,7 @@
 // (UiPrefs) so they survive an app exit — localStorage can't, since the
 // loopback port (page origin) changes every launch.
 
-import { api } from "../state/api";
+import { send } from "../state/api";
 import { getState } from "../state/store";
 
 const MIN_W = 120;
@@ -19,10 +19,7 @@ function setHidden(hidden: boolean, persist: boolean): void {
     divider.style.display = hidden ? "none" : "";
   }
   if (persist) {
-    api("/ui", {
-      method: "PATCH",
-      body: JSON.stringify({ sidebar_collapsed: hidden }),
-    });
+    void send("PATCH", "/ui", { sidebar_collapsed: hidden });
   }
   // The terminal area resized — let the resize handler refit xterm.
   window.dispatchEvent(new Event("resize"));
@@ -75,10 +72,7 @@ export function installSidebarResizer(): void {
       divider.classList.remove("dragging");
       document.body.style.userSelect = "";
       window.dispatchEvent(new Event("resize")); // refit xterm
-      api("/ui", {
-        method: "PATCH",
-        body: JSON.stringify({ sidebar_width: width }),
-      });
+      void send("PATCH", "/ui", { sidebar_width: width });
     };
     document.addEventListener("mousemove", onMove, true);
     document.addEventListener("mouseup", onUp, true);

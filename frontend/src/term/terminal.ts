@@ -7,7 +7,7 @@ import { SerializeAddon } from "@xterm/addon-serialize";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 
-import { api, TOKEN } from "../state/api";
+import { api, send, TOKEN } from "../state/api";
 import { macEditingSeq } from "./editing";
 import { getFontSize } from "./font";
 import { createKitty } from "./kitty";
@@ -171,9 +171,19 @@ const sleep = (ms: number): Promise<void> =>
 
 function sendInput(sess: Session, data: string): void {
   const w = sess.ws;
-  if (w && w.readyState === 1) {
+  if (w && w.readyState === WebSocket.OPEN) {
     w.send(enc.encode(data));
   }
+}
+
+// A JSON control frame; false when the socket isn't open.
+function sendControl(sess: Session, msg: object): boolean {
+  const w = sess.ws;
+  if (!w || w.readyState !== WebSocket.OPEN) {
+    return false;
+  }
+  w.send(JSON.stringify(msg));
+  return true;
 }
 
 // Several clients (this window, a remote --connect window) may show the
@@ -182,12 +192,9 @@ function sendInput(sess: Session, data: string): void {
 // server switches owner (and size) ahead of the keystroke itself; the
 // server answers with {"type":"owner"} and revokes when another claims.
 export function claim(sess: Session): void {
-  const w = sess.ws;
-  if (sess.owner || !w || w.readyState !== 1) {
-    return;
+  if (!sess.owner && sendControl(sess, { type: "claim" })) {
+    sess.owner = true; // optimistic: the server always grants a claim
   }
-  sess.owner = true; // optimistic: the server always grants a claim
-  w.send(JSON.stringify({ type: "claim" }));
 }
 
 // Claim only for the tab on screen in a focused window: a background tab
@@ -256,25 +263,7 @@ async function connect(
   let kittyCarry = "";
   ws.onmessage = (ev: MessageEvent): void => {
     if (typeof ev.data === "string") {
-      const msg = JSON.parse(ev.data) as {
-        type: string;
-        code?: number | null;
-        owner?: boolean;
-      };
-      if (msg.type === "owner") {
-        sess.owner = msg.owner === true;
-      } else if (msg.type === "exit") {
-        const code = msg.code != null ? ` with code ${msg.code}` : "";
-        sess.exited = true;
-        sess.term.write(
-          `\r\n\x1b[2m[process exited${code} — press Enter to restart]\x1b[0m\r\n`,
-        );
-        void refresh();
-      } else if (msg.type === "dropped") {
-        sess.term.write(
-          "\r\n\x1b[2m[output dropped — terminal fell behind]\x1b[0m\r\n",
-        );
-      }
+      onControl(sess, ev.data);
       return;
     }
     const u8 = new Uint8Array(ev.data as ArrayBuffer);
@@ -303,15 +292,36 @@ async function connect(
     sess.term.reset();
   } // the replayed backlog repaints from scratch
   sess.fit.fit();
-  ws.send(
-    JSON.stringify({
-      type: "resize",
-      cols: sess.term.cols,
-      rows: sess.term.rows,
-    }),
-  );
+  sendControl(sess, {
+    type: "resize",
+    cols: sess.term.cols,
+    rows: sess.term.rows,
+  });
   claimIfInUse(sess); // e.g. a reconnect while the user is looking at it
   return "ok";
+}
+
+// A JSON frame from the server: ownership, exit, or dropped output.
+function onControl(sess: Session, text: string): void {
+  const msg = JSON.parse(text) as {
+    type: string;
+    code?: number | null;
+    owner?: boolean;
+  };
+  if (msg.type === "owner") {
+    sess.owner = msg.owner === true;
+  } else if (msg.type === "exit") {
+    const code = msg.code != null ? ` with code ${msg.code}` : "";
+    sess.exited = true;
+    sess.term.write(
+      `\r\n\x1b[2m[process exited${code} — press Enter to restart]\x1b[0m\r\n`,
+    );
+    void refresh();
+  } else if (msg.type === "dropped") {
+    sess.term.write(
+      "\r\n\x1b[2m[output dropped — terminal fell behind]\x1b[0m\r\n",
+    );
+  }
 }
 
 async function reconnectLoop(tid: string, sess: Session): Promise<void> {
@@ -446,9 +456,27 @@ async function doOpenTerminal(tid: string, restore: boolean): Promise<void> {
     }
   });
 
-  // OSC 0/2 title from the shell tracks the tab name (unless pinned).
-  // Debounced: each update is a state save on the server, and some
-  // programs animate their title several times a second.
+  trackTitle(term, tid);
+  term.onData((d: string) => sendInput(sess, d));
+  term.onResize(({ cols, rows }: { cols: number; rows: number }) => {
+    sendControl(sess, { type: "resize", cols, rows });
+  });
+  term.attachCustomKeyEventHandler(keyHandler(tid, sess));
+
+  const res = await connect(tid, sess, false);
+  if (res === "gone") {
+    disposeSession(tid);
+    return;
+  }
+  if (res === "fail") {
+    void reconnectLoop(tid, sess);
+  } // keep trying quietly
+}
+
+// OSC 0/2 title from the shell tracks the tab name (unless pinned).
+// Debounced: each update is a state save on the server, and some programs
+// animate their title several times a second.
+function trackTitle(term: Terminal, tid: string): void {
   let lastTitle = "";
   let titleTimer: ReturnType<typeof setTimeout> | undefined;
   term.onTitleChange((t: string) => {
@@ -459,24 +487,16 @@ async function doOpenTerminal(tid: string, restore: boolean): Promise<void> {
     lastTitle = title;
     clearTimeout(titleTimer);
     titleTimer = setTimeout(() => {
-      void api(`/tabs/${tid}`, {
-        method: "PATCH",
-        body: JSON.stringify({ osc_title: title }),
-      }).then(() => poll()); // render-only refresh, no focus steal
+      // Render-only refresh, no focus steal.
+      void send("PATCH", `/tabs/${tid}`, { osc_title: title }).then(poll);
     }, TITLE_DEBOUNCE_MS);
   });
+}
 
-  term.onData((d: string) => sendInput(sess, d));
-  term.onResize(({ cols, rows }: { cols: number; rows: number }) => {
-    const w = sess.ws;
-    if (w && w.readyState === 1) {
-      w.send(JSON.stringify({ type: "resize", cols, rows }));
-    }
-  });
-
-  // macOS editing chords first (own every event type so the webview can't
-  // act on them); then Shift+Enter / modified Enter as newline.
-  term.attachCustomKeyEventHandler((e: KeyboardEvent): boolean => {
+// macOS editing chords first (own every event type so the webview can't
+// act on them); then Shift+Enter / modified Enter as newline.
+function keyHandler(tid: string, sess: Session): (e: KeyboardEvent) => boolean {
+  return (e) => {
     if (e.type === "keydown") {
       claim(sess); // ahead of the bytes this key is about to produce
     }
@@ -512,16 +532,7 @@ async function doOpenTerminal(tid: string, restore: boolean): Promise<void> {
     }
     sendInput(sess, seq);
     return false;
-  });
-
-  const res = await connect(tid, sess, false);
-  if (res === "gone") {
-    disposeSession(tid);
-    return;
-  }
-  if (res === "fail") {
-    void reconnectLoop(tid, sess);
-  } // keep trying quietly
+  };
 }
 
 async function restartTerminal(tid: string): Promise<void> {

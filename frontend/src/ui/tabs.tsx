@@ -6,14 +6,13 @@ import { render } from "preact";
 import { useState } from "preact/hooks";
 
 import { invoke } from "../input/commands";
-import { api } from "../state/api";
 import { toggleSidebar } from "./layout";
 import { RenameInput } from "./rename";
 import { makeDraggable, recentlyReordered } from "./reorder";
 import {
   activeWorkspace,
   getState,
-  refresh,
+  mutate,
   setActiveTabOptimistic,
 } from "../state/store";
 import { disposeSession } from "../term/terminal";
@@ -21,7 +20,7 @@ import type { StateView, TabView, WorkspaceView } from "../state/types";
 
 export function closeTab(tid: string): void {
   disposeSession(tid);
-  api(`/tabs/${tid}`, { method: "DELETE" }).then(refresh);
+  void mutate("DELETE", `/tabs/${tid}`);
 }
 
 export function switchTab(delta: number): void {
@@ -125,10 +124,9 @@ function TabItem({ t, tid, ws, editing, setEditing }: TabProps) {
             tid,
             () => activeWorkspace()?.tab_ids.slice() ?? [],
             (order) => {
-              void api(`/workspaces/${ws.id}`, {
-                method: "PATCH",
-                body: JSON.stringify({ tab_order: order }),
-              }).then(refresh);
+              void mutate("PATCH", `/workspaces/${ws.id}`, {
+                tab_order: order,
+              });
             },
           );
         }
@@ -151,10 +149,7 @@ function TabItem({ t, tid, ws, editing, setEditing }: TabProps) {
           value={t.title}
           onCommit={(title) => {
             setEditing(null);
-            void api(`/tabs/${tid}`, {
-              method: "PATCH",
-              body: JSON.stringify({ title }),
-            }).then(refresh);
+            void mutate("PATCH", `/tabs/${tid}`, { title });
           }}
           onCancel={() => setEditing(null)}
         />

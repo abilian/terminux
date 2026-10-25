@@ -32,10 +32,6 @@ function buildEntries(): FuzzyEntry[] {
   return out;
 }
 
-export function installPalette(): void {
-  overlay.install();
-}
-
 export function openPalette(): void {
   overlay.open(buildEntries());
 }

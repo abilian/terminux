@@ -8,10 +8,6 @@ from terminux.core import terminal as term_mod
 from terminux.core.terminal import Subscriber, Terminal
 
 
-class _FakeLoop:
-    """Stands in for the loop: the fake PTY never schedules anything."""
-
-
 class _FakePty:
     pid = 4242
 
@@ -42,27 +38,14 @@ class _FakePty:
         self.sizes.append((cols, rows))
 
 
-def _bare_terminal(loop: _FakeLoop, pty: _FakePty) -> Terminal:
-    import time
+def _terminal(pty: _FakePty | None = None) -> Terminal:
+    """A real Terminal, built on a throwaway loop: the fake PTY never
+    schedules anything on it."""
 
-    t = Terminal.__new__(Terminal)
-    t.id = "x"
-    t._pty = pty  # type: ignore[attr-defined]
-    t._loop = loop  # type: ignore[attr-defined]
-    t._backlog = bytearray()
-    t._subscribers = {}
-    t._owner = None
-    t._exited = False
-    t._exit_code = None
-    t.on_activity = None
-    t.on_attention = None
-    t.on_exit = None
-    t._attention = term_mod._AttentionScanner()
-    # is_busy() requires recent PTY output; seed at "now" so freshly
-    # built test terminals fall inside the activity window by default.
-    t._last_output_at = time.monotonic()
-    t._cwd_cache = None
-    return t
+    async def build() -> Terminal:
+        return Terminal(pty or _FakePty())  # type: ignore[arg-type]
+
+    return asyncio.run(build())
 
 
 # ----- Subscriber ------------------------------------------------------
@@ -113,7 +96,7 @@ def test_subscriber_close_drains_closed() -> None:
 
 
 def test_on_data_feeds_subscribers_and_trims_backlog(monkeypatch) -> None:
-    t = _bare_terminal(_FakeLoop(), _FakePty())
+    t = _terminal()
     sub = t.subscribe()
     seen = []
     t.on_activity = lambda: seen.append(1)
@@ -125,7 +108,7 @@ def test_on_data_feeds_subscribers_and_trims_backlog(monkeypatch) -> None:
 
 
 def test_on_data_detects_bell_and_osc9() -> None:
-    t = _bare_terminal(_FakeLoop(), _FakePty())
+    t = _terminal()
     t.subscribe()
     hits = []
     t.on_attention = lambda: hits.append(1)
@@ -142,7 +125,7 @@ def test_osc_title_bel_does_not_trigger_attention(monkeypatch) -> None:
     """The BEL that terminates an OSC 0/2 title isn't a real bell — Claude
     Code (and friends) update the title constantly while working, and that
     used to spam the sidebar."""
-    t = _bare_terminal(_FakeLoop(), _FakePty())
+    t = _terminal()
     t.subscribe()
     hits = []
     t.on_attention = lambda: hits.append(1)
@@ -157,7 +140,7 @@ def test_osc_title_bel_does_not_trigger_attention(monkeypatch) -> None:
 def test_osc_split_across_reads_does_not_fire(monkeypatch) -> None:
     """An OSC sequence spanning a chunk boundary must still suppress its
     terminating BEL."""
-    t = _bare_terminal(_FakeLoop(), _FakePty())
+    t = _terminal()
     t.subscribe()
     hits = []
     t.on_attention = lambda: hits.append(1)
@@ -172,7 +155,7 @@ def test_is_busy_asks_the_backend_when_no_osc133() -> None:
     command is in the foreground (tcgetpgrp on Unix, a child process on
     Windows)."""
     pty = _FakePty()
-    t = _bare_terminal(_FakeLoop(), pty)
+    t = _terminal(pty)
 
     pty.busy = False
     assert t.is_busy() is False  # the shell is at its prompt → ready
@@ -193,7 +176,7 @@ def test_is_busy_trusts_osc133_once_seen() -> None:
     """Once any OSC 133 sequence has come through, the OSC state takes
     precedence over the backend — the shell is the authoritative source."""
     pty = _FakePty()
-    t = _bare_terminal(_FakeLoop(), pty)
+    t = _terminal(pty)
     # The backend would say "busy", but we'll override via OSC 133.
     pty.busy = True
 
@@ -214,7 +197,7 @@ def test_is_busy_requires_recent_output() -> None:
     import time
 
     pty = _FakePty()
-    t = _bare_terminal(_FakeLoop(), pty)
+    t = _terminal(pty)
     pty.busy = True  # the kernel says a command is in the foreground
 
     # Recent output → busy.
@@ -232,7 +215,7 @@ def test_is_busy_recovers_from_stuck_osc133() -> None:
     now releases it once the workspace falls silent."""
     import time
 
-    t = _bare_terminal(_FakeLoop(), _FakePty())
+    t = _terminal()
     # Simulate the stuck state: in_command=True, no ;D ever.
     t._attention._osc133_seen = True
     t._attention._in_command = True
@@ -247,7 +230,7 @@ def test_is_busy_recovers_from_stuck_osc133() -> None:
 def test_osc133_fires_only_for_long_commands(monkeypatch) -> None:
     """OSC 133;D ("command finished") fires attention only if the matching
     OSC 133;C happened long enough ago — a snappy `cd` shouldn't ring it."""
-    t = _bare_terminal(_FakeLoop(), _FakePty())
+    t = _terminal()
     t.subscribe()
     hits = []
     t.on_attention = lambda: hits.append(1)
@@ -271,7 +254,7 @@ def test_osc133_fires_only_for_long_commands(monkeypatch) -> None:
 
 def test_on_data_eof_detaches_and_closes() -> None:
     pty = _FakePty(code=9)
-    t = _bare_terminal(_FakeLoop(), pty)
+    t = _terminal(pty)
     sub = t.subscribe()
     t._on_data(b"")
     assert t.exited is True
@@ -295,7 +278,7 @@ def test_constructor_attaches_the_backend() -> None:
 def test_conemu_osc9_subcommands_are_not_notifications() -> None:
     """``OSC 9;4`` (progress: winget, …) and ``OSC 9;9`` (cwd) came at every
     prompt and lit the attention dot; only a plain ``OSC 9;<msg>`` counts."""
-    t = _bare_terminal(_FakeLoop(), _FakePty())
+    t = _terminal()
     hits = []
     t.on_attention = lambda: hits.append(1)
     t._on_data(b"\x1b]9;4;1;50\x07\x1b]9;9;C:\\x\x07\x1b]9;12\x07\x1b]9;1;2\x07")
@@ -307,7 +290,7 @@ def test_conemu_osc9_subcommands_are_not_notifications() -> None:
 
 def test_cwd_falls_back_to_what_the_shell_reports() -> None:
     pty = _FakePty()  # like Windows: the backend can't tell
-    t = _bare_terminal(_FakeLoop(), pty)
+    t = _terminal(pty)
     assert t.cwd() is None
     t._on_data(b'\x1b]9;9;"C:\\Users\\me"\x07')
     assert t.cwd() == "C:\\Users\\me"
@@ -320,13 +303,13 @@ def test_the_kernel_cwd_wins_over_a_reported_one() -> None:
     host's), so it's only used when the backend can't tell."""
     pty = _FakePty()
     pty.cwd_value = "/local"
-    t = _bare_terminal(_FakeLoop(), pty)
+    t = _terminal(pty)
     t._on_data(b"\x1b]7;file://remote/srv\x07")
     assert t.cwd() == "/local"
 
 
 def test_cwd_report_split_across_reads_and_too_long() -> None:
-    t = _bare_terminal(_FakeLoop(), _FakePty())
+    t = _terminal()
     t._on_data(b"\x1b]7;file://h/a-very-long-dir")
     t._on_data(b"ectory/name\x07")
     assert t._attention.reported_cwd == "/a-very-long-directory/name"
@@ -345,7 +328,7 @@ def test_cwd_from_osc_rejects_junk() -> None:
 
 def test_handle_eof_idempotent_and_on_exit() -> None:
     codes: list[int | None] = []
-    t = _bare_terminal(_FakeLoop(), _FakePty(code=5))
+    t = _terminal(_FakePty(code=5))
     t.on_exit = codes.append
     t._handle_eof()
     t._handle_eof()  # already exited -> early return
@@ -353,7 +336,7 @@ def test_handle_eof_idempotent_and_on_exit() -> None:
 
 
 def test_subscribe_after_exit_is_closed_then_unsubscribe() -> None:
-    t = _bare_terminal(_FakeLoop(), _FakePty())
+    t = _terminal()
     t._backlog += b"hi"
     t._exited = True
     sub = t.subscribe()
@@ -364,7 +347,7 @@ def test_subscribe_after_exit_is_closed_then_unsubscribe() -> None:
 
 
 def test_write_and_resize_after_exit_are_noops() -> None:
-    t = _bare_terminal(_FakeLoop(), _FakePty())
+    t = _terminal()
     t._exited = True
     t.write(b"data")
     t.resize(10, 10)
@@ -380,7 +363,7 @@ def test_close_marks_subscribers_closed() -> None:
             self.terminated = True
 
     p = P()
-    t = _bare_terminal(_FakeLoop(), p)
+    t = _terminal(p)
     sub = t.subscribe()
     t.close()
     assert p.terminated is True
@@ -395,7 +378,7 @@ def _owner_news(*subs: Subscriber) -> list[bool | None]:
 
 
 def test_first_client_owns_and_later_ones_watch() -> None:
-    t = _bare_terminal(_FakeLoop(), _FakePty())
+    t = _terminal()
     desk, laptop = t.subscribe(), t.subscribe()
     assert _owner_news(desk, laptop) == [True, False]
     assert t.is_owner(desk)
@@ -406,7 +389,7 @@ def test_a_watcher_attaching_never_resizes_the_owners_screen() -> None:
     """The reported bug: the --connect window sent its size on attach and
     re-flowed the desktop's screen. Now only the owner's size applies."""
     pty = _FakePty()
-    t = _bare_terminal(_FakeLoop(), pty)
+    t = _terminal(pty)
     desk, laptop = t.subscribe(), t.subscribe()
     t.report_size(desk, 200, 50)
     t.report_size(laptop, 120, 35)  # recorded, not applied
@@ -416,7 +399,7 @@ def test_a_watcher_attaching_never_resizes_the_owners_screen() -> None:
 
 def test_claiming_moves_ownership_and_size() -> None:
     pty = _FakePty()
-    t = _bare_terminal(_FakeLoop(), pty)
+    t = _terminal(pty)
     desk, laptop = t.subscribe(), t.subscribe()
     t.report_size(desk, 200, 50)
     t.report_size(laptop, 120, 35)
@@ -433,7 +416,7 @@ def test_claiming_moves_ownership_and_size() -> None:
 
 def test_claiming_what_you_already_own_changes_nothing() -> None:
     pty = _FakePty()
-    t = _bare_terminal(_FakeLoop(), pty)
+    t = _terminal(pty)
     desk = t.subscribe()
     t.report_size(desk, 200, 50)
     _owner_news(desk)
@@ -444,7 +427,7 @@ def test_claiming_what_you_already_own_changes_nothing() -> None:
 
 def test_when_the_owner_leaves_the_latest_watcher_takes_over() -> None:
     pty = _FakePty()
-    t = _bare_terminal(_FakeLoop(), pty)
+    t = _terminal(pty)
     a, b, c = t.subscribe(), t.subscribe(), t.subscribe()
     for sub, size in ((a, (200, 50)), (b, (80, 24)), (c, (120, 35))):
         t.report_size(sub, *size)
@@ -457,7 +440,7 @@ def test_when_the_owner_leaves_the_latest_watcher_takes_over() -> None:
 
 
 def test_after_the_last_client_leaves_the_next_one_owns() -> None:
-    t = _bare_terminal(_FakeLoop(), _FakePty())
+    t = _terminal()
     only = t.subscribe()
     t.unsubscribe(only)
     assert t._owner is None

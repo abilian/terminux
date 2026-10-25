@@ -5,13 +5,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StateView } from "../src/state/types";
 
-const apiMock = vi.fn(() => Promise.resolve({}));
+const apiMock = vi.fn((..._args: unknown[]) => Promise.resolve({}));
 let fakeState: StateView | null = null;
 
 vi.mock("../src/state/api", () => ({
   api: (...args: unknown[]) => apiMock(...args),
   TOKEN: "t",
+  send: (...args: Parameters<typeof send>) => send(...args),
 }));
+// ``send`` and ``mutate`` as the app does them, through the mocked ``api``.
+const send = (method: string, path: string, body?: object) =>
+  apiMock(path, { method, body: body && JSON.stringify(body) });
+const mutate = send;
 vi.mock("../src/state/store", () => ({
   getState: () => fakeState,
   activeWorkspace: () =>
@@ -19,6 +24,7 @@ vi.mock("../src/state/store", () => ({
       (w) => w.id === fakeState?.active_workspace_id,
     ) ?? null,
   refresh: vi.fn(() => Promise.resolve()),
+  mutate: (...args: Parameters<typeof mutate>) => mutate(...args),
   setActiveTabOptimistic: vi.fn(() => Promise.resolve()),
 }));
 vi.mock("../src/term/terminal", () => ({ disposeSession: vi.fn() }));
@@ -38,6 +44,8 @@ function state(): StateView {
         active_tab_id: "t1",
         status: "active",
         active_seconds: 0,
+        last_used_at: null,
+        ready_since: null,
       },
     ],
     tabs: {

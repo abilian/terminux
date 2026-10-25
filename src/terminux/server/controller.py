@@ -100,8 +100,7 @@ class AppController:
         # Per-terminal busy-transition tracker. Used by the 1 Hz ticker to
         # detect busy→idle transitions that lasted long enough to count
         # as a "task finished" signal (drives the green "ready" dot).
-        self._was_busy: dict[str, bool] = {}
-        self._busy_since: dict[str, float] = {}
+        self._busy_since: dict[str, float] = {}  # term id → busy since
 
     def save(self) -> None:
         if not self._persist:
@@ -129,6 +128,22 @@ class AppController:
         # off mid-run, leaving a stale file behind.
         if self._persist:
             delete_scrollback(tab_id)
+
+    def close_workspace(self, ws_id: str) -> None:
+        """Close a workspace: its shells, its tabs and their saved scrollback.
+        The state keeps at least one workspace (``remove_workspace``)."""
+        with self.lock:
+            # Terminals first: removing the workspace drops its tabs.
+            ws = self.state.get_workspace(ws_id)
+            terms = [self._terminal_of(tid) for tid in ws.tab_ids] if ws else []
+            tab_ids = self.state.remove_workspace(ws_id)
+            for term in terms:
+                if term is not None:
+                    self.terminals.close(term.id)
+        # Disk is never touched under the lock.
+        for tid in tab_ids:
+            self.delete_scrollback(tid)
+        self.save()
 
     def note_input(self, terminal_id: str) -> None:
         """Called when keystrokes arrive over a PTY WebSocket — the only
@@ -187,13 +202,16 @@ class AppController:
         local to this method and survives anyone calling it without the lock.
         """
         for tab in list(self.state.tabs.values()):
-            if tab.terminal_id is None:
-                continue
-            term = self.terminals.get(tab.terminal_id)
-            if term is not None:
-                live = term.cwd()
-                if live:
-                    tab.last_cwd = live
+            term = self._terminal_of(tab.id)
+            if term is not None and (live := term.cwd()):
+                tab.last_cwd = live
+
+    def _terminal_of(self, tab_id: str | None) -> Terminal | None:
+        """The tab's live terminal, if any (caller holds the lock)."""
+        tab = self.state.tabs.get(tab_id) if tab_id is not None else None
+        if tab is None or tab.terminal_id is None:
+            return None
+        return self.terminals.get(tab.terminal_id)
 
     async def ensure_terminal(
         self, tab_id: str, cols: int, rows: int
@@ -244,31 +262,20 @@ class AppController:
             if tab is not None and tab.terminal_id == term_id:
                 tab.terminal_id = None
             self.terminals.close(term_id)
-            self._was_busy.pop(term_id, None)
             self._busy_since.pop(term_id, None)
 
     def inherit_cwd(self, ws_id: str) -> str | None:
         """Working directory of a workspace's currently active live shell."""
         with self.lock:
             ws = self.state.get_workspace(ws_id)
-            if ws is None or ws.active_tab_id is None:
-                return None
-            tab = self.state.tabs.get(ws.active_tab_id)
-            if tab is None or tab.terminal_id is None:
-                return None
-            term = self.terminals.get(tab.terminal_id)
+            term = self._terminal_of(ws.active_tab_id) if ws is not None else None
             return term.cwd() if term is not None else None
 
     def active_terminal(self) -> Terminal | None:
         with self.lock:
             ws_id = self.state.active_workspace_id
             ws = self.state.get_workspace(ws_id) if ws_id else None
-            if ws is None or ws.active_tab_id is None:
-                return None
-            tab = self.state.tabs.get(ws.active_tab_id)
-            if tab is None or tab.terminal_id is None:
-                return None
-            return self.terminals.get(tab.terminal_id)
+            return self._terminal_of(ws.active_tab_id) if ws is not None else None
 
     def _workspace_label(self, ws: Workspace) -> str:
         """Display name: a pinned rename, else the **first** tab's directory.
@@ -290,13 +297,12 @@ class AppController:
             first_tid = ws.tab_ids[0]
             tab = self.state.tabs.get(first_tid)
             if tab is not None:
-                if tab.terminal_id is not None:
-                    term = self.terminals.get(tab.terminal_id)
-                    is_active = ws.id == self.state.active_workspace_id
-                    if term is not None and (is_active or tab.last_cwd is None):
-                        live = term.cwd()
-                        if live:
-                            tab.last_cwd = live
+                term = self._terminal_of(first_tid)
+                # Refresh the active workspace's label, and fill in others'
+                # once; ``cwd()`` costs a syscall or an lsof per call.
+                fresh = ws.id == self.state.active_workspace_id or not tab.last_cwd
+                if term is not None and fresh and (live := term.cwd()):
+                    tab.last_cwd = live
                 cwd = tab.last_cwd or tab.spawn_cwd
         if cwd is None:
             cwd = default_cwd()
@@ -340,10 +346,7 @@ class AppController:
                     wv["status"] in {WorkspaceStatus.IDLE, WorkspaceStatus.UNSEEN}
                     and not _in_grace(ws, now)
                     and any(
-                        (tab := self.state.tabs.get(tid)) is not None
-                        and tab.terminal_id is not None
-                        and (term := self.terminals.get(tab.terminal_id)) is not None
-                        and term.is_busy()
+                        (term := self._terminal_of(tid)) is not None and term.is_busy()
                         for tid in ws.tab_ids
                     )
                 ):
@@ -421,22 +424,14 @@ class AppController:
             now = time.monotonic()
             for ws in self.state.workspaces:
                 for tid in ws.tab_ids:
-                    tab = self.state.tabs.get(tid)
-                    if tab is None or tab.terminal_id is None:
-                        continue
-                    term = self.terminals.get(tab.terminal_id)
+                    term = self._terminal_of(tid)
                     if term is None:
                         continue
-                    term_id = term.id
                     is_busy_now = term.is_busy()
-                    was_busy = self._was_busy.get(term_id, False)
+                    was_busy = term.id in self._busy_since
                     if is_busy_now and not was_busy:
-                        self._busy_since[term_id] = now
+                        self._busy_since[term.id] = now
                     elif was_busy and not is_busy_now:
-                        since = self._busy_since.pop(term_id, None)
-                        if (
-                            since is not None
-                            and (now - since) >= READY_TRANSITION_SECONDS
-                        ):
+                        since = self._busy_since.pop(term.id)
+                        if now - since >= READY_TRANSITION_SECONDS:
                             self._mark_ready(tid)
-                    self._was_busy[term_id] = is_busy_now

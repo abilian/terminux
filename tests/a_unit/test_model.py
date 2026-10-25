@@ -340,3 +340,38 @@ def test_the_view_exposes_ready_since_and_last_used_at() -> None:
     view = s.view_json()["workspaces"][0]
     assert view["ready_since"] == ws.ready_since
     assert view["last_used_at"] == 42
+
+
+def test_reorder_tabs_ignores_foreign_and_duplicate_ids() -> None:
+    s = AppState.default()
+    ws = s.workspaces[0]
+    t1 = ws.tab_ids[0]
+    t2 = s.add_tab(ws.id).id  # type: ignore[union-attr]
+    t3 = s.add_tab(ws.id).id  # type: ignore[union-attr]
+    ws.reorder_tabs([t3, t3, "elsewhere", t1])
+    assert ws.tab_ids == [t3, t1, t2]  # t2, left out, keeps a place after
+
+
+def test_reorder_workspaces_puts_unlisted_last() -> None:
+    s = AppState.default()
+    a = s.workspaces[0].id
+    b = s.add_workspace().id
+    c = s.add_workspace().id
+    s.reorder_workspaces([c, a])
+    assert [w.id for w in s.workspaces] == [c, a, b]
+
+
+def test_set_active_tab_ignores_tabs_of_other_workspaces() -> None:
+    s = AppState.default()
+    ws = s.workspaces[0]
+    other = s.add_workspace()
+    foreign = s.add_tab(other.id)
+    assert foreign is not None
+    mine = ws.tab_ids[0]
+    s.tabs[mine].has_unseen_output = True
+    s.set_active_tab(ws, foreign.id)
+    assert ws.active_tab_id == mine
+    s.set_active_tab(ws, mine)
+    assert not s.tabs[mine].has_unseen_output  # looking at it clears the dot
+    s.set_active_tab(ws, None)
+    assert ws.active_tab_id is None

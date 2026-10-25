@@ -1,53 +1,29 @@
 // Find-in-terminal overlay (Cmd/Ctrl+F): a small input wired to xterm's
 // SearchAddon. Enter / Shift+Enter step matches; Escape closes. The
-// query persists between opens (re-selected, iTerm2-style), so the
-// overlay is mounted once and only toggled.
+// query persists between opens (re-selected, iTerm2-style), so the card
+// ignores the overlay's per-open key and is only toggled.
 
-import { render } from "preact";
+import { useLayoutEffect, useRef } from "preact/hooks";
 
 import { activeSession } from "../state/store";
+import { createOverlay } from "./overlay";
 
-let host: HTMLDivElement | null = null;
-let visible = false;
+const overlay = createOverlay((visible) => <FindOverlay visible={visible} />);
 
-function rerender(): void {
-  if (host) {
-    render(<FindOverlay visible={visible} />, host);
-  }
-}
+export const openFind = overlay.open;
 
-function ensure(): void {
-  if (!host) {
-    host = document.createElement("div");
-  }
-  if (!host.isConnected) {
-    document.body.appendChild(host);
-  }
-  rerender();
-}
-
-export function installFind(): void {
-  ensure();
-}
-
-export function openFind(): void {
-  visible = true;
-  ensure();
-  const input = host?.querySelector("input");
-  input?.focus();
-  input?.select();
-}
-
-export function closeFind(): void {
-  visible = false;
-  rerender();
-  activeSession()?.term.focus();
-}
-
-function FindOverlay({ visible: shown }: { visible: boolean }) {
+function FindOverlay({ visible }: { visible: boolean }) {
+  const input = useRef<HTMLInputElement>(null);
+  useLayoutEffect(() => {
+    if (visible) {
+      input.current?.focus();
+      input.current?.select();
+    }
+  }, [visible]);
   return (
-    <div id="find" hidden={!shown}>
+    <div id="find" hidden={!visible}>
       <input
+        ref={input}
         type="text"
         placeholder="Find…"
         spellcheck={false}
@@ -62,9 +38,7 @@ function FindOverlay({ visible: shown }: { visible: boolean }) {
           e.stopPropagation(); // don't let global shortcuts see typing here
           const s = activeSession();
           const q = e.currentTarget.value;
-          if (e.key === "Escape") {
-            closeFind();
-          } else if (e.key === "Enter" && s && q) {
+          if (e.key === "Enter" && s && q) {
             if (e.shiftKey) {
               s.search.findPrevious(q);
             } else {

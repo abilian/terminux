@@ -6,15 +6,10 @@
 import { render } from "preact";
 import { useState } from "preact/hooks";
 
-import { api } from "../state/api";
 import { formatDuration } from "../util/duration";
 import { RenameInput } from "./rename";
 import { makeDraggable, recentlyReordered } from "./reorder";
-import {
-  getState,
-  refresh,
-  setActiveWorkspaceOptimistic,
-} from "../state/store";
+import { getState, mutate, setActiveWorkspaceOptimistic } from "../state/store";
 import { disposeSession } from "../term/terminal";
 import type { WorkspaceView } from "../state/types";
 
@@ -82,10 +77,7 @@ function WorkspaceRow({ w, idx, active, editing, setEditing }: RowProps) {
             w.id,
             () => getState()?.workspaces.map((x) => x.id) ?? [],
             (order) => {
-              void api(`/workspaces/${w.id}`, {
-                method: "PATCH",
-                body: JSON.stringify({ order }),
-              }).then(refresh);
+              void mutate("PATCH", `/workspaces/${w.id}`, { order });
             },
           );
         }
@@ -108,10 +100,7 @@ function WorkspaceRow({ w, idx, active, editing, setEditing }: RowProps) {
           value={w.name}
           onCommit={(name) => {
             setEditing(null);
-            void api(`/workspaces/${w.id}`, {
-              method: "PATCH",
-              body: JSON.stringify({ name }),
-            }).then(refresh);
+            void mutate("PATCH", `/workspaces/${w.id}`, { name });
           }}
           onCancel={() => setEditing(null)}
         />
@@ -154,7 +143,7 @@ export function closeWorkspace(wsId: string): void {
   for (const tid of w?.tab_ids ?? []) {
     disposeSession(tid);
   }
-  api(`/workspaces/${wsId}`, { method: "DELETE" }).then(refresh);
+  void mutate("DELETE", `/workspaces/${wsId}`);
 }
 
 export function switchWorkspace(delta: number): void {

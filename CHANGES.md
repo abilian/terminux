@@ -23,7 +23,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **A malformed message from a client no longer drops its terminal connection.**
 - **Renaming a workspace to a blank name no longer shows "workspace N"**: a blank name goes back to the directory name (and a blank tab title back to the shell's).
 - **The API refuses to close a workspace's last tab** (409), so other clients can't leave an empty workspace. Closing a tab or workspace also no longer touches the event loop from a worker thread, and window size and position are saved under the state lock.
-- **Errors while redrawing the sidebar show in the console** instead of being silently dropped every 2 seconds.
+- **Errors while redrawing the sidebar show in the console** instead of being silently dropped every 2 seconds, and so do changes the server refuses.
+- **A tab reorder that lists a tab twice no longer duplicates it.**
 - **On Linux, a missing GTK says what to install** (the distribution's packages, and a `pipx --system-site-packages` reinstall) instead of a pywebview traceback, and a missing display (as over SSH) points to `--no-window` and `--server`.
 
 ## [0.10.1] - 2026-10-13

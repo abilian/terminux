@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   info: {
     hostname: "mbp-15p",
-    lan_ip: "192.168.1.42",
+    lan_ip: "192.168.1.42" as string | null,
     public_host: null as string | null,
     bind_host: "127.0.0.1",
     port: 54321,

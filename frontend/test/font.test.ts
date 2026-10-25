@@ -9,11 +9,16 @@ interface FakeSession {
 }
 
 const mocks = vi.hoisted(() => ({
-  api: vi.fn(() => Promise.resolve({})),
+  api: vi.fn((..._args: unknown[]) => Promise.resolve({})),
   sessions: new Map<string, unknown>(),
   fontFromServer: 16 as number | undefined,
 }));
-vi.mock("../src/state/api", () => ({ api: mocks.api, TOKEN: "t" }));
+vi.mock("../src/state/api", () => ({
+  api: mocks.api,
+  TOKEN: "t",
+  send: (method: string, path: string, body?: object) =>
+    mocks.api(path, { method, body: body && JSON.stringify(body) }),
+}));
 vi.mock("../src/state/store", () => ({
   sessions: mocks.sessions,
   getState: () => ({ ui: { font_size: mocks.fontFromServer } }),

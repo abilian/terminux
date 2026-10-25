@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StateView } from "../src/state/types";
 
 const mocks = vi.hoisted(() => ({
-  api: vi.fn(() => Promise.resolve({})),
+  api: vi.fn((..._args: unknown[]) => Promise.resolve({})),
   refresh: vi.fn(() => Promise.resolve()),
   setActiveWorkspaceOptimistic: vi.fn(() => Promise.resolve()),
   openPalette: vi.fn(),
@@ -26,7 +26,12 @@ const mocks = vi.hoisted(() => ({
   state: null as StateView | null,
 }));
 
-vi.mock("../src/state/api", () => ({ api: mocks.api, TOKEN: "t" }));
+vi.mock("../src/state/api", () => ({
+  api: mocks.api,
+  TOKEN: "t",
+  send: (method: string, path: string, body?: object) =>
+    mocks.api(path, { method, body: body && JSON.stringify(body) }),
+}));
 vi.mock("../src/state/store", () => ({
   getState: () => mocks.state,
   activeWorkspace: () =>
@@ -34,6 +39,10 @@ vi.mock("../src/state/store", () => ({
       (w) => w.id === mocks.state?.active_workspace_id,
     ) ?? null,
   refresh: mocks.refresh,
+  mutate: (method: string, path: string, body?: object) =>
+    mocks
+      .api(path, { method, body: body && JSON.stringify(body) })
+      .then(mocks.refresh),
   setActiveWorkspaceOptimistic: mocks.setActiveWorkspaceOptimistic,
 }));
 vi.mock("../src/ui/palette", () => ({ openPalette: mocks.openPalette }));
@@ -78,6 +87,8 @@ function ws(
     active_tab_id: tabs[0] ?? null,
     status: "idle",
     active_seconds: seconds,
+    last_used_at: null,
+    ready_since: null,
   };
 }
 

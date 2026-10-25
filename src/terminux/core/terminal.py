@@ -297,7 +297,6 @@ class Terminal:
     def __init__(self, pty: PtyBackend) -> None:
         self.id = uuid.uuid4().hex
         self._pty = pty
-        self._loop = asyncio.get_running_loop()
         self._backlog = bytearray()
         # Insertion-ordered (a dict used as an ordered set), so ownership
         # can fall back to the most recently attached client.
@@ -317,7 +316,7 @@ class Terminal:
         # (value, monotonic_time_at_read) for the cwd cache; None until first
         # successful query.
         self._cwd_cache: tuple[str | None, float] | None = None
-        self._pty.attach(self._loop, self._on_data)
+        self._pty.attach(asyncio.get_running_loop(), self._on_data)
 
     # ----- reading ------------------------------------------------------
 

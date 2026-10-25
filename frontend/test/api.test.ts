@@ -4,7 +4,9 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const fetchSpy = vi.fn(() => Promise.resolve(new Response("{}")));
+const fetchSpy = vi.fn((..._args: unknown[]) =>
+  Promise.resolve(new Response("{}")),
+);
 
 type Api = typeof import("../src/state/api");
 let api: Api["api"];
@@ -37,5 +39,18 @@ describe("api", () => {
     expect(init.method).toBe("PATCH");
     expect(init.keepalive).toBe(true);
     expect(init.headers).toEqual({ "Content-Type": "application/json" });
+  });
+
+  it("send JSON-encodes the body and logs a refused request", async () => {
+    const { send } = await import("../src/state/api");
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    fetchSpy.mockResolvedValueOnce(new Response("{}", { status: 409 }));
+    await send("DELETE", "/tabs/t1");
+    expect(logged).toHaveBeenCalledWith("DELETE /api/tabs/t1: HTTP 409");
+    await send("PATCH", "/ui", { font_size: 14 });
+    const init = fetchSpy.mock.calls.at(-1)?.[1] as RequestInit;
+    expect(init.body).toBe('{"font_size":14}');
+    expect(logged).toHaveBeenCalledTimes(1);
+    logged.mockRestore();
   });
 });

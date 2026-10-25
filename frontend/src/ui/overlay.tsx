@@ -1,13 +1,13 @@
-// A modal card mounted once on <body> and toggled: Escape or close()
-// hides it and hands focus back to the terminal. Shared by the stats and
-// connect-info overlays.
+// A modal card mounted on <body> at first open and toggled: Escape or
+// close() hides it and hands focus back to the terminal. Shared by every
+// overlay: both palettes, find, stats and connect-info.
 
-import { render, type VNode } from "preact";
+import { render, type ComponentChildren, type VNode } from "preact";
+import { useLayoutEffect, useRef } from "preact/hooks";
 
 import { activeSession } from "../state/store";
 
 export interface Overlay {
-  install: () => void;
   open: () => void;
   close: () => void;
   rerender: () => void;
@@ -15,8 +15,9 @@ export interface Overlay {
 }
 
 /**
- * `view(visible, key)` renders the card; `key` changes on every open, so
- * the card remounts and re-grabs focus. `onClose` runs before the hide.
+ * `view(visible, key)` renders the card; `key` changes on every open, so a
+ * card keyed on it remounts (fresh state, focus re-grabbed), and one that
+ * ignores it keeps its state between opens. `onClose` runs before the hide.
  */
 export function createOverlay(
   view: (visible: boolean, key: number) => VNode,
@@ -61,7 +62,6 @@ export function createOverlay(
   };
 
   return {
-    install: ensure,
     open: (): void => {
       visible = true;
       epoch++;
@@ -71,4 +71,35 @@ export function createOverlay(
     rerender,
     isVisible: () => visible,
   };
+}
+
+interface ModalProps {
+  id: string;
+  cardId: string;
+  visible: boolean;
+  onClose: () => void;
+  children: ComponentChildren;
+}
+
+/** A backdrop (a click on it closes) around a card that takes focus on
+ * mount, so Escape lands there rather than on the still-focused xterm
+ * textarea, which would feed ESC to the shell. Key it per open. */
+export function Modal({ id, cardId, visible, onClose, children }: ModalProps) {
+  const card = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => card.current?.focus(), []);
+  return (
+    <div
+      id={id}
+      hidden={!visible}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div id={cardId} tabIndex={-1} ref={card}>
+        {children}
+      </div>
+    </div>
+  );
 }

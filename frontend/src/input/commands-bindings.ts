@@ -4,7 +4,6 @@
 // from ``commands.ts`` so the pure registry stays import-light and
 // node-testable.
 
-import { api } from "../state/api";
 import { invoke, register } from "./commands";
 import { openCmdPalette } from "../ui/cmdpalette";
 import { openFind } from "../ui/find";
@@ -24,7 +23,7 @@ import { openStatsPanel } from "../ui/statspanel";
 import {
   activeWorkspace,
   getState,
-  refresh,
+  mutate,
   setActiveWorkspaceOptimistic,
 } from "../state/store";
 import { closeTab, renderTabs, switchTab } from "../ui/tabs";
@@ -50,10 +49,7 @@ function applySort(sort: (ws: WorkspaceView[]) => WorkspaceView[]): void {
     return;
   }
   const order = sort(state.workspaces).map((w) => w.id);
-  void api(`/workspaces/${order[0]}`, {
-    method: "PATCH",
-    body: JSON.stringify({ order }),
-  }).then(refresh);
+  void mutate("PATCH", `/workspaces/${order[0]}`, { order });
 }
 
 declare global {
@@ -72,7 +68,7 @@ declare global {
 export function installCommands(): void {
   // ----- workspaces ---------------------------------------------------
   register("workspace.new", () => {
-    void api("/workspaces", { method: "POST" }).then(refresh);
+    void mutate("POST", "/workspaces");
   });
   register("workspace.next", () => switchWorkspace(1));
   register("workspace.prev", () => switchWorkspace(-1));
@@ -96,7 +92,7 @@ export function installCommands(): void {
   register("tab.new", () => {
     const ws = activeWorkspace();
     if (ws) {
-      void api(`/workspaces/${ws.id}/tabs`, { method: "POST" }).then(refresh);
+      void mutate("POST", `/workspaces/${ws.id}/tabs`);
     }
   });
   register("tab.close", () => {
@@ -138,17 +134,11 @@ export function installCommands(): void {
   // ----- prefs toggles -------------------------------------------------
   register("view.copy-on-select.toggle", () => {
     const next = !getState()?.ui.copy_on_select;
-    void api("/ui", {
-      method: "PATCH",
-      body: JSON.stringify({ copy_on_select: next }),
-    }).then(refresh);
+    void mutate("PATCH", "/ui", { copy_on_select: next });
   });
   register("view.scrollback-persist.toggle", () => {
     const next = !getState()?.ui.scrollback_persist;
-    void api("/ui", {
-      method: "PATCH",
-      body: JSON.stringify({ scrollback_persist: next }),
-    }).then(refresh);
+    void mutate("PATCH", "/ui", { scrollback_persist: next });
   });
 
   // ----- session activity ---------------------------------------------
@@ -156,7 +146,7 @@ export function installCommands(): void {
   register("view.stats", () => openStatsPanel());
   register("view.connect-info", () => openConnectInfo());
   register("view.activity.reset", () => {
-    void api("/activity/reset", { method: "POST" }).then(refresh);
+    void mutate("POST", "/activity/reset");
   });
   register("workspace.sort.time-spent", () => applySort(byTimeSpent));
   register("workspace.sort.recent", () => applySort(byRecentActivity));

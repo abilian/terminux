@@ -163,9 +163,7 @@ class Api:
         self.ctl.save()
         return JSONResponse({"id": ws.id})
 
-    async def patch_workspace(  # noqa: C901 — nested ``_apply`` inflates the count
-        self, request: Request
-    ) -> Response:
+    async def patch_workspace(self, request: Request) -> Response:
         body = await _json_object(request)
         _check_types(body, name=str, order=list, tab_order=list)
         ws_id = request.path_params["ws_id"]
@@ -183,31 +181,11 @@ class Api:
                 if body.get("active"):
                     self.ctl.state.set_active_workspace(ws.id)
                 if "active_tab_id" in body:
-                    # Only accept a tab that belongs to this workspace (also
-                    # type-guards): a stale client racing a tab delete is
-                    # ignored, not an error — same tolerance as the reorder
-                    # keys below.
-                    new_tid = body["active_tab_id"]
-                    if new_tid is None:
-                        ws.active_tab_id = None
-                    elif new_tid in ws.tab_ids:
-                        ws.active_tab_id = new_tid
-                        tab = self.ctl.state.tabs.get(new_tid)
-                        if tab is not None:
-                            tab.has_unseen_output = False
+                    self.ctl.state.set_active_tab(ws, body["active_tab_id"])
                 if "order" in body:
-                    # Unlisted workspaces (a stale client) sort after the
-                    # listed ones, preserving their relative order.
-                    pos = {str(x): i for i, x in enumerate(body["order"])}
-                    self.ctl.state.workspaces.sort(
-                        key=lambda w: pos.get(w.id, len(pos)),
-                    )
+                    self.ctl.state.reorder_workspaces(body["order"])
                 if "tab_order" in body:
-                    want = [str(x) for x in body["tab_order"]]
-                    # Keep only ids that belong to this workspace; append any the
-                    # client omitted so no tab is ever lost on a stale reorder.
-                    ordered = [t for t in want if t in ws.tab_ids]
-                    ws.tab_ids = ordered + [t for t in ws.tab_ids if t not in ordered]
+                    ws.reorder_tabs(body["tab_order"])
             self.ctl.save()
             return True
 
@@ -216,27 +194,7 @@ class Api:
         return JSONResponse({"ok": True})
 
     def delete_workspace(self, request: Request) -> Response:
-        ws_id = request.path_params["ws_id"]
-        with self.ctl.lock:
-            # Collect terminal ids BEFORE removal — remove_workspace drops the
-            # tabs from state, so the references must be taken first. It
-            # returns the removed tab ids and itself guarantees ≥ 1 workspace
-            # remains.
-            ws = self.ctl.state.get_workspace(ws_id)
-            term_ids = [
-                tab.terminal_id
-                for tid in (ws.tab_ids if ws is not None else [])
-                if (tab := self.ctl.state.tabs.get(tid)) is not None
-                and tab.terminal_id is not None
-            ]
-            tab_ids = self.ctl.state.remove_workspace(ws_id)
-            for term_id in term_ids:
-                self.ctl.terminals.close(term_id)
-        # A deliberate close also drops each tab's saved scrollback; the
-        # unlinks run outside the lock (disk is never touched under it).
-        for tid in tab_ids:
-            self.ctl.delete_scrollback(tid)
-        self.ctl.save()
+        self.ctl.close_workspace(request.path_params["ws_id"])
         return JSONResponse({"ok": True})
 
     def create_tab(self, request: Request) -> Response:
@@ -425,10 +383,14 @@ class Api:
         out_task = asyncio.create_task(_pump_out(ws, sub, term))
         try:
             await _pump_in(ws, term, sub, self.ctl)
-        except (WebSocketDisconnect, RuntimeError):
+        except WebSocketDisconnect:
             pass
         finally:
             out_task.cancel()
+            # Collect the pump's outcome; a send on a socket that just
+            # closed is expected, anything else surfaces.
+            with contextlib.suppress(asyncio.CancelledError, WebSocketDisconnect):
+                await out_task
             term.unsubscribe(sub)
 
 

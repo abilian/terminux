@@ -5,7 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  api: vi.fn(() => Promise.resolve({})),
+  api: vi.fn((..._args: unknown[]) => Promise.resolve({})),
   ui: {
     sidebar_width: 300,
     sidebar_collapsed: false,
@@ -14,7 +14,12 @@ const mocks = vi.hoisted(() => ({
     scrollback_persist: true,
   },
 }));
-vi.mock("../src/state/api", () => ({ api: mocks.api, TOKEN: "t" }));
+vi.mock("../src/state/api", () => ({
+  api: mocks.api,
+  TOKEN: "t",
+  send: (method: string, path: string, body?: object) =>
+    mocks.api(path, { method, body: body && JSON.stringify(body) }),
+}));
 vi.mock("../src/state/store", () => ({ getState: () => ({ ui: mocks.ui }) }));
 
 type Layout = typeof import("../src/ui/layout");

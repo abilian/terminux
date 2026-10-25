@@ -15,6 +15,8 @@ function ws(
     active_tab_id,
     status: "idle",
     active_seconds: 0,
+    last_used_at: null,
+    ready_since: null,
   };
 }
 
