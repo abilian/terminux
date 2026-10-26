@@ -28,7 +28,7 @@ These are additive along existing interfaces. The backend already speaks HTTP + 
 ## Hardening / loose ends
 
 - **Test the cross-platform shortcuts on real machines** (0.11): `Ctrl+Shift+V` pasting natively in the macOS window (a `keyDown_` patch, tested only on a hidden window), and plain `Ctrl+C` / `Ctrl+V` on Linux.
-- **Audit leftovers, deliberately deferred**: the 250 ms post-drag click guard in `reorder.ts` (the alternative depends on WebKit's click dispatch order); renaming `Workspace.has_unseen_output` to `is_ready` (changes the wire field); the one-line `setActive*Optimistic` wrappers in `store.ts`; injecting the data directory into `AppController` instead of the `persist` flag.
+- **Audit leftovers, deferred on purpose**: the 250 ms post-drag click guard in `reorder.ts` (the alternative depends on WebKit's click dispatch order); renaming `Workspace.has_unseen_output` to `is_ready` (changes the wire field); the one-line `setActive*Optimistic` wrappers in `store.ts`; replacing the `persist` flag of `AppController` with an injected data directory.
 - **macOS code-signing / notarization** for the packaged `.app`. It's currently distributed unsigned. See `docs/src/developers/packaging.md`.
 - **Per-Terminal async write queue.** The PTY master is non-blocking and `UnixPty.write` paces itself with `select()` on a worker thread, so the event loop is safe. A permanently stuck shell still parks one `to_thread` worker forever. The full fix queues writes in a small per-Terminal buffer, drains it via `loop.add_writer`, and drops on overflow with a one-shot notice (same shape as the subscriber output fan-out). See `05-lessons-learned.md`, "Server-side concurrency".
 

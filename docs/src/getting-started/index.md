@@ -36,7 +36,7 @@ The window needs GTK and WebKitGTK, with their Python bindings (PyGObject), from
 pipx install --python /usr/bin/python3 --system-site-packages terminux
 ```
 
-If something is missing, `terminux` says what to install instead of opening a window. Without GTK, `terminux --no-window` still works: it serves the same interface to any browser, at the URL it prints.
+If something is missing, `terminux` says what to install and exits. Without GTK, `terminux --no-window` still works: it serves the same interface to any browser, at the URL it prints.
 
 Without a display (in an SSH session, say), there is no window to open: run `terminux --no-window`, or `terminux --server -d` and connect to it from a machine with a display, as [Remote access](../guides/remote.md) describes. terminux says so if you forget.
 

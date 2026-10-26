@@ -101,7 +101,7 @@ terminux is a preview, and so far its only daily user is its author. These come 
 - **Split panes**, to put two terminals side by side in one tab.
 - **A single palette** for commands, workspaces and tabs, on one shortcut on every platform.
 - **A standalone Windows app** that needs no Python, and a setting to pick your shell (Git Bash, MSYS2).
-- **Proper user accounts**, for running terminux on an open network rather than through an SSH tunnel.
+- **Proper user accounts**, for running terminux on an open network without an SSH tunnel.
 
 ## Get involved
 

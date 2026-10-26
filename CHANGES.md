@@ -18,16 +18,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Changed
 
 - **The API is stricter**: creating a workspace or tab answers 201, a 404 names what is missing, numbers and flags must be JSON numbers and booleans, and closing a workspace's last tab is refused (409).
-- **An unreadable `server.token` is an error** instead of being replaced silently, which changed the stable URL. A bad saved UI preference falls back to its default instead of setting the whole state file aside.
+- **An unreadable `server.token` stops the server with an error.** Replacing it silently changed the stable URL. A bad saved UI preference falls back to its default; the rest of the state file loads as usual.
 
 ### Fixed
 
-- **On Linux, a missing GTK or display says what to do** (the packages to install, a `pipx --system-site-packages` reinstall, or `--no-window` and `--server`) instead of a traceback.
-- **A window attaching to a terminal no longer types stray escape sequences into it.** It answered the terminal queries in the replayed history (fish asks for the cursor position and colors at each prompt), and those answers reached the program as input: `terminux --connect` launched from a tab printed lines of `^[[?1;2c^[[29;1R…`.
+- **On Linux, a missing GTK or display says what to do** (the packages to install, a `pipx --system-site-packages` reinstall, or `--no-window` and `--server`).
+- **A window attaching to a terminal no longer types stray escape sequences into it.** It answered the terminal queries in the replayed history (fish asks for the cursor position and colors at each prompt). Those answers reached the program as input: `terminux --connect` launched from a tab printed lines of `^[[?1;2c^[[29;1R…`.
 - **A malformed message from a client no longer drops its terminal connection.**
-- **Renaming to a blank name goes back to the automatic name** instead of showing "workspace N".
+- **Renaming to a blank name goes back to the automatic name**, where it used to show "workspace N".
 - **A tab reorder that lists a tab twice no longer duplicates it.**
-- **Frontend errors and refused changes show in the console** instead of being dropped silently.
+- **Frontend errors and refused changes show in the console.**
 
 ## [0.10.1] - 2026-10-13
 
@@ -42,11 +42,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Fixed
 
-- **`--connect` windows and browsers load again with `terminux --server`.** The served page carried a stale access code, so every request was refused.
+- **`--connect` windows and browsers load again with `terminux --server`.** The served page had a stale access code, so every request was refused.
 - **Large scrollbacks are kept.** A tab with more than 2 MB of scrollback lost all of it at restart, and in Chrome, Windows and browser mode, autosaves past 64 KB failed silently. Failed saves are now retried.
 - **Closing a tab lets its shell save its history**: the shell gets a hang-up signal before being killed.
 - **Ctrl-C, SIGTERM and `terminux --stop` save the layout** and close the shells, as closing the window does; SIGTERM closes the window, if there is one.
-- **A corrupt `state.json` is set aside** as `state.json.corrupt` instead of being overwritten.
+- **A corrupt `state.json` is kept** as `state.json.corrupt` for inspection.
 - **Ctrl+click opens links on Linux and Windows**, as documented (it took Ctrl+Shift+click).
 - **Dropped text works from a second window too**, and is pasted like `Ctrl+V`.
 - **Malformed API requests get a 400** naming the bad field; out-of-range terminal sizes, which could stall new tabs, are clamped.
@@ -97,7 +97,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Added
 
-- **You can always see which workspace you're in.** With the sidebar hidden, the active workspace appears as a chip at the left of the tab bar (click it to bring the sidebar back), and its name is in the window title.
+- **You can always see which workspace you're in.** With the sidebar hidden, the active workspace appears as a chip at the left of the tab bar (click it to bring the sidebar back). The window title shows its name too.
 
 ## [0.8.0] - 2026-08-30
 
@@ -111,8 +111,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Web/remote mode: the page no longer reveals the access code.** Every route now requires the code.
 - **A stale browser tab can no longer lock you out**: local connections are exempt from the lockout.
 - **Terminals open again on older Macs** (e.g. Big Sur), in the app, a `--connect` client or a browser: the build targets Safari 14-era WebKit again, and the security policy names the websocket origin.
-- **Hyperlinks printed by programs open** with Cmd/Ctrl+click, like plain URLs, instead of a dead popup. Only `http`, `https` and `mailto` links open.
-- **Starting on a port already in use fails with a clear error** instead of hanging.
+- **Hyperlinks printed by programs open** with Cmd/Ctrl+click, like plain URLs. Only `http`, `https` and `mailto` links open.
+- **Starting on a port already in use fails right away with a clear error.**
 - **Access codes no longer appear in request logs** with `--debug` or `--trace`.
 
 ### Internal
@@ -151,7 +151,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Added
 
 - **Native application menu** (File, View, Workspace, Help), wired to the same actions as the shortcuts and the command palette. Help → Documentation opens the docs.
-- **App icon**: a `>_` prompt on a dark rounded square, instead of the Python rocket in the macOS dock.
+- **App icon**: a `>_` prompt on a dark rounded square. It also replaces the Python rocket in the macOS dock.
 
 ## [0.6.3] - 2026-05-28
 

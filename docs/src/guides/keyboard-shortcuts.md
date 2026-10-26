@@ -2,7 +2,7 @@
 
 ## One set of keys on every platform
 
-Every terminux shortcut is ++ctrl+shift++ plus a key, and it is the same on Linux, Windows and macOS. If you move between machines during the day, your hands don't have to switch.
+Every terminux shortcut is ++ctrl+shift++ plus a key, the same on Linux, Windows and macOS. If you move between machines during the day, your hands don't have to switch.
 
 On macOS, ++cmd++ works too: ++cmd+t++ and ++ctrl+shift+t++ both open a tab. Use whichever you like; the native menus show the ++cmd++ form.
 
@@ -21,7 +21,7 @@ All shortcuts work while the terminal has focus.
 | Previous / next tab | ++ctrl+shift+bracket-left++ / ++ctrl+shift+bracket-right++, or ++ctrl+shift+left++ / ++ctrl+shift+right++ | ++cmd+shift+bracket-left++ / ++cmd+shift+bracket-right++ |
 | Previous / next workspace | ++ctrl+shift+up++ / ++ctrl+shift+down++ | ++cmd+shift+up++ / ++cmd+shift+down++ |
 
-Closing the last tab of a workspace closes the workspace and activates another one, rather than quitting the app. The numbers 1 to 9 are shown next to the workspaces in the sidebar.
+Closing the last tab of a workspace closes the workspace and activates another one; the app keeps running. The numbers 1 to 9 are shown next to the workspaces in the sidebar.
 
 ## Palettes
 
@@ -58,7 +58,7 @@ On Linux and Windows, zoom also works without Shift (++ctrl+plus++, ++ctrl+minus
 
 Plain ++ctrl+c++ copies only while text is selected, and clears the selection. With nothing selected, it interrupts the running program as usual, so pressing it twice always interrupts. This matches Windows Terminal, and means the PC version of ++cmd+c++ / ++cmd+v++ works on any PC. On a Mac, plain ++ctrl+c++ always interrupts. Since terminux takes plain ++ctrl+v++ on Linux and Windows, use ++ctrl+q++ there for what ++ctrl+v++ does in the shell or in vim (insert the next key literally, visual block).
 
-Auto-copy (as in iTerm2) copies whatever you select, without a key. It is off by default, and the setting is kept across restarts.
+Auto-copy (as in iTerm2) copies whatever you select, without a key. It is off by default and kept across restarts.
 
 On Linux and Windows, the **Edit** menu has the same commands.
 
@@ -71,7 +71,7 @@ On Linux and Windows, the **Edit** menu has the same commands.
 | Delete the previous word | ++option+backspace++ | ++alt+backspace++ |
 | Delete to the start of the line | ++cmd+backspace++ | ++ctrl+u++ |
 
-++shift+enter++ inserts a newline instead of running the line, in coding agents (Claude Code, Codex, OpenCode, Pi…) and other tools with multi-line input.
+In coding agents (Claude Code, Codex, OpenCode, Pi…) and other tools with multi-line input, ++shift+enter++ inserts a newline without running the line.
 
 ## Links
 
@@ -87,7 +87,7 @@ If you stick to ++ctrl+shift++, the shortcuts behave the same everywhere. The di
 
 ## In a browser
 
-When terminux runs in a browser tab (`--no-window` or `--server`), the browser keeps some keys for itself and never passes them to the page: ++cmd+w++, ++cmd+t++ and ++cmd+n++ on macOS; ++ctrl+shift+t++, ++ctrl+shift+w++ and ++ctrl+shift+n++ on Linux and Windows; and ++ctrl+shift+p++ in Firefox.
+When terminux runs in a browser tab (`--no-window` or `--server`), the browser keeps some keys for itself and never passes them to the page. On macOS, these are ++cmd+w++, ++cmd+t++ and ++cmd+n++. On Linux and Windows, they are ++ctrl+shift+t++, ++ctrl+shift+w++ and ++ctrl+shift+n++. Firefox also keeps ++ctrl+shift+p++.
 
 - On macOS, ++ctrl+shift++ still works for all of them.
 - On Linux and Windows, those shortcuts also work with ++alt+shift++ in a browser tab: ++alt+shift+t++, ++alt+shift+w++, ++alt+shift+n++, ++alt+shift+p++, and ++alt+shift+o++ for the quick switcher. Other ++alt+shift++ keys still reach the shell.

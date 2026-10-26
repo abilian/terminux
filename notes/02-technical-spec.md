@@ -175,7 +175,7 @@ A loopback HTTP server is reachable by *any* local process or browser tab, so th
 
 - **macOS:** primary target. pywebview uses the WKWebView backend; Unix PTY via `ptyprocess`.
 - **Linux:** same Unix PTY path; pywebview GTK/Qt backend (document the chosen backend + its system deps).
-- **Windows:** **staged.** Needs `pywinpty` (ConPTY) behind the `PtyBackend` protocol, ConPTY resize, and process-tree kill (a Job Object). See [`06-windows-port.md`](06-windows-port.md). Default shell probe: `pwsh` → `powershell` → `cmd`. Land Unix first; Windows behind the same interface so it's additive, not a rewrite.
+- **Windows:** **staged.** Needs `pywinpty` (ConPTY) behind the `PtyBackend` protocol, ConPTY resize, and process-tree kill (a Job Object). See [`06-windows-port.md`](06-windows-port.md). Default shell probe: `pwsh` → `powershell` → `cmd`. Land Unix first; Windows behind the same interface, so adding it leaves the Unix code alone.
 
 `core/pty_backend.py` defines a `PtyBackend` Protocol (`spawn`, `read`-source/fd, `write`, `resize`, `kill`, `wait`) with `UnixPty` and `WindowsPty` implementations; the rest of the code is OS-agnostic.
 

@@ -85,7 +85,7 @@ macOS's `sandboxd` did the blocking; no chmod or ACL produces that message.
 
 #### Why it can appear mid-session
 
-TCC decisions are made at *access time*, not when the process starts. The
+TCC decisions are made at *access time*, when the process first touches a protected location. The
 first shells often don't touch the protected location: your prompt, `cd`,
 and basic builtins stay on the boot drive. The block kicks in only when
 something later re-sources `.profile` / `.zshrc` or a new tab spawns a fresh

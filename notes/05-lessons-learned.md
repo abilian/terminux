@@ -96,7 +96,7 @@ Tab ids are server-generated uuid4s today, but a single `^[A-Za-z0-9_-]+$` guard
 
 **Symptom.** Shells inside the app suddenly start emitting `Operation not permitted` / `file system sandbox blocked open()` partway through a session, on Homebrew/nvm paths that worked earlier.
 
-**Cause.** macOS evaluates TCC scope at *access time*, not process start. The first shells often don't touch the protected location (typically a removable volume where the user relocated Homebrew). The wall only appears when a new tab re-sources `.profile` and something `dlopen`s a library from `/Volumes/<external>/...`.
+**Cause.** macOS evaluates TCC scope at *access time*, when a process first touches the protected location. The first shells often don't touch the protected location (typically a removable volume where the user relocated Homebrew). The wall only appears when a new tab re-sources `.profile` and something `dlopen`s a library from `/Volumes/<external>/...`.
 
 **Fix.** Grant the TCC-responsible parent of the shells access to the volume. Identify it with `ps -o pid,ppid,command -p $(pgrep -f <app>)`; under pywebview it's usually the embedded Python (Terminal.app is the usual wrong guess). macOS only re-evaluates scope on process start, so the app must be restarted after granting.
 
@@ -128,7 +128,11 @@ Symptom: first `uvx terminux` on Windows dies right after "server ready" with a 
 
 ### WebView2 has no Edit menu, no context menu, and refuses `navigator.clipboard.readText()`
 
-Symptom: no way to copy or paste on Windows (and Linux); after adding an Edit menu, Edit → Paste still did nothing while `Ctrl+V` worked. Cause: pywebview builds an Edit menu only on macOS and disables the context menu outside `--debug`; a menu click gives the webview no keystroke for a native paste, and WebView2 denies the clipboard read permission that pywebview never handles. Fix: keyboard paste keeps the webview's default action (stop propagation so xterm doesn't send ^V, but don't `preventDefault`); the Windows menu Paste reads `CF_UNICODETEXT` in Python (`terminux/clipboard.py`, ctypes) and calls `window.terminux.pasteText()`.
+**Symptom.** Windows (and Linux) had no way to copy or paste. After adding an Edit menu, Edit → Paste still did nothing while `Ctrl+V` worked.
+
+**Cause.** pywebview builds an Edit menu only on macOS and disables the context menu outside `--debug`. A menu click gives the webview no keystroke for a native paste. WebView2 also denies the clipboard read permission, which pywebview never handles.
+
+**Fix.** Keyboard paste keeps the webview's default action: the handler stops propagation, so xterm doesn't send ^V, and leaves out `preventDefault`. The Windows menu Paste reads `CF_UNICODETEXT` in Python (`terminux/clipboard.py`, ctypes) and calls `window.terminux.pasteText()`.
 
 ## Frontend (WebKit / browser)
 
@@ -208,9 +212,9 @@ This **landed on 2026-07-29**, after a field freeze of exactly this shape (a blo
 
 **Symptom.** Running `terminux --connect …` from a terminux tab printed lines of `^[[?0u^[]11;rgb:1a1a/1b1b/2626^[\^[[?1;2c^[[29;1R…` in that tab: one batch per earlier prompt.
 
-**Cause.** Attaching replays the terminal's backlog so the new screen isn't blank. fish emits queries at each prompt (kitty keyboard `CSI ? u`, background color `OSC 11`, `DA1`, cursor position `CPR`), so the backlog is full of them, and the new xterm answers every one while parsing it (the kitty codec answers `CSI ? u` itself). The focused window claims ownership on attach, so the server forwarded those answers to the PTY; the foreground program, here `terminux --connect` itself not reading stdin, got them as input and the tty echoed them. The earlier rule "drop a non-owner's bytes" didn't cover it: the attaching window *is* the owner.
+**Cause.** Attaching replays the terminal's backlog so the new screen isn't blank. fish emits queries at each prompt (kitty keyboard `CSI ? u`, background color `OSC 11`, `DA1`, cursor position `CPR`), so the backlog is full of them. The new xterm answers every one while parsing it (the kitty codec answers `CSI ? u` itself). The focused window claims ownership on attach, so the server forwarded those answers to the PTY; the foreground program, here `terminux --connect` itself not reading stdin, got them as input and the tty echoed them. The earlier rule "drop a non-owner's bytes" didn't cover it: the attaching window *is* the owner.
 
-**Fix.** The server sends `{"type":"replayed"}` after the first batch it sends to a new subscriber (the backlog). The client sets `sess.replaying` at each connect and clears it in a `term.write("", cb)` callback when the marker arrives, i.e. once xterm has parsed the whole backlog; `sendInput` drops everything while it is set. Control frames (`claim`, `resize`) still go through. The e2e test runs `printf '\033[c'; cat -v` and attaches a second window: `cat -v` must show one answer, not two.
+**Fix.** The server sends `{"type":"replayed"}` after the first batch it sends to a new subscriber (the backlog). The client sets `sess.replaying` at each connect and clears it in a `term.write("", cb)` callback when the marker arrives, i.e. once xterm has parsed the whole backlog; `sendInput` drops everything while it is set. Control frames (`claim`, `resize`) still go through. The e2e test runs `printf '\033[c'; cat -v` and attaches a second window: `cat -v` must show exactly one answer.
 
 **Corollary: the first client must answer.** The first version gated every client, and that broke new tabs: the tab spawns the shell before its socket connects, so a fresh fish's startup queries sit in the backlog unanswered, and fish blocks input waiting for them ("Still blocked on response from terminal"). Only a terminal's later clients replay answered queries; the first client gets the marker before the backlog (`Subscriber.first`). A second e2e test starts a shell whose first output is a query: its answer must arrive, once.
 
@@ -257,7 +261,7 @@ When one symbol trips all of them, comments stack on the same line. Avoid this b
 
 ### `subprocess.Popen([argv])` is safe but bandit's S404 still fires
 
-The S404 rule flags the *import*, not the usage. Acknowledge with `# noqa: S404 — argv form only, no shell, opener path resolved via shutil.which()` to keep the rationale next to the import.
+The S404 rule flags the *import* itself. Acknowledge with `# noqa: S404 — argv form only, no shell, opener path resolved via shutil.which()` to keep the rationale next to the import.
 
 ### Hooks (pre-commit, ruff) can disagree with your local lint pass
 

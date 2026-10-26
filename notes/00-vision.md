@@ -33,7 +33,7 @@ A simple, reliable, cross-platform terminal app with a **Workspaces** sidebar an
 - Architecture: **thin web UI (xterm.js) + separate backend process that owns the PTY**, communicating over a narrow, typed IPC surface with **raw-byte streaming** for terminal output, flushed in batches.
 - **Backend language: Python.** Tauri is acceptable; since Tauri's native side is Rust, the Python integration approach (Tauri + Python sidecar vs. pywebview vs. Python web backend + webview shell) is an open decision for the technical spec round. *Resolved as pywebview + a loopback Starlette/uvicorn backend; see [`02-technical-spec.md`](02-technical-spec.md).*
 - Persistence: a workspace/tab snapshot (no pane tree in v1), stored as local JSON files in the app data dir.
-- Adopt proven "good bones": sandboxed UI, background-streaming tabs (no switch jank), shell-side OSC 7/133 integration rather than a custom emulator.
+- Adopt proven "good bones": sandboxed UI, background-streaming tabs (no switch jank), shell-side OSC 7/133 integration on a standard emulator.
 
 ## Guiding principles
 

@@ -1,6 +1,6 @@
 # Windows port
 
-Status (2026-10-08): **milestones 0–3 are done, and the cwd half of 4.** Client mode works, and so do local terminals: `WindowsPty` in `core/pty_backend.py`, on pywinpty's low-level `PTY`. The full test suite passes on Windows 11 (Playwright e2e checked with `--browser-channel msedge`). Still open: the shell setting (§6), CI, packaging (milestone 5). This note started as the plan; the spike results and what changed from the plan are recorded below. It refines §10 of `02-technical-spec.md`.
+As of 2026-10-08, milestones 0 to 3 are done, along with the cwd half of milestone 4. Client mode works, and so do local terminals: `WindowsPty` in `core/pty_backend.py`, on pywinpty's low-level `PTY`. The full test suite passes on Windows 11 (Playwright e2e checked with `--browser-channel msedge`). The shell setting (§6), CI and packaging (milestone 5) are still open. This note started as the plan; the spike results and what changed from the plan are recorded below. It refines §10 of `02-technical-spec.md`.
 
 ## What's Unix-only today
 
@@ -44,7 +44,7 @@ class PtyBackend(Protocol):
 
 - `UnixPty.attach` keeps today's `add_reader` + `os.read` (the `BlockingIOError`/`EIO` handling moves with it). `foreground_busy` is today's `tcgetpgrp` check.
 - `WindowsPty.attach` starts one daemon thread per terminal: blocking read, then `loop.call_soon_threadsafe(on_data, chunk)`. A thread per terminal is fine at our scale (tens of tabs). `detach` closes the pty so the blocked read returns.
-- `Terminal._on_readable` becomes `_on_data(data)`; `is_busy` calls `self._pty.foreground_busy()` instead of `os.tcgetpgrp`.
+- `Terminal._on_readable` becomes `_on_data(data)`; `is_busy` calls `self._pty.foreground_busy()`, which wraps `os.tcgetpgrp` on Unix.
 
 Keep the "never block the loop" rule from `05-lessons-learned.md`: on Windows the only loop-thread work is the callback; reads happen on the reader thread.
 
@@ -91,11 +91,11 @@ Keep the `pwsh` → `powershell` → `cmd` default. Add one setting for the shel
 
 - **Types.** `PTY.read` returns `str`, decoded from ConPTY's UTF-8 by pywinpty: 3000 four-byte emoji over ~7000 reads came out whole. `write` takes `str` and returns 0 even when it wrote everything (ignore the value). The backend encodes/decodes at the boundary, with an incremental decoder on the write side.
 - **Chunking.** Blocking reads return a few characters at a time; the reader coalesces each blocking read with the non-blocking reads already available (up to 64 KiB) into one loop callback.
-- **EOF.** Arrives as a `WinptyError` raised by `read`, not as `iseof()`. **But not always:** if the child exits before the first blocking read starts, that read never returns (the output pipe lives as long as the pseudo console). Hence a second thread per terminal that waits on the process handle (`WaitForSingleObject`) and wakes the reader with `cancel_io()` until it has drained and stopped. `cancel_io` only wakes a read in progress, so it's repeated every 100 ms.
+- **EOF.** Arrives as a `WinptyError` raised by `read`; `iseof()` doesn't report it. **But not always:** if the child exits before the first blocking read starts, that read never returns (the output pipe lives as long as the pseudo console). Hence a second thread per terminal that waits on the process handle (`WaitForSingleObject`) and wakes the reader with `cancel_io()` until it has drained and stopped. `cancel_io` only wakes a read in progress, so it's repeated every 100 ms.
 - **3 s startup stall.** ConPTY sends DA1 (`ESC [ c`) at startup and holds the child up to 3 s for the answer. The backend answers it itself (`ESC [ ? 1 ; 2 c`, what xterm.js says) and strips the query from the stream, so a backlog replay (second window, reconnect) can't make xterm.js answer again into the shell's input. Startup went from 3.3 s to 0.3 s for pwsh.
 - **OSC.** Everything passes through: 0, 7, 8, 9, 9;9, 133. ConPTY also emits `ESC[1t ESC[?1004h ESC[?9001h` at startup (harmless for xterm.js).
 - **Resize, exit code:** work (`set_size`, `get_exitstatus`).
-- **Closing.** Dropping the `PTY` (`ClosePseudoConsole`) ends the shell and the console-attached children (`Start-Job`, `start /b`). Children with their own window (`Start-Process`) survive, as in Windows Terminal. So no Job Object. The release may block, so it happens on the reader thread, never on the loop.
+- **Closing.** Dropping the `PTY` (`ClosePseudoConsole`) ends the shell and the console-attached children (`Start-Job`, `start /b`). Children with their own window (`Start-Process`) keep running, as in Windows Terminal, so terminux needs no Job Object. The release may block, so it happens on the reader thread, never on the loop.
 - **Busy.** "The shell has a child process" (Toolhelp snapshot via `ctypes`) works: true during `ping`, false at the prompt.
 - **Cwd.** As planned: OSC 7 / OSC 9;9 parsed by `_AttentionScanner`. Deviation from the plan: `Terminal.cwd()` prefers the kernel's answer and uses the reported one only when the backend can't tell (Windows), because a reported cwd goes stale (an `ssh` session reports the remote host's). The PowerShell snippet in `guides/shell-integration.md` (OSC 133 + OSC 9;9) was tested in pwsh 7 and in Windows PowerShell 5.1 (which needs scripts enabled to load a profile at all).
 - **Lint.** The checkers analyse for the host platform. On Windows they flag the POSIX-only code (`os.tcgetpgrp`, `signal.SIGHUP`, `faulthandler.register`, `openurl.opener`), as they did before this work; run `make lint` on macOS/Linux, or pass `--python-platform linux` / `--platform linux`.

@@ -148,5 +148,5 @@ The e2e tier drives the served UI with a real browser (no pywebview); install it
 A Vite/TypeScript web UI (xterm.js for the terminals, Preact for the chrome around them) runs in a sandboxed pywebview window and talks to a loopback Starlette/uvicorn backend that owns the PTYs and streams raw bytes over per-terminal WebSockets. The frontend build output is committed to `src/terminux/web/static/`, so the Python package runs with no Node toolchain.
 
 <div align="center">
-<sub>Built for people who keep too many terminals open. <a href="https://github.com/abilian/terminux">abilian/terminux</a></sub>
+<sub>terminux is built for people who keep too many terminals open. <a href="https://github.com/abilian/terminux">abilian/terminux</a></sub>
 </div>

@@ -29,7 +29,7 @@ finishes. Set it up once and:
 - The sidebar's amber **busy** dot (see
   [Working vs ready](workspaces-and-tabs.md#working-vs-ready)) becomes
   precise: it lights only between the shell's `;C` and `;D` markers,
-  instead of flagging every interactive TUI as "running."
+  so an interactive TUI waiting for input no longer reads as "running."
 
 You need a small snippet in your shell init file. Pick yours:
 
@@ -100,8 +100,8 @@ You need a small snippet in your shell init file. Pick yours:
     }
     ```
 
-    It wraps your existing prompt (oh-my-posh, Starship, …) rather than
-    replacing it. Besides OSC 133, it reports the current directory
+    It wraps your existing prompt (oh-my-posh, Starship, …), which keeps
+    working. Besides OSC 133, it reports the current directory
     (`OSC 9;9`): on Windows, that's the only way terminux learns it, for
     the workspace name and for opening new tabs in the same directory.
     Windows PowerShell 5.1 runs no profile until scripts are allowed:
