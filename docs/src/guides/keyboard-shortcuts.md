@@ -71,7 +71,7 @@ On Linux and Windows, the **Edit** menu has the same commands.
 | Delete the previous word | ++option+backspace++ | ++alt+backspace++ |
 | Delete to the start of the line | ++cmd+backspace++ | ++ctrl+u++ |
 
-++shift+enter++ inserts a newline instead of running the line, in Claude Code and similar tools.
+++shift+enter++ inserts a newline instead of running the line, in coding agents (Claude Code, Codex, OpenCode, Pi…) and other tools with multi-line input.
 
 ## Links
 

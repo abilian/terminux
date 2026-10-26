@@ -86,7 +86,7 @@ The sidebar uses two indicators:
 
 Priority is **active > exited > busy > unseen > idle**. "Busy" requires
 **recent PTY output** (within the last few seconds), so an idle TUI
-(Claude Code waiting for input, a parked vim) doesn't keep the dot lit.
+(a coding agent waiting for input, a parked vim) doesn't keep the dot lit.
 Busy beats unseen so a chatty long-running task keeps the *working*
 signal until it actually quiets down.
 
@@ -99,8 +99,8 @@ workspace to ready. It fires only on:
    app explicitly signalling "look here."
 3. A **kernel-level `busy → idle` transition** that lasted at least
    ~5 s. Catches the cases without shell integration: `sleep 10` ending,
-   `make test` finishing, Claude Code returning to its prompt after a
-   real thinking session.
+   `make test` finishing, a coding agent returning to its prompt after
+   a long turn.
 
 The 1 Hz background ticker drives the busy→idle detection, so a "task
 finished" event surfaces within a second of going quiet.
@@ -161,7 +161,7 @@ are *not* still running.
     Running processes are **not** restored; only their visible output is.
     Split panes are still on the roadmap (see the [FAQ](../faq.md)).
 
-!!! info "Full-screen TUIs (Claude Code, vim, less, tmux, fzf…)"
+!!! info "Full-screen TUIs (coding agents, vim, less, tmux, fzf…)"
     Full-screen apps draw into the terminal's **alternate screen buffer**,
     which they own and clean up when they exit. By the time terminux saves a
     tab's view (and certainly by the time the app has been SIGHUP'd on quit),
@@ -177,7 +177,7 @@ are *not* still running.
 
 - **Drag a file** onto the terminal to insert its full, shell-quoted path.
 - macOS line-editing chords and `Shift+Cmd`+arrow navigation are supported;
-  `Shift+Enter` inserts a newline (works with Claude Code and similar tools).
+  `Shift+Enter` inserts a newline (for coding agents and other tools with multi-line input).
 - **Clickable URLs.** URLs in the terminal are highlighted on hover and open
   with `Ctrl+click` on Linux and Windows or `Cmd+click` on macOS, matching
   iTerm2 and Terminal.app, so a stray click never navigates.

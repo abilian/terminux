@@ -10,8 +10,8 @@ shell:
 | **OSC 133;D** | A long-running command just finished: *the* "ready" signal | shell integration (below) |
 
 The BEL that closes an `OSC 0/2;<title>\x07` title update **does not
-count**: tools like Claude Code update the title constantly while they
-work, so counting those would keep the sidebar ringing forever. Neither
+count**: coding agents (Claude Code, Codex, OpenCode, Pi…) and other tools update the title
+constantly while they work, so counting those would keep the sidebar ringing forever. Neither
 do the ConEmu-style `OSC 9;<n>;…` subcommands, such as `OSC 9;4`
 (progress, emitted by winget and others) and `OSC 9;9` (current
 directory).
@@ -119,7 +119,7 @@ terminux watches each PTY's output for `OSC 133;C` (command start) and
 `OSC 133;D[;exit]` (command end). When `;D` arrives, the attention badge
 fires **only if** the matching `;C` was at least **2 seconds** earlier and
 the tab isn't currently in view. A snappy `cd` in a background tab won't
-ring; a long `make test` or a Claude Code response will.
+ring; a long `make test` or a coding agent's answer will.
 
 The threshold is hard-coded in `core/terminal.py`
 (`OSC133_MIN_COMMAND_SECONDS`); it is not user-configurable yet.

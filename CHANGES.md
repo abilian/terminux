@@ -178,7 +178,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Fixed
 
-- **Idle programs no longer keep the busy dot amber.** A tool sitting at its prompt (vim, less, Claude Code waiting for input) now releases the dot once it goes quiet. Tradeoff: a long-running command that prints nothing may briefly read as idle until it produces output again.
+- **Idle programs no longer keep the busy dot amber.** A tool sitting at its prompt (vim, less, a coding agent waiting for input) now releases the dot once it goes quiet. Tradeoff: a long-running command that prints nothing may briefly read as idle until it produces output again.
 - **A still-working task no longer shows as ready.** Spinner-style output kept turning the dot green while the task was running; busy now takes precedence.
 - **Rapid workspace switching no longer misfires.** Holding `Cmd+Shift+Arrow` could occasionally jump you back to a workspace you had already left.
 
@@ -237,7 +237,7 @@ First public preview. terminux is a cross-platform desktop terminal organized ar
 - `Cmd/Ctrl+F` find-in-terminal.
 - `Cmd/Ctrl+B` toggles the sidebar.
 - `Cmd/Ctrl+ +/-` to zoom the terminal font.
-- macOS line-editing chords and `Shift+Cmd`+arrows navigation; `Shift+Enter` inserts a newline (works with Claude Code and similar tools).
+- macOS line-editing chords and `Shift+Cmd`+arrows navigation; `Shift+Enter` inserts a newline (for coding agents and other tools with multi-line input).
 - Shortcuts keep working while the terminal has focus.
 
 ### Attention and activity

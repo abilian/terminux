@@ -24,7 +24,7 @@ curl -X PATCH "http://127.0.0.1:<port>/api/ui?t=<token>" \
 
 The pref is persisted server-side, so it sticks across restarts.
 
-## Why didn't my Claude Code / vim / less / tmux session come back?
+## Why didn't my coding agent / vim / less / tmux session come back?
 
 Full-screen TUIs draw into the terminal's **alternate screen buffer**, which
 the program owns and tears down when it exits. By the time terminux can save
