@@ -69,10 +69,17 @@ def linux_without_gtk(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setenv("DISPLAY", ":0")
     monkeypatch.setattr(gui_prereq, "is_gtk_available", lambda: False)
+    monkeypatch.setattr(gui_prereq, "is_qt_available", lambda: False)
     monkeypatch.setattr(
         gui_prereq, "_find_system_python_for_gtk", lambda: ("/usr/bin/python3", OURS)
     )
     return tmp_path
+
+
+def test_qt_without_gtk_is_enough(linux_without_gtk, monkeypatch):
+    """pywebview falls back to Qt when GTK is missing."""
+    monkeypatch.setattr(gui_prereq, "is_qt_available", lambda: True)
+    assert gui_prereq.explain_why_no_window() is None
 
 
 def test_an_environment_that_cannot_see_the_system_packages_is_told_so(

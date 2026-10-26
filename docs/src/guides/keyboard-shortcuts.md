@@ -56,7 +56,7 @@ On Linux and Windows, zoom also works without Shift (++ctrl+plus++, ++ctrl+minus
 | Select all | ++ctrl+shift+a++ | | ++cmd+a++ |
 | Toggle auto-copy on selection | ++ctrl+shift+alt+c++ | | ++cmd+alt+c++ |
 
-Plain ++ctrl+c++ copies only while text is selected, and clears the selection. With nothing selected, it interrupts the running program as usual, so pressing it twice always interrupts. This matches Windows Terminal, and means the PC version of ++cmd+c++ / ++cmd+v++ works on any PC. On a Mac, plain ++ctrl+c++ always interrupts.
+Plain ++ctrl+c++ copies only while text is selected, and clears the selection. With nothing selected, it interrupts the running program as usual, so pressing it twice always interrupts. This matches Windows Terminal, and means the PC version of ++cmd+c++ / ++cmd+v++ works on any PC. On a Mac, plain ++ctrl+c++ always interrupts. Since terminux takes plain ++ctrl+v++ on Linux and Windows, use ++ctrl+q++ there for what ++ctrl+v++ does in the shell or in vim (insert the next key literally, visual block).
 
 Auto-copy (as in iTerm2) copies whatever you select, without a key. It is off by default, and the setting is kept across restarts.
 
@@ -90,7 +90,7 @@ If you stick to ++ctrl+shift++, the shortcuts behave the same everywhere. The di
 When terminux runs in a browser tab (`--no-window` or `--server`), the browser keeps some keys for itself and never passes them to the page: ++cmd+w++, ++cmd+t++ and ++cmd+n++ on macOS; ++ctrl+shift+t++, ++ctrl+shift+w++ and ++ctrl+shift+n++ on Linux and Windows; and ++ctrl+shift+p++ in Firefox.
 
 - On macOS, ++ctrl+shift++ still works for all of them.
-- On Linux and Windows, every shortcut also works with ++alt+shift++ in a browser tab: ++alt+shift+w++ closes a tab, ++alt+shift+p++ opens the command palette.
+- On Linux and Windows, those shortcuts also work with ++alt+shift++ in a browser tab: ++alt+shift+t++, ++alt+shift+w++, ++alt+shift+n++, ++alt+shift+p++, and ++alt+shift+o++ for the quick switcher. Other ++alt+shift++ keys still reach the shell.
 - ++f1++ opens the command palette in every browser.
 - In Chrome and Edge, the command palette's **Enter full screen** makes the browser pass every key to terminux, ++cmd+w++ included. Hold ++esc++ to leave full screen.
 

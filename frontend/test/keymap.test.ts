@@ -136,15 +136,22 @@ describe("clipboard chords", () => {
 });
 
 describe("browser tabs", () => {
-  it("takes Alt+Shift as a second app modifier", () => {
+  it("takes Alt+Shift for the chords the browser keeps", () => {
     mocks.browser = true;
     const e = press({ code: "KeyW", altKey: true, shiftKey: true });
     expect(mocks.invoke).toHaveBeenCalledWith("tab.close");
     expect(e.defaultPrevented).toBe(true);
     press({ code: "KeyP", altKey: true, shiftKey: true });
     expect(mocks.invoke).toHaveBeenLastCalledWith("palette.command");
-    press({ code: "Digit2", altKey: true, shiftKey: true });
-    expect(mocks.invoke).toHaveBeenLastCalledWith("workspace.jump.2");
+  });
+
+  it("leaves other Alt+Shift chords to the shell (M-_, M-!...)", () => {
+    mocks.browser = true;
+    for (const code of ["Minus", "Digit1", "BracketLeft", "KeyB"]) {
+      const e = press({ code, altKey: true, shiftKey: true });
+      expect(e.defaultPrevented).toBe(false);
+    }
+    expect(mocks.invoke).not.toHaveBeenCalled();
   });
 
   it("leaves Alt+Shift to the shell in the desktop window", () => {

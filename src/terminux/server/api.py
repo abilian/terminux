@@ -97,6 +97,17 @@ def _check_types(body: dict[str, Any], **kinds: type) -> None:
             raise BadRequestError(msg)
 
 
+def _check_workspace_patch(body: dict[str, Any]) -> None:
+    _check_types(body, name=str, active=bool, order=list, tab_order=list)
+    for key in ("order", "tab_order"):
+        if not all(isinstance(x, str) for x in body.get(key, [])):
+            msg = f"{key} must be a list of ids"
+            raise BadRequestError(msg)
+    if not isinstance(body.get("active_tab_id"), str | None):
+        msg = "active_tab_id must be a string or null"
+        raise BadRequestError(msg)
+
+
 def _clamped_int(value: object, lo: int, hi: int, field: str) -> int:
     msg = f"{field} must be a number"
     if isinstance(value, bool) or not isinstance(value, int | float):
@@ -169,7 +180,7 @@ class Api:
 
     async def patch_workspace(self, request: Request) -> Response:
         body = await _json_object(request)
-        _check_types(body, name=str, order=list, tab_order=list)
+        _check_workspace_patch(body)
         ws_id = request.path_params["ws_id"]
 
         # All state access + the disk-touching ``save()`` runs in a worker
@@ -198,7 +209,9 @@ class Api:
         return JSONResponse({"ok": True})
 
     def delete_workspace(self, request: Request) -> Response:
-        self.ctl.close_workspace(request.path_params["ws_id"])
+        ws_id = request.path_params["ws_id"]
+        if not self.ctl.close_workspace(ws_id):
+            return _not_found("workspace", ws_id)
         return JSONResponse({"ok": True})
 
     def create_tab(self, request: Request) -> Response:
@@ -249,20 +262,12 @@ class Api:
 
     def delete_tab(self, request: Request) -> Response:
         tab_id = request.path_params["tab_id"]
-        with self.ctl.lock:
-            tab = self.ctl.state.tabs.get(tab_id)
-            if tab is None:
-                return _not_found("tab", tab_id)
-            if not self.ctl.state.remove_tab(tab_id):
-                msg = "a workspace keeps at least one tab; close the workspace"
-                return JSONResponse({"error": msg}, status_code=409)
-            if tab.terminal_id is not None:
-                self.ctl.terminals.close(tab.terminal_id)
-        # Deliberate close drops the captured scrollback too (restart-in-place
-        # uses the dedicated DELETE /scrollback endpoint); the unlink runs
-        # outside the lock (disk is never touched under it).
-        self.ctl.delete_scrollback(tab_id)
-        self.ctl.save()
+        outcome = self.ctl.close_tab(tab_id)
+        if outcome == "unknown":
+            return _not_found("tab", tab_id)
+        if outcome == "last":
+            msg = "a workspace keeps at least one tab; close the workspace"
+            return JSONResponse({"error": msg}, status_code=409)
         return JSONResponse({"ok": True})
 
     async def get_scrollback(self, request: Request) -> Response:
@@ -457,9 +462,12 @@ async def _pump_out(ws: WebSocket, sub: Subscriber, term: Terminal) -> None:
             await ws.send_json({"type": "owner", "owner": owner})
         if dropped:
             await ws.send_json({"type": "dropped"})
+        replay_end = sub.take_replay_end()
+        if replay_end and sub.first:  # its answers are the first: let them go
+            await ws.send_json({"type": "replayed"})
         if data:
             await ws.send_bytes(data)
-        if sub.take_replay_end():
+        if replay_end and not sub.first:
             await ws.send_json({"type": "replayed"})
         if closed:
             await ws.send_json({"type": "exit", "code": term.exit_code})

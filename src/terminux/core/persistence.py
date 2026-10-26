@@ -178,7 +178,6 @@ def save_state_json(payload: dict[str, Any], path: Path | None = None) -> None:
     fsync stalls anyone else waiting on it, including the event loop.
     """
     path = path or state_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
     data = json.dumps(payload, indent=2).encode("utf-8")
     with time_op(f"save_state[{len(data) // 1024}KB]"):
         _atomic_write(path, data, prefix=".state-", label=f"state to {path}")

@@ -18,10 +18,15 @@ export interface Overlay {
  * `view(visible, key)` renders the card; `key` changes on every open, so a
  * card keyed on it remounts (fresh state, focus re-grabbed), and one that
  * ignores it keeps its state between opens. `onClose` runs before the hide.
+ * A `modal` overlay closes on Escape wherever focus is; a non-modal one
+ * (find) handles Escape itself, so the terminal and other inputs keep it.
  */
 export function createOverlay(
   view: (visible: boolean, key: number) => VNode,
-  onClose: () => void = () => {},
+  {
+    onClose = () => {},
+    modal = true,
+  }: { onClose?: () => void; modal?: boolean } = {},
 ): Overlay {
   let host: HTMLDivElement | null = null;
   let visible = false;
@@ -46,7 +51,7 @@ export function createOverlay(
       window.addEventListener(
         "keydown",
         (e: KeyboardEvent) => {
-          if (visible && e.key === "Escape") {
+          if (modal && visible && e.key === "Escape") {
             e.preventDefault();
             e.stopPropagation();
             close();

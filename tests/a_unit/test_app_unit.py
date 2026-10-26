@@ -9,7 +9,7 @@ import signal
 import subprocess
 import sys
 import threading
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -230,3 +230,43 @@ def test_full_screen_is_in_our_view_menu_on_macos(monkeypatch, platform) -> None
     if platform == "darwin":
         items["Toggle Full Screen"].function()
         assert toggled == [True]
+
+
+def test_ctrl_shift_v_pastes_natively_and_other_keys_pass_through() -> None:
+    """macOS: the patched ``keyDown_`` pastes on Ctrl+Shift+V (any layout:
+    the physical V key) and hands every other key to the original."""
+    shift, ctrl, option = 1 << 17, 1 << 18, 1 << 19
+    key_v, key_c = 9, 8
+
+    class Host:
+        def __init__(self) -> None:
+            self.events: list[str] = []
+
+        def keyDown_(self, event: object) -> None:
+            self.events.append("forwarded")
+
+        def paste_(self, _sender: object) -> None:
+            self.events.append("pasted")
+
+    class Event:
+        def __init__(self, flags: int, code: int) -> None:
+            self._flags, self._code = flags, code
+
+        def modifierFlags(self) -> int:
+            return self._flags | 0x100  # device-dependent low bits are ignored
+
+        def keyCode(self) -> int:
+            return self._code
+
+    cocoa = ModuleType("cocoa")
+    cocoa.BrowserView = SimpleNamespace(WebKitHost=Host)  # type: ignore[attr-defined]
+    app_mod._paste_on_ctrl_shift_v(cocoa)
+    host = Host()
+    for flags, code in (
+        (ctrl | shift, key_v),
+        (ctrl, key_v),
+        (ctrl | shift | option, key_v),
+        (ctrl | shift, key_c),
+    ):
+        host.keyDown_(Event(flags, code))
+    assert host.events == ["pasted", "forwarded", "forwarded", "forwarded"]

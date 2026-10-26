@@ -11,7 +11,7 @@ import asyncio
 import threading
 import time
 from pathlib import Path, PureWindowsPath
-from typing import Any
+from typing import Any, Literal
 
 from terminux.core.model import AppState, Workspace, WorkspaceStatus
 from terminux.core.persistence import (
@@ -129,13 +129,16 @@ class AppController:
         if self._persist:
             delete_scrollback(tab_id)
 
-    def close_workspace(self, ws_id: str) -> None:
-        """Close a workspace: its shells, its tabs and their saved scrollback.
-        The state keeps at least one workspace (``remove_workspace``)."""
+    def close_workspace(self, ws_id: str) -> bool:
+        """Close a workspace: its shells, its tabs and their saved scrollback;
+        False for an unknown one. The state keeps at least one workspace
+        (``remove_workspace``)."""
         with self.lock:
-            # Terminals first: removing the workspace drops its tabs.
             ws = self.state.get_workspace(ws_id)
-            terms = [self._terminal_of(tid) for tid in ws.tab_ids] if ws else []
+            if ws is None:
+                return False
+            # Terminals first: removing the workspace drops its tabs.
+            terms = [self._terminal_of(tid) for tid in ws.tab_ids]
             tab_ids = self.state.remove_workspace(ws_id)
             for term in terms:
                 if term is not None:
@@ -144,6 +147,24 @@ class AppController:
         for tid in tab_ids:
             self.delete_scrollback(tid)
         self.save()
+        return True
+
+    def close_tab(self, tab_id: str) -> Literal["closed", "unknown", "last"]:
+        """Close a tab: its shell and its saved scrollback. A workspace's
+        last tab stays ("last"): closing it means closing the workspace."""
+        with self.lock:
+            term = self._terminal_of(tab_id)
+            if tab_id not in self.state.tabs:
+                return "unknown"
+            if not self.state.remove_tab(tab_id):
+                return "last"
+            if term is not None:
+                self.terminals.close(term.id)
+        # Restart-in-place keeps the scrollback through its own endpoint;
+        # a deliberate close drops it, outside the lock.
+        self.delete_scrollback(tab_id)
+        self.save()
+        return "closed"
 
     def note_input(self, terminal_id: str) -> None:
         """Called when keystrokes arrive over a PTY WebSocket — the only

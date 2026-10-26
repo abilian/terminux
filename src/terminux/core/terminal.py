@@ -237,7 +237,10 @@ class _AttentionScanner:
 class Subscriber:
     """A bounded, batched view of a terminal's output for one consumer."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, first: bool = False) -> None:
+        # The terminal's first client: nobody has answered the queries in
+        # its backlog yet (a new shell's startup queries), so it must.
+        self.first = first
         self._pending = bytearray()
         self._dropped = False
         self._closed = False
@@ -246,8 +249,8 @@ class Subscriber:
         # Applied to the PTY only while this client owns the terminal.
         self.size: tuple[int, int] | None = None
         self._owner_news: bool | None = None
-        # The first drain carries the replayed backlog; the pump then tells
-        # the client the replay is over (see ``take_replay_end``).
+        # The first drain carries the replayed backlog; the pump tells the
+        # client where the replay ends (see ``take_replay_end``).
         self._replay_end = True
 
     def tell_owner(self, owner: bool) -> None:
@@ -261,10 +264,14 @@ class Subscriber:
         return news
 
     def take_replay_end(self) -> bool:
-        """True once, at the first drain: everything sent so far was the
-        replayed backlog. The client's emulator answers the queries in it
-        (cursor position, colors...), and those answers must not reach the
-        shell as input."""
+        """True once, at the first drain, which carries the replayed backlog.
+
+        The client's emulator answers the queries in it (cursor position,
+        colors...). For a later client those were answered already and its
+        answers must not reach the shell, so the pump marks the replay's end
+        after the backlog; for the first client it marks it before, so its
+        answers go through.
+        """
         end, self._replay_end = self._replay_end, False
         return end
 
@@ -308,7 +315,9 @@ class Terminal:
     def __init__(self, pty: PtyBackend) -> None:
         self.id = uuid.uuid4().hex
         self._pty = pty
+        self._loop = asyncio.get_running_loop()
         self._backlog = bytearray()
+        self._attached_before = False  # see Subscriber.first
         # Insertion-ordered (a dict used as an ordered set), so ownership
         # can fall back to the most recently attached client.
         self._subscribers: dict[Subscriber, None] = {}
@@ -327,7 +336,7 @@ class Terminal:
         # (value, monotonic_time_at_read) for the cwd cache; None until first
         # successful query.
         self._cwd_cache: tuple[str | None, float] | None = None
-        self._pty.attach(asyncio.get_running_loop(), self._on_data)
+        self._pty.attach(self._loop, self._on_data)
 
     # ----- reading ------------------------------------------------------
 
@@ -373,7 +382,8 @@ class Terminal:
         The first client to attach owns the terminal; later ones watch
         until they ``claim`` it.
         """
-        sub = Subscriber()
+        sub = Subscriber(first=not self._attached_before)
+        self._attached_before = True
         if self._backlog:
             sub.feed(bytes(self._backlog))
         if self._exited:
@@ -492,7 +502,22 @@ class Terminal:
         return self._exit_code
 
     def close(self) -> None:
-        """Terminate the child and tear the terminal down."""
+        """Terminate the child and tear the terminal down, from any thread.
+
+        A tab closed by a sync request handler gets here from a worker
+        thread; the reader registration and the subscribers' events belong
+        to the loop, so the teardown runs there.
+        """
+        try:
+            on_loop = asyncio.get_running_loop() is self._loop
+        except RuntimeError:  # no loop in this thread
+            on_loop = False
+        if on_loop:
+            self._close()
+        elif not self._loop.is_closed():
+            self._loop.call_soon_threadsafe(self._close)
+
+    def _close(self) -> None:
         self._pty.detach()
         self._pty.terminate()
         self._exited = True

@@ -887,10 +887,17 @@ def test_patch_workspace_rejects_bad_types_before_changing_anything(
 ) -> None:
     ws = _req(f"{server.url}/api/state?t={T}")["workspaces"][0]
     url = f"{server.url}/api/workspaces/{ws['id']}?t={T}"
-    for bad in ({"name": "renamed", "order": 5}, {"name": None}):
+    bad_bodies = (
+        {"name": "renamed", "order": 5},
+        {"name": None},
+        {"name": "renamed", "active": "false"},
+        {"name": "renamed", "tab_order": [1]},
+        {"name": "renamed", "active_tab_id": 7},
+    )
+    for bad in bad_bodies:
         code, payload = _status_of(url, "PATCH", json.dumps(bad).encode())
         assert code == 400, bad
-        assert payload["error"].split()[0] in {"order", "name"}
+        assert payload["error"].split()[0] in bad
     after = _req(f"{server.url}/api/state?t={T}")["workspaces"][0]
     assert after["name"] == ws["name"]
 
@@ -919,6 +926,8 @@ def test_creates_answer_201_and_404s_name_the_resource(server: LiveServer) -> No
     assert code == 201
     code, payload = _status_of(f"{base}/api/tabs/nope?t={T}", "PATCH", b"{}")
     assert (code, payload["error"]) == (404, "no tab 'nope'")
+    code, _ = _status_of(f"{base}/api/workspaces/nope?t={T}", "DELETE", b"")
+    assert code == 404
 
 
 def test_out_of_range_terminal_size_is_clamped(server: LiveServer) -> None:

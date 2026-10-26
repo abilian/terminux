@@ -132,6 +132,17 @@ describe("tab bar island", () => {
     );
   });
 
+  it("closing a workspace's last tab closes the workspace", () => {
+    fakeState!.workspaces[0].tab_ids = ["t1"];
+    closeTab("t1");
+    expect(termMod.disposeSession).toHaveBeenCalledWith("t1");
+    expect(apiMock).toHaveBeenCalledWith(
+      "/workspaces/w1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    expect(apiMock).not.toHaveBeenCalledWith("/tabs/t1", expect.anything());
+  });
+
   it("switchTab steps through the list with wraparound", () => {
     switchTab(1);
     expect(storeMod.setActiveTabOptimistic).toHaveBeenLastCalledWith(

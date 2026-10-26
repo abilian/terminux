@@ -29,8 +29,10 @@ let info: ConnectInfo | null = null;
 
 const overlay = createOverlay(
   (visible, key) => <ConnectOverlay key={key} visible={visible} info={info} />,
-  () => {
-    info = null;
+  {
+    onClose: () => {
+      info = null;
+    },
   },
 );
 

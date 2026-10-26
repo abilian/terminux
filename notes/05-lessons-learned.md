@@ -212,6 +212,8 @@ This **landed on 2026-07-29**, after a field freeze of exactly this shape (a blo
 
 **Fix.** The server sends `{"type":"replayed"}` after the first batch it sends to a new subscriber (the backlog). The client sets `sess.replaying` at each connect and clears it in a `term.write("", cb)` callback when the marker arrives, i.e. once xterm has parsed the whole backlog; `sendInput` drops everything while it is set. Control frames (`claim`, `resize`) still go through. The e2e test runs `printf '\033[c'; cat -v` and attaches a second window: `cat -v` must show one answer, not two.
 
+**Corollary: the first client must answer.** The first version gated every client, and that broke new tabs: the tab spawns the shell before its socket connects, so a fresh fish's startup queries sit in the backlog unanswered, and fish blocks input waiting for them ("Still blocked on response from terminal"). Only a terminal's later clients replay answered queries; the first client gets the marker before the backlog (`Subscriber.first`). A second e2e test starts a shell whose first output is a query: its answer must arrive, once.
+
 ### Old WebKit needs `ws://` spelled out in CSP, and dependency floors are part of your support floor
 
 **Symptom.** On Big Sur's WKWebView the app worked (sidebar, tabs, API calls), but every terminal showed "(exited)". The same backend worked fine in a modern Firefox.

@@ -364,12 +364,20 @@ def test_close_marks_subscribers_closed() -> None:
         def terminate(self) -> None:
             self.terminated = True
 
-    p = P()
-    t = _terminal(p)
-    sub = t.subscribe()
-    t.close()
-    assert p.terminated is True
-    assert asyncio.run(sub.drain())[2] is True  # closed
+    async def go(close_from_worker: bool) -> None:
+        p = P()
+        t = Terminal(p)  # type: ignore[arg-type]
+        sub = t.subscribe()
+        if close_from_worker:  # as a sync request handler does
+            await asyncio.to_thread(t.close)
+        else:
+            t.close()
+        assert (await sub.drain())[2] is True  # closed, and the drain woke
+        assert p.terminated is True
+        assert p.detached == 1
+
+    asyncio.run(go(close_from_worker=False))
+    asyncio.run(asyncio.wait_for(go(close_from_worker=True), timeout=2))
 
 
 # ----- ownership (several clients, one PTY size) ------------------------
@@ -457,3 +465,11 @@ def test_replay_end_is_reported_once_per_subscriber() -> None:
     assert sub.take_replay_end() is True
     assert sub.take_replay_end() is False
     assert t.subscribe().take_replay_end() is True  # every client gets one
+
+
+def test_only_the_first_client_answers_the_backlog() -> None:
+    t = _terminal()
+    first, later = t.subscribe(), t.subscribe()
+    t.unsubscribe(first)
+    t.unsubscribe(later)
+    assert (first.first, later.first, t.subscribe().first) == (True, False, False)

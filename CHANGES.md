@@ -13,7 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Added
 
 - **The same shortcuts on all three platforms.** `Ctrl+Shift` plus a key now works on macOS too, next to `Cmd`, copy and paste included. Linux copies with plain `Ctrl+C` (while text is selected) and pastes with `Ctrl+V`, as Windows does. `F1` opens the command palette everywhere, and `Ctrl+Shift+O` the quick switcher.
-- **Shortcuts in a browser tab.** Browsers keep some chords for themselves (Cmd+W, T and N; Ctrl+Shift+T, W and N; Ctrl+Shift+P in Firefox). In a browser tab on Linux and Windows, every shortcut also works with `Alt+Shift`, and the command palette's "Enter full screen" lets Chrome and Edge pass every shortcut through.
+- **Shortcuts in a browser tab.** Browsers keep some chords for themselves (Cmd+W, T and N; Ctrl+Shift+T, W and N; Ctrl+Shift+P in Firefox). In a browser tab on Linux and Windows, those (and the quick switcher) also work with `Alt+Shift`, and the command palette's "Enter full screen" lets Chrome and Edge pass every shortcut through.
 
 ### Changed
 

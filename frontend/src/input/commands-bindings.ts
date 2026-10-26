@@ -40,7 +40,10 @@ function toggleFullscreen(): void {
   }
   void document.documentElement
     .requestFullscreen()
-    .then(() => navigator.keyboard?.lock());
+    .then(() => navigator.keyboard?.lock())
+    .catch((err: unknown) => {
+      console.warn("full screen refused:", err);
+    });
 }
 
 function applySort(sort: (ws: WorkspaceView[]) => WorkspaceView[]): void {
@@ -96,16 +99,9 @@ export function installCommands(): void {
     }
   });
   register("tab.close", () => {
-    // Cmd+W parity: close the active tab; the last tab closes the
-    // whole workspace.
-    const ws = activeWorkspace();
-    if (!ws) {
-      return;
-    }
-    if (ws.tab_ids.length > 1 && ws.active_tab_id) {
-      closeTab(ws.active_tab_id);
-    } else {
-      closeWorkspace(ws.id);
+    const tid = activeWorkspace()?.active_tab_id;
+    if (tid) {
+      closeTab(tid); // the last tab closes the whole workspace
     }
   });
   register("tab.next", () => switchTab(1));

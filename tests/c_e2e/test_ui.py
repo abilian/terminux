@@ -303,3 +303,21 @@ def test_attaching_window_does_not_answer_replayed_queries(
     second.locator(".xterm-helper-textarea").focus()  # in use: owns it
     second.wait_for_timeout(1500)
     assert rows.inner_text().count("?1;2c") == 1
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX sh and cat -v")
+def test_first_window_answers_a_new_shells_startup_queries(
+    page: Page, app_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A new shell's first queries (fish asks for device attributes and
+    waits) sit in the backlog before any window attaches; the first window
+    must answer them, or the shell blocks."""
+    monkeypatch.setattr(
+        "terminux.server.controller.default_shell",
+        lambda: ["/bin/sh", "-c", "printf '\\033[c'; exec cat -v"],
+    )
+    page.goto(app_url)
+    rows = page.locator(".xterm-rows")
+    expect(rows).to_contain_text("?1;2c", timeout=UI)
+    page.wait_for_timeout(1000)
+    assert rows.inner_text().count("?1;2c") == 1

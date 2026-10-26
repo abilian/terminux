@@ -149,6 +149,14 @@ function handleAppChord(e: KeyboardEvent): boolean {
   return false;
 }
 
+// The app chords a browser keeps from the page (and the quick switcher, a
+// neighbour of P), reachable with the browser fallback modifier.
+const BROWSER_KEPT = new Set(["KeyT", "KeyW", "KeyN", "KeyP", "KeyO"]);
+
+function isAppChord(e: KeyboardEvent): boolean {
+  return appMod(e) || (browserMod(e) && BROWSER_KEPT.has(e.code));
+}
+
 export function installShortcuts(): void {
   // Capture phase: the focused xterm otherwise consumes the keydown before
   // it bubbles to window, so app chords never fire.
@@ -166,7 +174,7 @@ export function installShortcuts(): void {
       // Ctrl+Shift+C with nothing selected does nothing; bare Ctrl+C
       // falls through to the shell.
       let handled = clip ? invoke(clip) || e.shiftKey : handleBareChord(e);
-      if (!handled && !clip && (appMod(e) || browserMod(e))) {
+      if (!handled && !clip && isAppChord(e)) {
         handled = handleAppChord(e);
       }
       if (handled) {

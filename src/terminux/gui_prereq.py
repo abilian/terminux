@@ -18,6 +18,7 @@ Libera Suite's ``libera/gui.py``, where each of these cases was met for real.
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import pathlib
 import subprocess  # noqa: S404 — argv form only, no shell: probes the system Python
@@ -96,6 +97,15 @@ def format_install_hint(os_release: str) -> str:
     """The line to type, or what to ask for where there is no line."""
     family = parse_family(os_release)
     return f"  {PACKAGES[family]}" if family else COMPONENTS
+
+
+def is_qt_available() -> bool:
+    """Whether pywebview's Qt backend, its fallback for GTK (and its first
+    choice under KDE), can load: ``qtpy`` and a Qt binding for it."""
+    bindings = ("PyQt6", "PySide6", "PyQt5", "PySide2")
+    return importlib.util.find_spec("qtpy") is not None and any(
+        importlib.util.find_spec(b) is not None for b in bindings
+    )
 
 
 def is_gtk_available() -> bool:
@@ -218,7 +228,7 @@ def explain_why_no_window() -> str | None:
     if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
         # Over SSH, say: GTK would only warn "cannot open display".
         return NO_DISPLAY
-    if is_gtk_available():
+    if is_gtk_available() or is_qt_available():
         return None
     system = _find_system_python_for_gtk()
     if system:

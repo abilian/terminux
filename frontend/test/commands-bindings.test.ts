@@ -133,12 +133,9 @@ describe("command dispatch table", () => {
     expect(mocks.openConnectInfo).toHaveBeenCalled();
   });
 
-  it("closes the active tab, or the workspace when it is the last tab", () => {
+  it("closes the active tab (closeTab handles a workspace's last one)", () => {
     invoke("tab.close");
     expect(mocks.closeTab).toHaveBeenCalledWith("t1");
-    mocks.state = state([ws("w1", ["t1"], 0)]);
-    invoke("tab.close");
-    expect(mocks.closeWorkspace).toHaveBeenCalledWith("w1");
   });
 
   it("zooms relative to the current size", () => {

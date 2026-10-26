@@ -8,6 +8,7 @@ import { useState } from "preact/hooks";
 import { invoke } from "../input/commands";
 import { isSidebarHidden, toggleSidebar } from "./layout";
 import { RenameInput } from "./rename";
+import { closeWorkspace } from "./sidebar";
 import { makeDraggable, recentlyReordered } from "./reorder";
 import {
   activeWorkspace,
@@ -19,7 +20,14 @@ import { disposeSession } from "../term/terminal";
 import type { StateView, TabView, WorkspaceView } from "../state/types";
 import { byId } from "../util/dom";
 
+// A workspace's last tab can't go alone (the server keeps it): closing
+// it closes the workspace, as the ✕, Cmd/Ctrl+W and the menu all expect.
 export function closeTab(tid: string): void {
+  const ws = getState()?.workspaces.find((w) => w.tab_ids.includes(tid));
+  if (ws?.tab_ids.length === 1) {
+    closeWorkspace(ws.id);
+    return;
+  }
   disposeSession(tid);
   void mutate("DELETE", `/tabs/${tid}`);
 }

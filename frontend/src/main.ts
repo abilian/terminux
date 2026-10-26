@@ -16,6 +16,7 @@ import {
   activeSession,
   activeWorkspace,
   configure,
+  getState,
   poll,
   refresh,
   sessions,
@@ -78,9 +79,16 @@ setInterval(() => {
 (window as unknown as { __terminux: object }).__terminux = { sessions };
 
 // First load: render, adopt the persisted font and layout, and only then
-// open the active terminal (refresh activates it).
-void poll().then(() => {
+// open the active terminal (refresh activates it). Retried until the state
+// arrives, so a failed first fetch doesn't lose the persisted font size.
+async function firstLoad(): Promise<void> {
+  await poll();
+  while (getState() === null) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await poll();
+  }
   syncFontFromState();
   applyLayout();
-  return refresh();
-});
+  await refresh();
+}
+void firstLoad();

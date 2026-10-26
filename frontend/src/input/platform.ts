@@ -8,7 +8,8 @@
 //   Linux  — raw Ctrl belongs to the shell. Per the GNOME / Konsole /
 //            xfce4-terminal / Alacritty / Ghostty / kitty convention,
 //            apps use **Ctrl+Shift** for their shortcuts; raw Ctrl flows
-//            through to the shell untouched.
+//            through to the shell, except Ctrl+V and Ctrl+C with a
+//            selection (copy and paste, as on Windows; see keymap.ts).
 //
 // Treating Ctrl and Cmd as interchangeable (the original code) clobbers
 // shell-side bindings on macOS; treating them as interchangeable on Linux
@@ -27,10 +28,11 @@ export function inBrowser(): boolean {
 }
 
 /**
- * A second app modifier for browser tabs on Linux and Windows, where the
+ * A fallback modifier for browser tabs on Linux and Windows, where the
  * browser keeps some Ctrl+Shift chords for itself (T, W, N, and P in
- * Firefox): Alt+Shift, which no browser binds. A Mac has Ctrl+Shift
- * besides Cmd already.
+ * Firefox): Alt+Shift, which no browser binds. keymap.ts takes it for
+ * those chords only; shells bind the rest (Alt+Shift+- is M-_). A Mac has
+ * Ctrl+Shift besides Cmd already.
  */
 export function browserMod(e: KeyboardEvent): boolean {
   return (
