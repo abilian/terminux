@@ -48,7 +48,7 @@ curl -X POST "$BASE/api/tabs/$TAB/spawn$T" -d '{"cols":120,"rows":30}'
 Connect with the token (`/pty/<terminal_id>?t=<token>`) after obtaining a `terminal_id` from `spawn`. The protocol:
 
 - **Binary frames, both directions**: raw PTY bytes. Client to server is keyboard input; server to client is terminal output.
-- **Text frames are JSON control messages.** The client sends `{"type": "resize", "cols": N, "rows": N}` to report its size and `{"type": "claim"}` to take ownership (below). The server sends `{"type": "owner", "owner": true|false}` on attach and whenever ownership changes, `{"type": "exit", "code": N}` when the shell ends, and `{"type": "dropped"}` once if a slow consumer's backlog had to be discarded.
+- **Text frames are JSON control messages.** The client sends `{"type": "resize", "cols": N, "rows": N}` to report its size and `{"type": "claim"}` to take ownership (below). The server sends `{"type": "owner", "owner": true|false}` on attach and whenever ownership changes, `{"type": "exit", "code": N}` when the shell ends, `{"type": "dropped"}` once if a slow consumer's backlog had to be discarded, and `{"type": "replayed"}` once, right after the replayed backlog. Until then, a client should send nothing: its emulator is answering queries from old output (cursor position, colors), and those answers would land in the shell as typed input.
 
 On connect the server replays its retained output backlog (up to 512 KB), which is what lets a reconnecting client repaint the screen. A terminal accepts **multiple simultaneous subscribers**, and every one of them receives all output.
 

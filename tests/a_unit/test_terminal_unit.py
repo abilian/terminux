@@ -448,3 +448,12 @@ def test_after_the_last_client_leaves_the_next_one_owns() -> None:
     nxt = t.subscribe()
     assert t.is_owner(nxt)
     assert _owner_news(nxt) == [True]
+
+
+def test_replay_end_is_reported_once_per_subscriber() -> None:
+    t = _terminal()
+    t._on_data(b"\x1b[c")  # a query in the backlog the next client replays
+    sub = t.subscribe()
+    assert sub.take_replay_end() is True
+    assert sub.take_replay_end() is False
+    assert t.subscribe().take_replay_end() is True  # every client gets one

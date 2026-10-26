@@ -246,6 +246,9 @@ class Subscriber:
         # Applied to the PTY only while this client owns the terminal.
         self.size: tuple[int, int] | None = None
         self._owner_news: bool | None = None
+        # The first drain carries the replayed backlog; the pump then tells
+        # the client the replay is over (see ``take_replay_end``).
+        self._replay_end = True
 
     def tell_owner(self, owner: bool) -> None:
         """Queue an ownership change for this client's output pump."""
@@ -256,6 +259,14 @@ class Subscriber:
         """The pending ownership change, if any (cleared once taken)."""
         news, self._owner_news = self._owner_news, None
         return news
+
+    def take_replay_end(self) -> bool:
+        """True once, at the first drain: everything sent so far was the
+        replayed backlog. The client's emulator answers the queries in it
+        (cursor position, colors...), and those answers must not reach the
+        shell as input."""
+        end, self._replay_end = self._replay_end, False
+        return end
 
     def feed(self, data: bytes) -> None:
         if self._closed:

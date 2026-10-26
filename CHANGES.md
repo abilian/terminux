@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Fixed
 
 - **On Linux, a missing GTK or display says what to do** (the packages to install, a `pipx --system-site-packages` reinstall, or `--no-window` and `--server`) instead of a traceback.
+- **A window attaching to a terminal no longer types stray escape sequences into it.** It answered the terminal queries in the replayed history (fish asks for the cursor position and colors at each prompt), and those answers reached the program as input: `terminux --connect` launched from a tab printed lines of `^[[?1;2c^[[29;1R…`.
 - **A malformed message from a client no longer drops its terminal connection.**
 - **Renaming to a blank name goes back to the automatic name** instead of showing "workspace N".
 - **A tab reorder that lists a tab twice no longer duplicates it.**

@@ -204,6 +204,14 @@ This **landed on 2026-07-29**, after a field freeze of exactly this shape (a blo
 
 **Fix.** Token check moved into the middleware, fail-closed, with an explicit public allowlist (`/assets/` only). A new route now cannot forget auth. The same audit taught a corollary: on loopback, exempt local IPs from the brute-force lockout. All local clients share `127.0.0.1`, so one stale browser tab polling with an old token would lock out the real window (self-DoS).
 
+### A replayed backlog provokes answers: don't send them
+
+**Symptom.** Running `terminux --connect …` from a terminux tab printed lines of `^[[?0u^[]11;rgb:1a1a/1b1b/2626^[\^[[?1;2c^[[29;1R…` in that tab: one batch per earlier prompt.
+
+**Cause.** Attaching replays the terminal's backlog so the new screen isn't blank. fish emits queries at each prompt (kitty keyboard `CSI ? u`, background color `OSC 11`, `DA1`, cursor position `CPR`), so the backlog is full of them, and the new xterm answers every one while parsing it (the kitty codec answers `CSI ? u` itself). The focused window claims ownership on attach, so the server forwarded those answers to the PTY; the foreground program, here `terminux --connect` itself not reading stdin, got them as input and the tty echoed them. The earlier rule "drop a non-owner's bytes" didn't cover it: the attaching window *is* the owner.
+
+**Fix.** The server sends `{"type":"replayed"}` after the first batch it sends to a new subscriber (the backlog). The client sets `sess.replaying` at each connect and clears it in a `term.write("", cb)` callback when the marker arrives, i.e. once xterm has parsed the whole backlog; `sendInput` drops everything while it is set. Control frames (`claim`, `resize`) still go through. The e2e test runs `printf '\033[c'; cat -v` and attaches a second window: `cat -v` must show one answer, not two.
+
 ### Old WebKit needs `ws://` spelled out in CSP, and dependency floors are part of your support floor
 
 **Symptom.** On Big Sur's WKWebView the app worked (sidebar, tabs, API calls), but every terminal showed "(exited)". The same backend worked fine in a modern Firefox.

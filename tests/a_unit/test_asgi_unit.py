@@ -544,7 +544,11 @@ def test_pump_out_emits_dropped_then_exit(monkeypatch) -> None:
         ws = FakeWS()
         term = types.SimpleNamespace(exit_code=0)
         await asyncio.wait_for(_pump_out(ws, sub, term), timeout=2)
-        assert ws.json == [{"type": "dropped"}, {"type": "exit", "code": 0}]
+        assert ws.json == [
+            {"type": "dropped"},
+            {"type": "replayed"},  # after the first batch: the replay is over
+            {"type": "exit", "code": 0},
+        ]
         assert b"".join(ws.bytes) == b"6789"
 
     asyncio.run(go())

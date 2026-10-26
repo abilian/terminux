@@ -459,6 +459,8 @@ async def _pump_out(ws: WebSocket, sub: Subscriber, term: Terminal) -> None:
             await ws.send_json({"type": "dropped"})
         if data:
             await ws.send_bytes(data)
+        if sub.take_replay_end():
+            await ws.send_json({"type": "replayed"})
         if closed:
             await ws.send_json({"type": "exit", "code": term.exit_code})
             return

@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
+import pytest
 from playwright.sync_api import expect
 
 if TYPE_CHECKING:
@@ -282,3 +283,23 @@ def test_each_window_gets_its_own_size_when_used(
         assert _run_in_terminal(p, test_shell.size_command(f"M{n}"), marker), (
             f"round {n}: the shell did not see this window's size ({marker})"
         )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX printf and cat -v")
+def test_attaching_window_does_not_answer_replayed_queries(
+    page: Page, app_url: str
+) -> None:
+    """A window attaching to a terminal replays its backlog; the queries in
+    it (here a device-attributes request) must not be answered again into
+    the shell's input. ``cat -v`` makes every answer visible."""
+    page.goto(app_url)
+    expect(page.locator(".xterm")).to_be_visible(timeout=UI)
+    assert _run_in_terminal(page, "printf '\\033[c'; cat -v", "?1;2c")
+    second = page.context.new_page()
+    second.bring_to_front()
+    second.goto(app_url)
+    rows = second.locator(".xterm-rows")
+    expect(rows).to_contain_text("?1;2c", timeout=UI)  # the replayed answer
+    second.locator(".xterm-helper-textarea").focus()  # in use: owns it
+    second.wait_for_timeout(1500)
+    assert rows.inner_text().count("?1;2c") == 1

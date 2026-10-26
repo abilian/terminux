@@ -170,7 +170,7 @@ const sleep = (ms: number): Promise<void> =>
 
 function sendInput(sess: Session, data: string): void {
   const w = sess.ws;
-  if (w && w.readyState === WebSocket.OPEN) {
+  if (!sess.replaying && w && w.readyState === WebSocket.OPEN) {
     w.send(enc.encode(data));
   }
 }
@@ -258,6 +258,7 @@ async function connect(
   ws.binaryType = "arraybuffer";
   sess.ws = ws;
   sess.owner = false; // per connection; the server reports it on attach
+  sess.replaying = true; // until the server's "replayed" marker is parsed
 
   let kittyCarry = "";
   ws.onmessage = (ev: MessageEvent): void => {
@@ -309,6 +310,12 @@ function onControl(sess: Session, text: string): void {
   };
   if (msg.type === "owner") {
     sess.owner = msg.owner === true;
+  } else if (msg.type === "replayed") {
+    // The callback runs once xterm has parsed everything written before,
+    // i.e. the whole backlog and every answer it provoked.
+    sess.term.write("", () => {
+      sess.replaying = false;
+    });
   } else if (msg.type === "exit") {
     const code = msg.code != null ? ` with code ${msg.code}` : "";
     sess.exited = true;
@@ -434,6 +441,7 @@ async function doOpenTerminal(tid: string, restore: boolean): Promise<void> {
     kitty: createKitty(),
     dirty: false,
     owner: false,
+    replaying: true,
   };
   sessions.set(tid, sess);
 

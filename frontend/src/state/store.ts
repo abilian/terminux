@@ -35,6 +35,10 @@ export interface Session {
   // Whether this client currently owns the terminal on the server: its size
   // is the PTY's and only its input is applied. Reset per connection.
   owner: boolean;
+  // True from each (re)connect until the server's replayed backlog is
+  // parsed: xterm answers the queries in it (cursor position, colors...),
+  // and those stale answers must not reach the shell. Reset per connection.
+  replaying: boolean;
 }
 
 // One live xterm per tab, kept alive while hidden (dormant streaming).
