@@ -1,6 +1,6 @@
 # Backlog
 
-This is a snapshot of what's deferred, what's open, and what to pick up next, as of 0.10. It draws on `02-technical-spec.md` (§10–§14), `01-functional-spec.md` (§8–§9), `03-future-considerations.md`, `06-windows-port.md`, and the "on the roadmap" callouts in the public docs.
+This is a snapshot of what's deferred, what's open, and what to pick up next, as of 0.11. It draws on `02-technical-spec.md` (§10–§14), `01-functional-spec.md` (§8–§9), `03-future-considerations.md`, `06-windows-port.md`, and the "on the roadmap" callouts in the public docs.
 
 This is a working document: refresh it when items land or new ones surface.
 
@@ -19,10 +19,6 @@ These are additive along existing interfaces. The backend already speaks HTTP + 
 - **Unified command palette.** The "quick switcher + command launcher → one overlay" design lives in [`03-future-considerations.md`](03-future-considerations.md). We lean towards unifying; the blocker is mockups proving a mixed list reads cleanly. The UX bar is concrete (visual grouping, sensible default order, no `>` prefix mode).
 - **New-workspace placement policy.** Make it configurable; v1 appends to the end (functional-spec §4.2).
 
-## Known bugs
-
-- **`OSC 9;<n>;…` subcommands trigger the "ready" dot.** `_osc_should_fire` treats every `OSC 9;…` as an iTerm2 notification. Progress reports (`OSC 9;4`, emitted by more and more tools) and Windows Terminal's cwd reports (`OSC 9;9`) are ConEmu subcommands that shouldn't count. Only plain `OSC 9;<message>` should fire.
-
 ## Open technical questions (technical-spec §14)
 
 - **Eager vs lazy shell spawn on restore.** Today a restored tab respawns its shell on first view. Eager spawn would warm them up at startup; lazy keeps startup fast.
@@ -31,6 +27,8 @@ These are additive along existing interfaces. The backend already speaks HTTP + 
 
 ## Hardening / loose ends
 
+- **Test the cross-platform shortcuts on real machines** (0.11): `Ctrl+Shift+V` pasting natively in the macOS window (a `keyDown_` patch, tested only on a hidden window), and plain `Ctrl+C` / `Ctrl+V` on Linux.
+- **Audit leftovers, deliberately deferred**: the 250 ms post-drag click guard in `reorder.ts` (the alternative depends on WebKit's click dispatch order); renaming `Workspace.has_unseen_output` to `is_ready` (changes the wire field); the one-line `setActive*Optimistic` wrappers in `store.ts`; injecting the data directory into `AppController` instead of the `persist` flag.
 - **macOS code-signing / notarization** for the packaged `.app`. It's currently distributed unsigned. See `docs/src/developers/packaging.md`.
 - **Per-Terminal async write queue.** The PTY master is non-blocking and `UnixPty.write` paces itself with `select()` on a worker thread, so the event loop is safe. A permanently stuck shell still parks one `to_thread` worker forever. The full fix queues writes in a small per-Terminal buffer, drains it via `loop.add_writer`, and drops on overflow with a one-shot notice (same shape as the subscriber output fan-out). See `05-lessons-learned.md`, "Server-side concurrency".
 
@@ -38,7 +36,7 @@ These are additive along existing interfaces. The backend already speaks HTTP + 
 
 By impact-per-effort, ranked:
 
-1. **Unified command palette.** Small surface, immediate UX win: mockups, then merge `palette.ts` and `cmdpalette.ts` (they already share `FuzzyOverlay`). It drops the platform asymmetry for the quick switcher (`Ctrl+Shift+O` on Linux and Windows, `Cmd+P` on macOS).
+1. **Unified command palette.** Small surface, immediate UX win: mockups, then merge `palette.ts` and `cmdpalette.ts` (both are built on `createFuzzyOverlay`, itself on the shared `createOverlay`). It would also retire the last shortcut difference between platforms: `Cmd+P` is the quick switcher on macOS while `Ctrl+Shift+P` is the command palette everywhere.
 2. **Split panes.** The biggest "feels like a real terminal" feature. The plumbing is pane-aware in the spec; the work is per-tab pane-tree state, a drag-to-split UI, and routing keystrokes to the focused pane.
 3. **A Windows bundle and a shell setting.** Windows users currently need Python and uv; a standalone app and a choice of shell would remove the last rough edges.
 4. **Real auth.** Mostly server-side; it opens remote mode to setups without an SSH tunnel.

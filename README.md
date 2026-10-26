@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](#install--package)
 [![PyPI](https://img.shields.io/pypi/v/terminux.svg)](https://pypi.org/project/terminux/)
-[![Status](https://img.shields.io/badge/status-0.10%20preview-orange.svg)](#status-010-preview)
+[![Status](https://img.shields.io/badge/status-0.11%20preview-orange.svg)](#status-011-preview)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)](LICENSE)
 
 <br/>
@@ -137,9 +137,9 @@ make format
 
 The e2e tier drives the served UI with a real browser (no pywebview); install it once with `uv run playwright install chromium`.
 
-## Status: 0.10 preview
+## Status: 0.11 preview
 
-**Works today (0.10):** the workspaces sidebar (create / rename / reorder / close, working/ready dot) and tabs of real PTY shells that keep streaming in the background. Layout *and scrollback* come back after a restart, always with fresh shells. Remote mode (`--server` / `--connect`) reconnects automatically. Program-printed hyperlinks open, a watchdog diagnoses freezes, and standalone macOS and Linux bundles build with one command. On Windows 10 and 11, terminux runs PowerShell or `cmd` in its tabs and can also connect to a server on another machine.
+**Works today (0.11):** the workspaces sidebar (create / rename / reorder / close, working/ready dot) and tabs of real PTY shells that keep streaming in the background. Layout *and scrollback* come back after a restart, always with fresh shells. Remote mode (`--server` / `--connect`) reconnects automatically. The same `Ctrl+Shift` shortcuts work on all three platforms. Program-printed hyperlinks open, a watchdog diagnoses freezes, and standalone macOS and Linux bundles build with one command. On Windows 10 and 11, terminux runs PowerShell or `cmd` in its tabs and can also connect to a server on another machine.
 
 **Not yet:** split panes, a standalone Windows bundle, multi-user accounts.
 

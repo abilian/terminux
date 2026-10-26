@@ -11,7 +11,7 @@ terminux is a cross-platform desktop terminal organized around a **workspaces si
 
 ## Status
 
-terminux is a **0.10 preview** for macOS, Linux and Windows. Working today: the workspace/tab core with working-and-ready signals, layout and scrollback persistence, remote access with automatic reconnection, keyboard-first navigation, and macOS and Linux bundles. Split panes, a standalone Windows bundle, and multi-user auth for the open web are still ahead. The [changelog](https://github.com/abilian/terminux/blob/main/CHANGES.md) records every release in user-facing terms.
+terminux is a **0.11 preview** for macOS, Linux and Windows. Working today: the workspace/tab core with working-and-ready signals, layout and scrollback persistence, remote access with automatic reconnection, keyboard-first navigation with the same shortcuts on every platform, and macOS and Linux bundles. Split panes, a standalone Windows bundle, and multi-user auth for the open web are still ahead. The [changelog](https://github.com/abilian/terminux/blob/main/CHANGES.md) records every release in user-facing terms.
 
 ## License and source
 

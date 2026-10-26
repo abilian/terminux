@@ -2,6 +2,7 @@
 #   macOS  : `make app`   -> dist/terminux.app
 #   Linux  : `make linux` -> dist/terminux/ (onedir, built in Docker)
 import sys
+import tomllib
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_all
@@ -9,6 +10,7 @@ from PyInstaller.utils.hooks import collect_all
 IS_MAC = sys.platform == "darwin"
 
 project = Path(SPECPATH)
+version = tomllib.loads((project / "pyproject.toml").read_text())["project"]["version"]
 static_dir = project / "src" / "terminux" / "web" / "static"
 assets_dir = project / "src" / "terminux" / "assets"
 icon_icns = assets_dir / "icon.icns"
@@ -80,7 +82,7 @@ if IS_MAC:
         info_plist={
             "CFBundleName": "terminux",
             "CFBundleDisplayName": "terminux",
-            "CFBundleShortVersionString": "0.1.0",
+            "CFBundleShortVersionString": version,
             "LSMinimumSystemVersion": "12.0",
             "NSHighResolutionCapable": True,
             "NSRequiresAquaSystemAppearance": False,

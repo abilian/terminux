@@ -42,5 +42,5 @@ On Linux, the window needs a few system packages first: see [Installation](getti
 
 </div>
 
-!!! note "Status: 0.10 preview"
-    terminux is a 0.10 preview for macOS, Linux and Windows. The workspace + tabbed-terminal core, scrollback persistence, and remote access work well; split panes are not done yet. See the [FAQ](faq.md).
+!!! note "Status: 0.11 preview"
+    terminux is a 0.11 preview for macOS, Linux and Windows. The workspace + tabbed-terminal core, scrollback persistence, and remote access work well; split panes are not done yet. See the [FAQ](faq.md).
